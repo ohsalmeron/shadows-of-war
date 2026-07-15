@@ -297,6 +297,14 @@ impl SowApp {
 
         self.ui.raw_input.events.clear();
 
+        // Drive continuous redraws when egui requests them (hover transitions, scroll deceleration).
+        // Without this, ControlFlow::Wait on WASM freezes animations the moment input stops.
+        if self.ui.egui_ctx.requested_repaint_last_pass() {
+            if let Some(win) = self.gfx.window.as_ref() {
+                win.request_redraw();
+            }
+        }
+
         // ── DRAWING UI ──────────────────────────────────────────
         if let Some(ref mut gp) = self.gfx.gui_painter {
             let screen_desc = blade_egui::ScreenDescriptor {

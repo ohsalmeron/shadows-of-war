@@ -290,7 +290,7 @@ impl SowApp {
                 &self.sim,
                 &self.input,
                 &self.time,
-                &self.gfx,
+                &mut self.gfx,
                 &ctx_struct,
             );
             buildings::render(

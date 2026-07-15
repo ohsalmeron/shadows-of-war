@@ -4,7 +4,7 @@ use crate::text::msdf::FontAtlas;
 use crate::text::texture::FontAtlasTexture;
 use crate::text::types::{
     TextGlobals, TmpFontSettings, TextInstanceGpu, TextShaderData,
-    KIND_GLYPH, KIND_EMOJI, KIND_DISC, KIND_RING, KIND_SPRITE,
+    KIND_GLYPH, KIND_EMOJI, KIND_DISC, KIND_RING, KIND_SPRITE, KIND_RECT,
     AVATAR_CELL, AVATAR_COLS, AVATAR_ROWS, AVATAR_SLOT_COUNT,
     avatar_slot_uv,
 };
@@ -420,6 +420,22 @@ impl TextRenderer {
             underlay_offset_y: 0.0,
             underlay_softness: 0.0,
             kind: KIND_SPRITE,
+        });
+    }
+
+    /// Push an anti-aliased filled rectangle. `screen_pos`/`size` are physical pixels.
+    pub fn push_rect(&mut self, screen_pos: [f32; 2], size: [f32; 2], color: [f32; 4]) {
+        self.push_inst(TextInstanceGpu {
+            screen_pos,
+            size,
+            uv_rect: [0.0; 4],
+            color,
+            outline_color: [0.0; 4],
+            face_dilate: 0.0,
+            outline_thickness: 0.0,
+            underlay_offset_y: 0.0,
+            underlay_softness: 0.0,
+            kind: KIND_RECT,
         });
     }
 

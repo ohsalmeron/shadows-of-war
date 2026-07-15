@@ -119,7 +119,7 @@ pub fn draw_user_profile_header(
                 avatar_rect,
                 6.0,
                 Stroke::new(
-                    if avatar_response.hovered() { 1.5 } else { 1.0 },
+                    if avatar_response.hovered() { 1.5_f32 } else { 1.0_f32 },
                     frame_color,
                 ),
                 egui::StrokeKind::Inside,

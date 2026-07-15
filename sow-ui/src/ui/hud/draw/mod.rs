@@ -172,7 +172,7 @@ fn draw_hud_notifications(ui: &mut egui::Ui, state: &mut HudState) {
 
                     egui::Frame::NONE
                         .fill(bg_color)
-                        .stroke(egui::Stroke::new(1.0, border_color))
+                        .stroke(egui::Stroke::new(1.0_f32, border_color))
                         .corner_radius(8)
                         .inner_margin(egui::Margin::symmetric(14, 8))
                         .show(ui, |ui| {

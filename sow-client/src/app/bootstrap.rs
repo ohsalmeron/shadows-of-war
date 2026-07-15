@@ -94,7 +94,7 @@ impl SowApp {
 
         #[allow(unused_mut)]
         let mut ws_url =
-            std::env::var("SOW_WS_URL").unwrap_or_else(|_| "wss://shadowsofwar.io/ws/".to_string());
+            std::env::var("SOW_WS_URL").unwrap_or_else(|_| "wss://ws.shadowsofwar.io/ws/".to_string());
         #[cfg(target_arch = "wasm32")]
         {
             if let Some(window) = web_sys::window() {

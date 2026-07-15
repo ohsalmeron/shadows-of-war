@@ -1,31 +1,20 @@
 #!/usr/bin/env bash
-# Shadows of War — single entrypoint: ./sow cg | p | prod | ptr | l | local
+# Shadows of War — single entrypoint
+#   ./sow       → run native client
+#   ./sow l     → local web dev (WASM + serve :8787)
+#   ./sow p     → full production deployment
+#   ./sow backfill → run backfill locally
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${ROOT}"
 
 if [[ -f "${ROOT}/sow-dist/.env" ]]; then
-  set -a
-  # shellcheck source=/dev/null
-  source "${ROOT}/sow-dist/.env"
-  set +a
+  set -a; source "${ROOT}/sow-dist/.env"; set +a
 fi
 
-# Own cargo output dir — never touch a root-owned workspace target/.
 export CARGO_TARGET_DIR="${ROOT}/dist/.cargo-target"
 mkdir -p "${CARGO_TARGET_DIR}"
-
-# Check if cargo is locked by another build before compiling sow-dist
-for lock in "${CARGO_TARGET_DIR}/.cargo-lock" "${CARGO_TARGET_DIR}/release/.cargo-lock" "${CARGO_TARGET_DIR}/debug/.cargo-lock" "${CARGO_TARGET_DIR}/wasm-release/.cargo-lock"; do
-  if [[ -f "${lock}" ]]; then
-    if ! flock -n "${lock}" true 2>/dev/null; then
-      echo "==> Cargo target directory is locked by another process. Waiting for lock..."
-      break
-    fi
-  fi
-done
 
 BIN="${CARGO_TARGET_DIR}/debug/sow"
 cargo build -p sow-dist
 exec "${BIN}" "${@:-native}"
-

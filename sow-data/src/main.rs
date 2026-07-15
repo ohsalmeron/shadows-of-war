@@ -16,7 +16,9 @@ use tower_http::cors::{Any, CorsLayer};
 
 struct AppState {
     db: PlayerDb,
-    secret_token: String, // For trusted server-to-server internal APIs
+    secret_token: String,
+    redb_path: String,
+    redb_db: Arc<redb::Database>,
 }
 
 #[derive(Deserialize)]
@@ -153,6 +155,8 @@ async fn main() {
     let state = Arc::new(AppState {
         db: player_db,
         secret_token,
+        redb_path: redb_path.clone(),
+        redb_db: Arc::clone(&redb_db_arc),
     });
 
     // Configure CORS for web portal compatibility
@@ -174,6 +178,7 @@ async fn main() {
         .route("/internal/match-finalize", post(handle_match_finalize))
         .route("/internal/save", post(handle_direct_save))
         .route("/internal/link", post(handle_link_identity))
+        .route("/internal/stats", get(handle_internal_stats))
         .layer(cors)
         .with_state(state);
 
@@ -561,4 +566,18 @@ async fn handle_link_identity(
         )
             .into_response(),
     }
+}
+
+async fn handle_internal_stats(
+    State(state): State<Arc<AppState>>,
+) -> Json<serde_json::Value> {
+    let db_path = std::path::Path::new(&state.redb_path);
+    let file_size = std::fs::metadata(db_path).map(|m| m.len()).unwrap_or(0);
+
+    Json(serde_json::json!({
+        "redb": {
+            "path": state.redb_path,
+            "file_size_bytes": file_size,
+        }
+    }))
 }

@@ -40,7 +40,7 @@ pub fn paint_play_button(painter: &Painter, rect: Rect, hot: f32, pulse: f32, la
     painter.rect_stroke(
         rect.expand(grow),
         CornerRadius::same(r.saturating_add(grow as u8)),
-        Stroke::new(2.0, Color32::from_rgb(255, 70, 140).gamma_multiply(glow_a)),
+        Stroke::new(2.0_f32, Color32::from_rgb(255, 70, 140).gamma_multiply(glow_a)),
         egui::StrokeKind::Inside,
     );
 

@@ -455,7 +455,7 @@ pub(crate) fn render(
     sim: &crate::app::SimState,
     input: &crate::app::InputState,
     time: &crate::app::TimeState,
-    _gfx: &crate::app::GraphicsState,
+    gfx: &mut crate::app::GraphicsState,
     ctx: &RenderContext,
 ) {
     let zoom_scaled = ctx.zoom_scaled;
@@ -489,33 +489,30 @@ pub(crate) fn render(
         return;
     }
 
-    let sf = ctx.sf;
+    let tr = match gfx.text_renderer.as_mut() {
+        Some(tr) => tr,
+        None => return,
+    };
+
     let now = time.start_time.elapsed().as_secs_f32();
-
-    let painter = ctx.painter.ctx().layer_painter(egui::LayerId::new(
-        egui::Order::Background,
-        egui::Id::new("world_railways"),
-    ));
-
-    let sw = input.screen_w / sf;
-    let sh = input.screen_h / sf;
+    let sw = input.screen_w;
+    let sh = input.screen_h;
 
     let alpha_t = ((zoom_scaled - super::BUILDINGS_HIDE_FLOOR) / 0.4).clamp(0.0, 1.0);
-    let base_alpha = (alpha_t * 100.0) as u8;
-    let rail_color = egui::Color32::from_rgba_unmultiplied(90, 80, 70, base_alpha);
-    let rail_stroke = egui::Stroke::new(2.5_f32, rail_color);
+    let fog_enabled = sow_ui_kit::theme::dev_config::DevConfig::get().fog_of_war;
 
     for seg in &ui.rail_state.segments {
         if seg.dead {
             continue;
         }
 
-        let s_ax = (input.camera_x + seg.ax * input.camera_zoom) / sf;
-        let s_ay = (input.camera_y + seg.ay * input.camera_zoom) / sf;
-        let s_cx = (input.camera_x + seg.cx * input.camera_zoom) / sf;
-        let s_cy = (input.camera_y + seg.cy * input.camera_zoom) / sf;
-        let s_bx = (input.camera_x + seg.bx * input.camera_zoom) / sf;
-        let s_by = (input.camera_y + seg.by * input.camera_zoom) / sf;
+        // World → physical screen coordinates (GPU pipeline works in physical px)
+        let s_ax = input.camera_x + seg.ax * input.camera_zoom;
+        let s_ay = input.camera_y + seg.ay * input.camera_zoom;
+        let s_cx = input.camera_x + seg.cx * input.camera_zoom;
+        let s_cy = input.camera_y + seg.cy * input.camera_zoom;
+        let s_bx = input.camera_x + seg.bx * input.camera_zoom;
+        let s_by = input.camera_y + seg.by * input.camera_zoom;
 
         // Frustum cull
         let min_x = s_ax.min(s_cx).min(s_bx);
@@ -526,6 +523,44 @@ pub(crate) fn render(
             continue;
         }
 
+        // ── Fog of War culling & shrouding ──
+        let shroud = if fog_enabled {
+            let a_tx = seg.ax.floor() as i32;
+            let a_ty = seg.ay.floor() as i32;
+            let b_tx = seg.bx.floor() as i32;
+            let b_ty = seg.by.floor() as i32;
+
+            let in_bounds = |tx: i32, ty: i32| -> Option<u32> {
+                if tx >= 0 && ty >= 0 && (tx as u32) < sim.map_w && (ty as u32) < sim.map_h {
+                    Some(ty as u32 * sim.map_w + tx as u32)
+                } else {
+                    None
+                }
+            };
+
+            let idx_a = in_bounds(a_tx, a_ty);
+            let idx_b = in_bounds(b_tx, b_ty);
+
+            let explored_a = idx_a.map_or(false, |idx| sim.fog_explored.contains(idx));
+            let explored_b = idx_b.map_or(false, |idx| sim.fog_explored.contains(idx));
+            if !explored_a || !explored_b {
+                continue;
+            }
+
+            let vis_a = idx_a.map_or(false, |idx| sim.fog_visible.contains(idx));
+            let vis_b = idx_b.map_or(false, |idx| sim.fog_visible.contains(idx));
+            if vis_a && vis_b { 1.0 } else { 0.35 }
+        } else {
+            1.0
+        };
+
+        let alpha = alpha_t * shroud;
+        let color = [90.0 / 255.0, 80.0 / 255.0, 70.0 / 255.0, alpha];
+
+        // Thickness in physical pixels
+        let thickness = 2.5 * ctx.sf;
+
+        // Birth animation
         let age = now - seg.birth;
         let progress = (age / 0.6).clamp(0.0, 1.0);
 
@@ -533,14 +568,52 @@ pub(crate) fn render(
         let t1 = (progress * 2.0).clamp(0.0, 1.0);
         let l1x = s_ax + (s_cx - s_ax) * t1;
         let l1y = s_ay + (s_cy - s_ay) * t1;
-        painter.line_segment([egui::pos2(s_ax, s_ay), egui::pos2(l1x, l1y)], rail_stroke);
+
+        if (s_ay - s_cy).abs() < (s_ax - s_cx).abs() {
+            // Horizontal leg
+            let dx = l1x - s_ax;
+            let y = s_ay - thickness / 2.0;
+            if dx > 0.0 {
+                tr.push_rect([s_ax, y], [dx, thickness], color);
+            } else {
+                tr.push_rect([l1x, y], [-dx, thickness], color);
+            }
+        } else {
+            // Vertical leg
+            let dy = l1y - s_ay;
+            let x = s_ax - thickness / 2.0;
+            if dy > 0.0 {
+                tr.push_rect([x, s_ay], [thickness, dy], color);
+            } else {
+                tr.push_rect([x, l1y], [thickness, -dy], color);
+            }
+        }
 
         // Leg 2: C → B
         if progress > 0.5 {
             let t2 = ((progress - 0.5) * 2.0).clamp(0.0, 1.0);
             let l2x = s_cx + (s_bx - s_cx) * t2;
             let l2y = s_cy + (s_by - s_cy) * t2;
-            painter.line_segment([egui::pos2(s_cx, s_cy), egui::pos2(l2x, l2y)], rail_stroke);
+
+            if (s_cy - s_by).abs() < (s_cx - s_bx).abs() {
+                // Horizontal leg
+                let dx = l2x - s_cx;
+                let y = s_cy - thickness / 2.0;
+                if dx > 0.0 {
+                    tr.push_rect([s_cx, y], [dx, thickness], color);
+                } else {
+                    tr.push_rect([l2x, y], [-dx, thickness], color);
+                }
+            } else {
+                // Vertical leg
+                let dy = l2y - s_cy;
+                let x = s_cx - thickness / 2.0;
+                if dy > 0.0 {
+                    tr.push_rect([x, s_cy], [thickness, dy], color);
+                } else {
+                    tr.push_rect([x, l2y], [thickness, -dy], color);
+                }
+            }
         }
     }
 }

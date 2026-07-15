@@ -566,11 +566,9 @@ impl SowApp {
                             (egui::MouseWheelUnit::Line, egui::vec2(x, y))
                         }
                         MouseScrollDelta::PixelDelta(pos) => {
-                            // ponytail: query device_pixel_ratio directly on WASM for scroll delta scaling
+                            // ponytail: browser WheelEvent already delivers logical pixels on WASM
                             #[cfg(target_arch = "wasm32")]
-                            let sf = web_sys::window()
-                                .map(|window| window.device_pixel_ratio() as f32)
-                                .unwrap_or(1.0);
+                            let sf = 1.0;
                             #[cfg(not(target_arch = "wasm32"))]
                             let sf = self
                                 .gfx

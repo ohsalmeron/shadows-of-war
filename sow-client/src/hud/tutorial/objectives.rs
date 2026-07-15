@@ -250,7 +250,7 @@ pub(super) fn draw_objectives_panel(ctx: &egui::Context, rows: &[ObjRow], open: 
                                 painter.rect_stroke(
                                     rect,
                                     cr_bar,
-                                    egui::Stroke::new(1.0, stroke_color),
+                                    egui::Stroke::new(1.0_f32, stroke_color),
                                     egui::StrokeKind::Inside,
                                 );
 

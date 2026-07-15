@@ -12,7 +12,7 @@ fn pill_toggle(ui: &mut egui::Ui, label: &str, active: bool) -> bool {
     ui.style_mut().spacing.button_padding = egui::vec2(8.0, 4.0);
     let btn = egui::Button::new(RichText::new(label).size(12.0).color(text).strong())
         .fill(bg)
-        .stroke(Stroke::new(1.0, if active { palette::neon_cyan() } else { palette::field_border() }))
+        .stroke(Stroke::new(1.0_f32, if active { palette::neon_cyan() } else { palette::field_border() }))
         .corner_radius(CornerRadius::same(6))
         .min_size(Vec2::new(0.0, 28.0));
     ui.add(btn).clicked()
@@ -290,7 +290,7 @@ fn draw_map_preview(
             egui::FontId::proportional(12.0), palette::text_muted(), Color32::BLACK,
         );
     }
-    ui.painter().rect_stroke(rect, 6.0, Stroke::new(1.0, palette::neon_cyan_glow()), egui::StrokeKind::Inside);
+    ui.painter().rect_stroke(rect, 6.0, Stroke::new(1.0_f32, palette::neon_cyan_glow()), egui::StrokeKind::Inside);
 
     let label = asset_loader.map_catalog.as_ref()
         .and_then(|c| sow_core::maps::catalog_lookup(c, &config.map_name))
@@ -448,7 +448,7 @@ fn draw_visibility_card(
             ui.add_space(3.0);
             let frame = Frame::NONE
                 .fill(palette::field_bg())
-                .stroke(Stroke::new(1.0, palette::field_border()))
+                .stroke(Stroke::new(1.0_f32, palette::field_border()))
                 .corner_radius(CornerRadius::same(6))
                 .inner_margin(Margin::symmetric(8, 4));
             frame.show(ui, |ui| {

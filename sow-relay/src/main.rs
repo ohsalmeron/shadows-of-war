@@ -557,6 +557,9 @@ async fn main() {
                             break;
                         }
                     }
+                    _ = tokio::time::sleep(Duration::from_secs(60)) => {
+                        break;
+                    }
                 }
             }
 

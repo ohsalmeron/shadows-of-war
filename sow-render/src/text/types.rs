@@ -32,6 +32,7 @@ pub const KIND_EMOJI: f32 = 1.0;
 pub const KIND_DISC: f32 = 2.0;
 pub const KIND_RING: f32 = 3.0;
 pub const KIND_SPRITE: f32 = 4.0;
+pub const KIND_RECT: f32 = 5.0;
 
 pub const AVATAR_CELL: u32 = 128;
 pub const AVATAR_COLS: u32 = 4;

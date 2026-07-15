@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Shadows of War — On-Demand bot backfill controller
+# Compiles and runs the backfill stress-test daemon with clean, consolidated logging.
+set -euo pipefail
+
+MIN_FILL=70
+MAX_FILL=85
+URL="wss://shadowsofwar.io/ws/"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --fill)
+      MIN_FILL="$2"
+      MAX_FILL="$2"
+      shift 2
+      ;;
+    --min-fill)
+      MIN_FILL="$2"
+      shift 2
+      ;;
+    --max-fill)
+      MAX_FILL="$2"
+      shift 2
+      ;;
+    --url)
+      URL="$2"
+      shift 2
+      ;;
+    -h|--help)
+      echo "Shadows of War — Bot Backfill stress testing"
+      echo ""
+      echo "Usage: ./sow-stress [options]"
+      echo "Options:"
+      echo "  --fill <pct>      Set exact target fill percentage (default: 70-85%)"
+      echo "  --min-fill <pct>  Set minimum fill percentage (default: 70%)"
+      echo "  --max-fill <pct>  Set maximum fill percentage (default: 85%)"
+      echo "  --url <url>       Set backend orchestrator WebSocket URL"
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1"
+      exit 1
+      ;;
+  esac
+done
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BIN_PATH="${SCRIPT_DIR}/sow-backfill/target/release/sow-backfill"
+
+if [[ ! -f "${BIN_PATH}" ]]; then
+  echo "==> Compilation of sow-backfill release required (one-time)..."
+  cargo build --release --manifest-path "${SCRIPT_DIR}/sow-backfill/Cargo.toml"
+fi
+
+echo "================================================================="
+echo "🤖 Starting Shadows of War Backfill stress-test under-demand"
+echo "📡 Orchestrator: ${URL}"
+echo "🎯 Fill range:   ${MIN_FILL}% to ${MAX_FILL}%"
+echo "================================================================="
+echo " Press Ctrl+C to terminate bots and exit."
+echo ""
+
+RUST_LOG=info "${BIN_PATH}" --url "${URL}" --min-fill "${MIN_FILL}" --max-fill "${MAX_FILL}" 2>&1 | tee "${SCRIPT_DIR}/sow-backfill/local_run.log"

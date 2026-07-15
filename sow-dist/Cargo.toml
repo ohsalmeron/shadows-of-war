@@ -2,7 +2,7 @@
 name = "sow-dist"
 version = "0.1.0"
 edition = "2024"
-description = "Shadows of War — WASM dist build and deploy (prod, ptr, crazygames, local)"
+description = "Shadows of War — Unified build & deploy orchestrator"
 license = "AGPL-3.0-or-later"
 
 [[bin]]
@@ -11,22 +11,15 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1"
-dotenv = "0.15"
 brotli = { workspace = true }
-clap = { workspace = true }
-image = { workspace = true }
 minifier = { workspace = true }
-reqwest = { version = "0.11", features = ["blocking"] }
-serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = "0.10"
 walkdir = "2"
 wasm-bindgen-cli-support = { workspace = true }
+wasm-opt = { workspace = true }
+tempfile = { workspace = true }
 axum = { workspace = true }
 tokio = { workspace = true, features = ["net"] }
 tower-http = { workspace = true }
-libc = "0.2"
-wasm-opt = { workspace = true }
-tempfile = { workspace = true }
 sow-i18n = { workspace = true }
-

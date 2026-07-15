@@ -427,10 +427,12 @@ async fn main() {
 
     // HTTP Static File Server for maps and Admin Dashboard
     let games_for_axum = Arc::clone(&games_state);
+    let redis_client_for_axum = redis_client.clone();
     tokio::spawn(async move {
         let root = maps_root.clone();
         let state = AppState {
             games: games_for_axum,
+            redis_client: redis_client_for_axum,
         };
         let catalog_route = axum::Router::new()
             .route(
@@ -695,6 +697,9 @@ async fn main() {
                             break;
                         }
                     }
+                    _ = tokio::time::sleep(Duration::from_secs(60)) => {
+                        break;
+                    }
                 }
             }
 
@@ -713,6 +718,7 @@ async fn main() {
 #[derive(Clone)]
 struct AppState {
     games: Arc<Mutex<Vec<lobby::ServerLobby>>>,
+    redis_client: redis::Client,
 }
 
 async fn admin_status(
@@ -746,17 +752,52 @@ async fn admin_status(
             "game_mode": lobby.game_mode,
         }));
     }
+    drop(games);
 
-    let uptime = match std::fs::read_to_string("/proc/uptime") {
-        Ok(s) => s.split_whitespace().next().unwrap_or("0").parse::<f64>().unwrap_or(0.0),
-        Err(_) => 0.0,
+    // Query valkey INFO
+    let valkey_info = tokio::task::spawn_blocking({
+        let client = state.redis_client.clone();
+        move || -> serde_json::Value {
+            let mut conn = match client.get_connection() {
+                Ok(c) => c,
+                Err(_) => return serde_json::json!({"error": "cannot connect"}),
+            };
+            match redis::cmd("INFO").query::<String>(&mut conn) {
+                Ok(info) => {
+                    let mut result = serde_json::Map::new();
+                    for line in info.lines() {
+                        if line.contains(':') && !line.starts_with('#') {
+                            let parts: Vec<&str> = line.splitn(2, ':').collect();
+                            let key = parts[0].trim();
+                            let val = parts[1].trim();
+                            if ["used_memory_human", "used_memory_peak_human",
+                                "connected_clients", "blocked_clients",
+                                "keyspace_hits", "keyspace_misses",
+                                "uptime_in_seconds", "instantaneous_ops_per_sec",
+                                "instantaneous_input_kbps", "instantaneous_output_kbps",
+                                "total_connections_received", "total_commands_processed",
+                                "expired_keys", "evicted_keys"].contains(&key) {
+                                result.insert(key.to_string(), serde_json::Value::String(val.to_string()));
+                            }
+                        }
+                    }
+                    serde_json::Value::Object(result)
+                }
+                Err(_) => serde_json::json!({"error": "info failed"}),
+            }
+        }
+    }).await.unwrap_or(serde_json::json!({"error": "task failed"}));
+
+    // Query sow-database stats
+    let db_stats = match reqwest::get("http://127.0.0.1:25585/internal/stats").await {
+        Ok(r) => r.json::<serde_json::Value>().await.unwrap_or(serde_json::json!({"error": "db unreachable"})),
+        Err(_) => serde_json::json!({"error": "db unreachable"}),
     };
 
     axum::response::Json(serde_json::json!({
         "lobbies": lobbies,
-        "system": {
-            "uptime_seconds": uptime,
-        }
+        "valkey": valkey_info,
+        "database": db_stats,
     }))
 }
 

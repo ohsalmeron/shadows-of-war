@@ -257,7 +257,7 @@ impl SowApp {
                                                 rect,
                                                 cell_radius,
                                                 bg_color,
-                                                egui::Stroke::new(1.0, border_color),
+                                                egui::Stroke::new(1.0_f32, border_color),
                                                 egui::StrokeKind::Inside,
                                             );
 
@@ -287,7 +287,7 @@ impl SowApp {
                                                 pts,
                                                 tcol,
                                                 egui::Stroke::new(
-                                                    1.0,
+                                                    1.0_f32,
                                                     egui::Color32::from_black_alpha(160),
                                                 ),
                                             ));
@@ -358,7 +358,7 @@ impl SowApp {
                                                     btn_rect,
                                                     sow_ui_kit::theme::radius::SM,
                                                     bg,
-                                                    egui::Stroke::new(1.0, border),
+                                                    egui::Stroke::new(1.0_f32, border),
                                                     egui::StrokeKind::Inside,
                                                 );
 

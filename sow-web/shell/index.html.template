@@ -29,8 +29,8 @@
 
     <!-- PORTAL_SDK_SLOT: CrazyGames SDK <script> injected by sow-dist crazygames only. -->
 
-    <link rel="modulepreload" href="./__JS_FILE__">
-    <link rel="preload" href="./__WASM_FILE__" as="fetch" type="application/wasm" crossorigin="anonymous" fetchpriority="high">
+    <link rel="modulepreload" href="/__JS_FILE__">
+    <link rel="preload" href="/__WASM_FILE__" as="fetch" type="application/wasm" crossorigin="anonymous" fetchpriority="high">
     <link rel="preload" href="__ASSETS_UI_BASE__sow-splash-desktop.webp?v=__BUILD_TS__" as="image" type="image/webp" media="(min-width: 600px)" fetchpriority="high">
     <link rel="preload" href="__ASSETS_UI_BASE__sow-splash-mobile.webp?v=__BUILD_TS__" as="image" type="image/webp" media="(max-width: 599px)" fetchpriority="high">
     <link rel="preload" href="__ASSETS_UI_BASE__loader_empty.webp?v=__BUILD_TS__" as="image" type="image/webp" fetchpriority="high">
@@ -188,16 +188,16 @@
             var h = window.location.hostname;
             var ref = document.referrer || "";
             if (h === "appassets.androidplatform.net") {
-                window.SOW_WS_URL = "wss://shadowsofwar.io/ws/";
+                window.SOW_WS_URL = "wss://ws.shadowsofwar.io/ws/";
             } else if (/crazygames\\.com$/i.test(h) || /dev-crazygames\\.com$/i.test(h)) {
                 window.SOW_PORTAL = window.SOW_PORTAL || "crazygames";
-                window.SOW_WS_URL = window.SOW_WS_URL || "wss://shadowsofwar.io/ws/";
+                window.SOW_WS_URL = window.SOW_WS_URL || "wss://ws.shadowsofwar.io/ws/";
             } else if (/poki\\.com$/i.test(h) || /poki-gdn\\.com$/i.test(h) || /poki\\.io$/i.test(h)
                 || /poki\\.com/i.test(ref) || /poki-gdn\\.com/i.test(ref)) {
                 window.SOW_PORTAL = window.SOW_PORTAL || "poki";
-                window.SOW_WS_URL = window.SOW_WS_URL || "wss://shadowsofwar.io/ws/";
+                window.SOW_WS_URL = window.SOW_WS_URL || "wss://ws.shadowsofwar.io/ws/";
             } else if (h === "play.shadowsofwar.io") {
-                window.SOW_WS_URL = window.SOW_WS_URL || "wss://shadowsofwar.io/ws/";
+                window.SOW_WS_URL = window.SOW_WS_URL || "wss://ws.shadowsofwar.io/ws/";
                 window.SOW_DATABASE_URL = "/api";
             } else if (h === "ptr.shadowsofwar.io") {
                 window.SOW_WS_URL = window.SOW_WS_URL || "wss://ptr.shadowsofwar.io/ws/";
@@ -225,14 +225,14 @@
             if ('serviceWorker' in navigator
                 && window.location.hostname !== "appassets.androidplatform.net"
                 && !isPortal) {
-                navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(function (err) {
+                navigator.serviceWorker.register('/sw.js', { scope: './' }).catch(function (err) {
                     console.warn('Service worker registration failed:', err);
                 });
             }
 
             try {
-                const { default: init } = await import('./__JS_FILE__');
-                await init({ module_or_path: './__WASM_FILE__' });
+                const { default: init } = await import('/__JS_FILE__');
+                await init({ module_or_path: '/__WASM_FILE__' });
             } catch (e) {
                 if (e.message !== "Using exceptions for control flow, don't mind me. This isn't actually an error!") {
                     throw e;

@@ -114,7 +114,7 @@ impl Default for MainMenuState {
             is_waiting: false,
             wait_timer_secs: 0.0,
             server_address: std::env::var("SOW_WS_URL")
-                .unwrap_or_else(|_| "wss://shadowsofwar.io/ws/".to_string()),
+                .unwrap_or_else(|_| "wss://ws.shadowsofwar.io/ws/".to_string()),
             lobbies: Vec::new(),
             player_name: format!("ANON{:03}", ms % 1000),
             clan_tag: "".to_string(),

@@ -125,7 +125,21 @@ fn shade_sprite(in: VertexOutput) -> vec4<f32> {
     return vec4<f32>(tex.rgb * in.color.rgb, tex.a * mask * in.color.a);
 }
 
+// Anti-aliased filled rectangle (KIND_RECT). `uv_rect` is unused; `in.uv` is the local
+// 0..1 quad coordinate. `color` is the fill color; alpha is modulated by the coverage of
+// the rect's four edges via smoothstep, giving sub-pixel anti-aliasing.
+fn shade_rect(in: VertexOutput) -> vec4<f32> {
+    let aa = max(fwidth(in.uv), vec2<f32>(1e-5));
+    let x_alpha = smoothstep(0.0, aa.x, in.uv.x) * (1.0 - smoothstep(1.0 - aa.x, 1.0, in.uv.x));
+    let y_alpha = smoothstep(0.0, aa.y, in.uv.y) * (1.0 - smoothstep(1.0 - aa.y, 1.0, in.uv.y));
+    let alpha = x_alpha * y_alpha * in.color.a;
+    return vec4<f32>(in.color.rgb, alpha);
+}
+
 fn shade_text(in: VertexOutput) -> vec4<f32> {
+    if (in.kind > 4.5) {
+        return shade_rect(in);
+    }
     if (in.kind > 3.5) {
         return shade_sprite(in);
     }

@@ -47,9 +47,9 @@ pub(crate) fn compute_visibility(
     // Reset current visibility
     *fog_visible = sow_core::bitset::DenseBitSet::new();
 
-    let territory_radius = 2;
-    let building_radius = 4;
-    let fleet_radius = 3;
+    let territory_radius = 4;
+    let building_radius = 8;
+    let fleet_radius = 6;
 
     // Helper closure to check if owner is player or ally/teammate (optimized with lookup table)
     let mut ally_or_self = vec![false; 65536];

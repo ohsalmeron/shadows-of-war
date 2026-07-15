@@ -29,6 +29,10 @@ path = "src/bin/write_play_catalog.rs"
 name = "generate-font-atlas"
 path = "src/bin/generate_font_atlas.rs"
 
+[[bin]]
+name = "sow-top"
+path = "src/bin/sow_top.rs"
+
 [dependencies]
 sow-core = { workspace = true }
 sow-map = { workspace = true, features = ["generator", "osm"] }
@@ -46,3 +50,4 @@ futures-util = { workspace = true }
 rand = { workspace = true }
 brotli = { workspace = true }
 ab_glyph = "0.2"
+ctrlc = "3.4"
