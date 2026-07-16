@@ -40,6 +40,10 @@ pub struct DevConfig {
     pub building_scale: f32,
     pub emoji_size_scale: f32,
 
+    // Icon zoom clamp toggles
+    pub clamp_text_zoom: bool,
+    pub clamp_emoji_zoom: bool,
+
     // Bunker Laser
     pub bunker_laser_target: bool,
     pub bunker_laser_arc: bool,
@@ -109,6 +113,9 @@ impl Default for DevConfig {
 
             building_scale: 0.5,
             emoji_size_scale: 1.4,
+
+            clamp_text_zoom: true,
+            clamp_emoji_zoom: false,
 
             bunker_laser_target: true,
             bunker_laser_arc: true,

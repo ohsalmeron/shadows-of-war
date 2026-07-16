@@ -2,8 +2,8 @@
 # Shadows of War — single entrypoint
 #   ./sow       → run native client
 #   ./sow l     → local web dev (WASM + serve :8787)
-#   ./sow p     → full production deployment
-#   ./sow backfill → run backfill locally
+#   ./sow p     → full production deployment (web + server)
+#   ./sow b     → run backfill locally
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${ROOT}"

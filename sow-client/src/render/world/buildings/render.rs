@@ -107,10 +107,14 @@ pub(crate) fn render(
             for b in &rendered_buildings {
                 // Render the building as a full emoji + alpha outline, sized to `base_size`
                 // (same as the egui path), positioned in screen space like all other text.
+                let icon_size = {
+                    let raw = get_building_icon_size(zoom_scaled);
+                    if dev.clamp_emoji_zoom { raw.clamp(8.0, 50.0) } else { raw }
+                };
                 let base_size = if b.count > 1 {
-                    28.0_f32.max(get_building_icon_size(zoom_scaled) * 1.2)
+                    28.0_f32.max(icon_size * 1.2)
                 } else {
-                    get_building_icon_size(zoom_scaled)
+                    icon_size
                 } * final_scale;
                 let screen_x = input.camera_x + b.bx * input.camera_zoom;
                 let screen_y = input.camera_y + b.by * input.camera_zoom;
@@ -143,10 +147,14 @@ pub(crate) fn render(
 
             let center = egui::pos2(screen_x, screen_y);
 
+            let icon_size = {
+                let raw = get_building_icon_size(zoom_scaled);
+                if dev.clamp_emoji_zoom { raw.clamp(8.0, 50.0) } else { raw }
+            };
             let base_size = if b.count > 1 {
-                28.0_f32.max(get_building_icon_size(zoom_scaled) * 1.2)
+                28.0_f32.max(icon_size * 1.2)
             } else {
-                get_building_icon_size(zoom_scaled)
+                icon_size
             } * final_scale;
             let rect = egui::Rect::from_center_size(center, egui::vec2(base_size, base_size));
 

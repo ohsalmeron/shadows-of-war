@@ -8,11 +8,27 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, mpsc};
+use tokio::sync::mpsc::error::TrySendError;
 use tokio::time::{Duration, interval};
 use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
 const REDIS_PORTS_KEY: &str = "sow:ports";
+
+/// Max consecutive missed ticks before dropping a slow client.
+/// At 20 ticks/s, 120 = 6 seconds of silence.
+const MAX_MISSED_TICKS: u32 = 120;
+
+/// Per-connection channel capacity: 4096 messages = ~200s buffer at 20 ticks/s.
+const PER_CLIENT_CHANNEL: usize = 4096;
+
+/// Event channel capacity.
+const EVENT_CHANNEL: usize = 1024;
+
+struct ClientChannel {
+    sender: mpsc::Sender<Vec<u8>>,
+    missed_ticks: u32,
+}
 
 fn redis_connect() -> Option<redis::Connection> {
     let url = std::env::var("SOW_VALKEY_URL")
@@ -288,12 +304,12 @@ async fn main() {
             player_accounts.insert(p.player_id, acc);
         }
     }
-    // player_id -> Sender
-    let connected_clients: Arc<Mutex<HashMap<u16, mpsc::UnboundedSender<Vec<u8>>>>> =
+    // player_id -> ClientChannel (bounded sender + missed tick counter)
+    let connected_clients: Arc<Mutex<HashMap<u16, ClientChannel>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let connected_clients_clone = connected_clients.clone();
 
-    let (event_tx, mut event_rx) = mpsc::unbounded_channel::<RelayEvent>();
+    let (event_tx, mut event_rx) = mpsc::channel::<RelayEvent>(EVENT_CHANNEL);
     let event_tx_clone = event_tx.clone();
 
     // Store match history so late-joiners (or slower loading WASM clients) can catch up
@@ -379,19 +395,46 @@ async fn main() {
                     let msg = ServerTurnMessage { turn };
                     let json = bincode::serialize(&ServerMessage::Turn(msg)).expect("serialize ServerTurnMessage");
 
-                    for tx in clients.values_mut() {
-                        let _ = tx.send(json.clone());
-                    }
+                    clients.retain(|player_id, client| {
+                        match client.sender.try_send(json.clone()) {
+                            Ok(()) => {
+                                client.missed_ticks = 0;
+                                true
+                            }
+                            Err(TrySendError::Full(_)) => {
+                                client.missed_ticks += 1;
+                                if client.missed_ticks >= MAX_MISSED_TICKS {
+                                    warn!("Player {player_id} dropped: {}/{} consecutive missed ticks",
+                                        client.missed_ticks, MAX_MISSED_TICKS);
+                                    false
+                                } else {
+                                    if client.missed_ticks == 1 || client.missed_ticks % 10 == 0 {
+                                        warn!("Player {player_id} slow: {} missed ticks",
+                                            client.missed_ticks);
+                                    }
+                                    true
+                                }
+                            }
+                            Err(TrySendError::Closed(_)) => {
+                                info!("Player {player_id} channel closed, removing");
+                                false
+                            }
+                        }
+                    });
 
                     if last_status.elapsed().as_secs() >= 10 {
                         println!("STATUS|{}|{}|{}|{}", lobby_id, std::process::id(), port, humans);
                         last_status = std::time::Instant::now();
-                        // Heartbeat: refresh Redis TTL
-                        let mut guard = redis_cleanup.lock().unwrap();
-                        if let Some(ref mut con) = *guard {
-                            let key = format!("sow:relay:{}", cleanup_port);
-                            let _: () = con.set_ex(&key, lobby_id.to_string(), 60).unwrap_or_default();
-                        }
+                        // Heartbeat: refresh Redis TTL (offloaded to blocking thread)
+                        let rcon = redis_cleanup.clone();
+                        let key = format!("sow:relay:{}", cleanup_port);
+                        let val = lobby_id.to_string();
+                        tokio::task::spawn_blocking(move || {
+                            let mut guard = rcon.lock().unwrap();
+                            if let Some(ref mut con) = *guard {
+                                let _: () = con.set_ex(&key, val, 60).unwrap_or_default();
+                            }
+                        });
                     }
                 }
                 Some(event) = event_rx.recv() => {
@@ -428,9 +471,19 @@ async fn main() {
                             };
                             let json = bincode::serialize(&sow_core::protocol::ServerMessage::LobbyClosed(msg)).expect("serialize LobbyClosed");
                             let mut clients = connected_clients_clone.lock().await;
-                            for tx in clients.values_mut() {
-                                let _ = tx.send(json.clone());
-                            }
+                            clients.retain(|player_id, client| {
+                                match client.sender.try_send(json.clone()) {
+                                    Ok(()) => true,
+                                    Err(TrySendError::Full(_)) => {
+                                        warn!("Player {player_id} slow during rematch broadcast, dropping");
+                                        true
+                                    }
+                                    Err(TrySendError::Closed(_)) => {
+                                        info!("Player {player_id} channel closed during rematch broadcast, removing");
+                                        false
+                                    }
+                                }
+                            });
                         }
                     }
                 }
@@ -456,7 +509,7 @@ async fn main() {
                 }
             };
             let (mut write, mut read) = ws_stream.split();
-            let (direct_tx, mut direct_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+            let (direct_tx, mut direct_rx) = mpsc::channel::<Vec<u8>>(PER_CLIENT_CHANNEL);
 
             let mut my_player_id: Option<u16> = None;
 
@@ -471,20 +524,22 @@ async fn main() {
                                             ClientMessage::Ready { lobby_id: l_id, player_id } => {
                                                 if l_id == lobby_id && valid_map.contains_key(&player_id) {
                                                     my_player_id = Some(player_id);
-                                                    clients_map.lock().await.insert(player_id, direct_tx.clone());
+                                                    clients_map.lock().await.insert(player_id, ClientChannel { sender: direct_tx.clone(), missed_ticks: 0 });
                                                     info!("Player {} reconnected to relay", player_id);
 
-                                                    let _ = ev_tx.send(RelayEvent::Gameplay {
+                                                    let _ = ev_tx.try_send(RelayEvent::Gameplay {
                                                         player_id,
                                                         intent: GameplayIntent::MarkDisconnected { is_disconnected: false },
                                                     });
 
                                                     // Send all missed turns so they can catch up!
+                                                    // Use send() with a short timeout instead of try_send
+                                                    // so history is not silently dropped on a full buffer.
                                                     let hist = history_arc.lock().await;
                                                     for past_turn in hist.iter() {
                                                         let msg = ServerTurnMessage { turn: past_turn.clone() };
                                                         if let Ok(json) = bincode::serialize(&ServerMessage::Turn(msg)) {
-                                                            let _ = direct_tx.send(json);
+                                                            let _ = tokio::time::timeout(Duration::from_millis(500), direct_tx.send(json)).await;
                                                         }
                                                     }
                                                 } else {
@@ -493,24 +548,24 @@ async fn main() {
                                             }
                                             ClientMessage::Gameplay { intent } => {
                                                 if let Some(pid) = my_player_id {
-                                                    let _ = ev_tx.send(RelayEvent::Gameplay { player_id: pid, intent });
+                                                    let _ = ev_tx.try_send(RelayEvent::Gameplay { player_id: pid, intent });
                                                 }
                                             }
                                             ClientMessage::Leave {} => {
                                                 if let Some(pid) = my_player_id {
-                                                    let _ = ev_tx.send(RelayEvent::Leave { player_id: pid });
+                                                    let _ = ev_tx.try_send(RelayEvent::Leave { player_id: pid });
                                                 }
                                                 my_player_id = None;
                                             }
                                             ClientMessage::RematchRequest { lobby_id: _ } => {
                                                 if let Some(pid) = my_player_id {
-                                                    let _ = ev_tx.send(RelayEvent::RematchRequest { player_id: pid });
+                                                    let _ = ev_tx.try_send(RelayEvent::RematchRequest { player_id: pid });
                                                 }
                                             }
                                             ClientMessage::Ping { client_time } => {
                                                 let pong = ServerMessage::Pong { client_time };
                                                 let json = bincode::serialize(&pong).unwrap();
-                                                let _ = direct_tx.send(json);
+                                                let _ = direct_tx.try_send(json);
                                             }
                                             ClientMessage::SubmitStats {
                                                 kills,
@@ -553,18 +608,19 @@ async fn main() {
                         }
                     }
                     Some(direct_data) = direct_rx.recv() => {
-                        if write.send(Message::Binary(direct_data)).await.is_err() {
-                            break;
+                        match tokio::time::timeout(Duration::from_secs(1), write.send(Message::Binary(direct_data))).await {
+                            Ok(Ok(())) => {}
+                            _ => break,
                         }
                     }
-                    _ = tokio::time::sleep(Duration::from_secs(60)) => {
+                    _ = tokio::time::sleep(Duration::from_secs(15)) => {
                         break;
                     }
                 }
             }
 
             if let Some(pid) = my_player_id {
-                let _ = ev_tx.send(RelayEvent::Leave { player_id: pid });
+                let _ = ev_tx.try_send(RelayEvent::Leave { player_id: pid });
             }
         });
     }

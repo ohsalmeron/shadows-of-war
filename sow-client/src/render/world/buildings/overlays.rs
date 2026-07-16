@@ -21,13 +21,14 @@ pub(super) fn paint_building_overlays(
     hovered_tile_idx: Option<u32>,
     player_colors: &[egui::Color32],
 ) {
+    let dev = sow_ui_kit::theme::dev_config::DevConfig::get();
     let is_my_building = sim.my_player_id == Some(b.owner_id);
 
     if is_my_building
         && b.under_construction
         && b.ticks_until_complete > 0
         && zoom_scaled >= 1.5
-        && sow_ui_kit::theme::dev_config::DevConfig::get().vfx_upgrade_plate
+        && dev.vfx_upgrade_plate
     {
         let active_l = b.active_level;
         let target_l = b.target_level;
@@ -102,7 +103,10 @@ pub(super) fn paint_building_overlays(
         && zoom_scaled >= super::super::BUILDINGS_HIDE_FLOOR
     {
         let text_val = get_level_str(b.active_level);
-        let font_size = (zoom_scaled * 0.65 * final_scale).clamp(8.0, 18.0).round();
+        let font_size = {
+            let raw = zoom_scaled * 0.65 * final_scale;
+            if dev.clamp_text_zoom { raw.clamp(8.0, 18.0) } else { raw }
+        }.round();
         let bg_center = egui::pos2(center.x + base_size * 0.45, center.y - base_size * 0.45);
 
         let mut gpu_text_rendered = false;
@@ -112,7 +116,6 @@ pub(super) fn paint_building_overlays(
             let outline_color_arr = [0.0f32, 0.0, 0.0, 1.0];
             let baseline_y = (bg_center.y + font_size * 0.25) * sf;
 
-            let dev = sow_ui_kit::theme::dev_config::DevConfig::get();
             let face_dilate = dev.font_face_dilate * sf;
             let outline_thickness = dev.font_outline_thickness * sf;
             let shadow_y = dev.font_shadow_y * sf;

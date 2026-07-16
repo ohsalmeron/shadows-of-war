@@ -175,10 +175,22 @@ impl SowApp {
                         egui::Slider::new(&mut cfg.emoji_size_scale, 0.5..=3.0).text("Emoji Size"),
                     );
 
+                    ui.separator();
+                    ui.add(egui::Checkbox::new(
+                        &mut cfg.clamp_text_zoom,
+                        "Clamp Text Zoom",
+                    ));
+                    ui.add(egui::Checkbox::new(
+                        &mut cfg.clamp_emoji_zoom,
+                        "Clamp Emoji Zoom",
+                    ));
+
                     if ui.button("Reset").clicked() {
                         let d = DevConfig::default();
                         cfg.building_scale = d.building_scale;
                         cfg.emoji_size_scale = d.emoji_size_scale;
+                        cfg.clamp_text_zoom = d.clamp_text_zoom;
+                        cfg.clamp_emoji_zoom = d.clamp_emoji_zoom;
                     }
                 },
             );
