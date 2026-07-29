@@ -11,6 +11,7 @@ use redis::Commands;
 use sow_core::protocol::{
     ServerJoinAckMessage, ServerJoinFailedMessage, ServerLobbiesBroadcastMessage,
 };
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
@@ -18,16 +19,53 @@ use tokio::sync::{broadcast, mpsc, Mutex};
 use tokio_tungstenite::tungstenite::protocol::Message;
 
 const REDIS_PORTS_KEY: &str = "sow:ports";
+const DEFAULT_RELAY_LOG_DIR: &str = "/var/log/sow";
 
 fn relay_bin() -> String {
     std::env::var("SOW_RELAY_BIN").unwrap_or_else(|_| "./sow-relay".to_string())
 }
+
+fn relay_log_path(port: u16) -> PathBuf {
+    let log_dir = std::env::var_os("SOW_RELAY_LOG_DIR")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_RELAY_LOG_DIR));
+    log_dir.join(format!("relay_{port}.log"))
+}
+
 const RELAY_PORT_MIN: u16 = 25590;
 const RELAY_PORT_MAX: u16 = 26500;
 
-fn find_free_port(redis_con: &mut redis::Connection) -> Option<u16> {
-    let occupied: std::collections::HashSet<u16> =
-        redis_con.smembers(REDIS_PORTS_KEY).unwrap_or_default();
+fn ensure_redis_ok(client: &redis::Client, con: &mut redis::Connection) -> bool {
+    if redis::cmd("PING").query::<String>(con).is_ok() {
+        return true;
+    }
+    log::warn!("[REDIS] PING failed, reconnecting...");
+    match client.get_connection() {
+        Ok(c) => {
+            *con = c;
+            log::info!("[REDIS] Reconnected");
+            true
+        }
+        Err(e) => {
+            log::error!("[REDIS] Reconnect failed: {e}");
+            false
+        }
+    }
+}
+
+fn find_free_port(redis_client: &redis::Client, con: &mut redis::Connection) -> Option<u16> {
+    if !ensure_redis_ok(redis_client, con) {
+        log::error!("[REDIS] Cannot query {REDIS_PORTS_KEY} — connection down");
+        return None;
+    }
+    let occupied: std::collections::HashSet<u16> = match con.smembers(REDIS_PORTS_KEY) {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("[REDIS] SMEMBERS {REDIS_PORTS_KEY} FAILED: {e}");
+            return None;
+        }
+    };
     (RELAY_PORT_MIN..=RELAY_PORT_MAX).find(|p| !occupied.contains(p))
 }
 
@@ -92,10 +130,15 @@ async fn main() {
     ));
     {
         let mut con = redis_con.lock().unwrap();
-        let _: () = con.del(REDIS_PORTS_KEY).unwrap_or_default();
+        let _ = con.del::<_, ()>(REDIS_PORTS_KEY);
         log::info!("Wiped stale relay port allocations from Redis. Ready for clean start.");
-        let occupied: std::collections::HashSet<u16> =
-            con.smembers(REDIS_PORTS_KEY).unwrap_or_default();
+        let occupied: std::collections::HashSet<u16> = match con.smembers(REDIS_PORTS_KEY) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("[REDIS] SMEMBERS {REDIS_PORTS_KEY} FAILED at startup: {e}");
+                std::collections::HashSet::new()
+            }
+        };
         log::info!("Redis connected. Occupied relay ports: {:?}", occupied);
     }
 
@@ -117,6 +160,7 @@ async fn main() {
     let next_id_clone = Arc::clone(&next_id_state);
     let global_tx_clone = global_tx.clone();
     let redis_clone = Arc::clone(&redis_con);
+    let redis_client_clone = redis_client.clone();
 
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_millis(100));
@@ -134,14 +178,19 @@ async fn main() {
                     for lobby in &mut *games {
                         if lobby.phase == lobby::LobbyPhase::Loading && lobby.countdown_secs <= 3.0 && lobby.relay_port.is_none() {
                             let mut rcon = redis_clone.lock().unwrap();
-                            let relay_port = match find_free_port(&mut rcon) {
+                            let relay_port = match find_free_port(&redis_client_clone, &mut rcon) {
                                 Some(p) => p,
                                 None => {
-                                    log::error!("No available relay ports in {}-{}", RELAY_PORT_MIN, RELAY_PORT_MAX);
                                     continue;
                                 }
                             };
-                            let _: () = rcon.sadd(REDIS_PORTS_KEY, relay_port).unwrap_or_default();
+                            match rcon.sadd::<_, _, ()>(REDIS_PORTS_KEY, relay_port) {
+                                Ok(_) => {},
+                                Err(e) => {
+                                    log::error!("[REDIS] SADD {REDIS_PORTS_KEY} {relay_port} FAILED: {e}");
+                                    continue;
+                                }
+                            }
                             drop(rcon);
 
                             let mut players_json = Vec::new();
@@ -201,13 +250,19 @@ async fn main() {
                                 "tick_rate_ms": lobby.config.tick_rate_ms,
                             });
 
-                            let log_path = format!("relay_{}.log", relay_port);
+                            let log_path = relay_log_path(relay_port);
                             let log_file = match std::fs::File::create(&log_path) {
                                 Ok(f) => f,
                                 Err(e) => {
-                                    log::error!("[RELAY] Cannot create log file {}: {}", log_path, e);
+                                    log::error!(
+                                        "[RELAY] Cannot create log file {}: {}",
+                                        log_path.display(),
+                                        e
+                                    );
                                     let mut rcon = redis_clone.lock().unwrap();
-                                    let _: () = rcon.srem(REDIS_PORTS_KEY, relay_port).unwrap_or_default();
+                                    if let Err(e) = rcon.srem::<_, _, ()>(REDIS_PORTS_KEY, relay_port) {
+                                        log::error!("[REDIS] SREM {REDIS_PORTS_KEY} {relay_port} FAILED: {e}");
+                                    }
                                     continue;
                                 }
                             };
@@ -216,7 +271,9 @@ async fn main() {
                                 Err(e) => {
                                     log::error!("[RELAY] Cannot clone log file handle: {}", e);
                                     let mut rcon = redis_clone.lock().unwrap();
-                                    let _: () = rcon.srem(REDIS_PORTS_KEY, relay_port).unwrap_or_default();
+                                    if let Err(e) = rcon.srem::<_, _, ()>(REDIS_PORTS_KEY, relay_port) {
+                                        log::error!("[REDIS] SREM {REDIS_PORTS_KEY} {relay_port} FAILED: {e}");
+                                    }
                                     continue;
                                 }
                             };
@@ -236,7 +293,9 @@ async fn main() {
                                 Err(e) => {
                                     log::error!("Failed to spawn relay for lobby {}: {}", lobby.id, e);
                                     let mut rcon = redis_clone.lock().unwrap();
-                                    let _: () = rcon.srem(REDIS_PORTS_KEY, relay_port).unwrap_or_default();
+                                    if let Err(e) = rcon.srem::<_, _, ()>(REDIS_PORTS_KEY, relay_port) {
+                                        log::error!("[REDIS] SREM {REDIS_PORTS_KEY} {relay_port} FAILED: {e}");
+                                    }
                                 }
                             }
                         }

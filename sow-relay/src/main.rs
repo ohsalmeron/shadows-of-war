@@ -14,6 +14,7 @@ use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
 const REDIS_PORTS_KEY: &str = "sow:ports";
+const DEFAULT_RELAY_LISTEN_HOST: &str = "127.0.0.1";
 
 /// Max consecutive missed ticks before dropping a slow client.
 /// At 20 ticks/s, 120 = 6 seconds of silence.
@@ -24,6 +25,13 @@ const PER_CLIENT_CHANNEL: usize = 4096;
 
 /// Event channel capacity.
 const EVENT_CHANNEL: usize = 1024;
+
+fn relay_listen_host() -> String {
+    std::env::var("SOW_RELAY_LISTEN_HOST")
+        .ok()
+        .filter(|host| !host.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_RELAY_LISTEN_HOST.to_string())
+}
 
 struct ClientChannel {
     sender: mpsc::Sender<Vec<u8>>,
@@ -110,7 +118,9 @@ fn trigger_match_finalize(
 
         // ponytail: Resilient uploading with exponential backoff
         for attempt in 1..=5 {
-            info!("Attempting raw upload/finalize to IONOS for match {match_id} (Attempt {attempt}/5)...");
+            info!(
+                "Attempting raw upload/finalize to database for match {match_id} (Attempt {attempt}/5)..."
+            );
             match client
                 .post(&url)
                 .header("Authorization", format!("Bearer {secret}"))
@@ -119,13 +129,13 @@ fn trigger_match_finalize(
                 .await
             {
                 Ok(res) if res.status().is_success() => {
-                    info!("Match {match_id} successfully finalized and archived on IONOS!");
+                    info!("Match {match_id} successfully finalized and archived!");
                     success = true;
                     break;
                 }
                 Ok(res) => {
                     warn!(
-                        "Attempt {attempt}/5: IONOS returned HTTP status {} for match {match_id}",
+                        "Attempt {attempt}/5: database returned HTTP status {} for match {match_id}",
                         res.status()
                     );
                 }
@@ -141,7 +151,9 @@ fn trigger_match_finalize(
         }
 
         if !success {
-            error!("[CRITICAL] Failed to upload match {match_id} to IONOS after 5 attempts.");
+            error!(
+                "[CRITICAL] Failed to upload match {match_id} to database after 5 attempts."
+            );
             
             // Try local Valkey dead-letter fallback
             let url = std::env::var("SOW_VALKEY_URL")
@@ -316,10 +328,17 @@ async fn main() {
     let match_history: Arc<Mutex<Vec<Turn>>> = Arc::new(Mutex::new(Vec::new()));
     let match_history_clone = match_history.clone();
 
-    let addr = format!("0.0.0.0:{}", port);
-    let listener = TcpListener::bind(&addr)
-        .await
-        .expect("Failed to bind relay port");
+    let listen_host = relay_listen_host();
+    let listener = match TcpListener::bind((listen_host.as_str(), port)).await {
+        Ok(l) => l,
+        Err(e) => {
+            error!("[RELAY] Failed to bind on {listen_host}:{port}: {e}");
+            std::process::exit(1);
+        }
+    };
+    let addr = listener
+        .local_addr()
+        .expect("Failed to read bound relay address");
     info!("Relay for lobby {} listening on ws://{}", lobby_id, addr);
 
     // Register in Redis
@@ -328,11 +347,13 @@ async fn main() {
     {
         let mut guard = redis_con.lock().unwrap();
         if let Some(ref mut con) = *guard {
-            let _: () = con.sadd(REDIS_PORTS_KEY, port).unwrap_or_default();
+            if let Err(e) = con.sadd::<_, _, ()>(REDIS_PORTS_KEY, port) {
+                error!("[REDIS] SADD {REDIS_PORTS_KEY} {port} FAILED: {e}");
+            }
             let key = format!("sow:relay:{}", port);
-            let _: () = con
-                .set_ex(&key, lobby_id.to_string(), 60)
-                .unwrap_or_default();
+            if let Err(e) = con.set_ex::<_, _, ()>(&key, lobby_id.to_string(), 60) {
+                error!("[REDIS] SETEX {key} FAILED: {e}");
+            }
             info!("Registered port {} in Redis", port);
         }
     }
@@ -373,8 +394,13 @@ async fn main() {
                             info!("Relay {} shutting down (empty timeout)", lobby_id);
                             let mut guard = redis_cleanup.lock().unwrap();
                             if let Some(ref mut con) = *guard {
-                                let _: () = con.srem(REDIS_PORTS_KEY, cleanup_port).unwrap_or_default();
-                                let _: () = con.del(format!("sow:relay:{}", cleanup_port)).unwrap_or_default();
+                                if let Err(e) = con.srem::<_, _, ()>(REDIS_PORTS_KEY, cleanup_port) {
+                                    error!("[REDIS] SREM {REDIS_PORTS_KEY} {cleanup_port} FAILED: {e}");
+                                }
+                                let key = format!("sow:relay:{}", cleanup_port);
+                                if let Err(e) = con.del::<_, ()>(&key) {
+                                    error!("[REDIS] DEL {key} FAILED: {e}");
+                                }
                                 info!("Cleaned up port {} from Redis", cleanup_port);
                             }
                             std::process::exit(0);
@@ -432,7 +458,9 @@ async fn main() {
                         tokio::task::spawn_blocking(move || {
                             let mut guard = rcon.lock().unwrap();
                             if let Some(ref mut con) = *guard {
-                                let _: () = con.set_ex(&key, val, 60).unwrap_or_default();
+                                if let Err(e) = con.set_ex::<_, _, ()>(&key, val, 60) {
+                                    error!("[REDIS] SETEX {key} FAILED: {e}");
+                                }
                             }
                         });
                     }
