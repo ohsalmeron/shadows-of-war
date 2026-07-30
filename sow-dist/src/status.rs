@@ -52,9 +52,7 @@ struct AzureInfo {
     lines: Vec<String>,
 }
 
-fn collect_azure(host: &str) -> AzureInfo {
-    let script = r#"python3 -c '
-import json, subprocess
+const AZURE_PY_SCRIPT: &str = r#"import subprocess
 
 try:
     cp_time = subprocess.check_output(["sysctl", "-n", "kern.cp_time"]).decode().split()
@@ -157,44 +155,14 @@ min_p = min(counts) if counts else 0
 max_p = max(counts) if counts else 0
 avg_p = sum(counts) / len(counts) if counts else 0.0
 
-try:
-    status_raw = subprocess.check_output(["fetch", "-qo", "-", "http://127.0.0.1:25566/admin/api/status"]).decode()
-    status = json.loads(status_raw)
-    lobbies = status.get("lobbies", [])
-    pregame_lobbies = len(lobbies)
-    pregame_players = sum(len(l.get("players", [])) for l in lobbies)
-except Exception:
-    pregame_lobbies, pregame_players = 0, 0
-
-total_active_players = pregame_players + in_game_players
-
 print(f"CPU: {cpu_str}  RAM: {mem_str}  ZFS: {zfs_str}  Errors: {errors_str}")
-print(f"Relays: {total_relay_procs} Total ({healthy_relays} Healthy, {zombie_relays} Zombie/Empty) | Sockets: {in_game_players} Relay WS (Total TCP: {total_tcp_sockets})")
+print(f"Relays: {total_relay_procs} Total ({healthy_relays} Healthy, {zombie_relays} Zombie/Empty) | In-Game Relay WS: {in_game_players} (Total System TCP: {total_tcp_sockets})")
 print(f"Players per Relay: Min {min_p} | Max {max_p} | Avg {avg_p:.1f} players/relay")
-print(f"Total Active Players: {total_active_players} (Pre-game: {pregame_players} in {pregame_lobbies} lobbies | In-Game: {in_game_players} in {healthy_relays} relays)")
-print(f"Backfill Bot WebSockets: {worker_bot_sockets} ESTABLISHED sockets | Valkey: {valkey_ops} ops/s, {valkey_mem}")
-'
+print(f"In-Game Active Players: {in_game_players} (connected to {healthy_relays} live relays)")
+print(f"Worker Connections to Server: {worker_bot_sockets} ESTABLISHED sockets | Valkey: {valkey_ops} ops/s, {valkey_mem}")
 "#;
 
-    let output = Command::new("ssh")
-        .args(["-o", "ConnectTimeout=5", "-o", "BatchMode=yes", host, script])
-        .output();
-
-    match output {
-        Ok(o) if o.status.success() => {
-            let text = String::from_utf8_lossy(&o.stdout);
-            let lines = text.lines().map(String::from).collect();
-            AzureInfo { lines }
-        }
-        _ => AzureInfo {
-            lines: vec!["UNREACHABLE".to_string()],
-        },
-    }
-}
-
-fn collect_worker(host: &str) -> String {
-    let script = r#"python3 -c '
-import subprocess
+const WORKER_PY_SCRIPT: &str = r#"import subprocess
 try:
     ps_out = subprocess.check_output(["ps", "aux"]).decode()
     sup_count = 0
@@ -213,19 +181,65 @@ try:
     print(f"Supervisor: {sup_str} | Active Bot WebSockets: {active_ws} ESTABLISHED sockets")
 except Exception as e:
     print(f"ERROR: {e}")
-'
 "#;
 
+fn b64_encode(data: &str) -> String {
+    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let bytes = data.as_bytes();
+    let mut res = String::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        let b0 = bytes[i] as u32;
+        let b1 = if i + 1 < bytes.len() { bytes[i + 1] as u32 } else { 0 };
+        let b2 = if i + 2 < bytes.len() { bytes[i + 2] as u32 } else { 0 };
+        let triple = (b0 << 16) | (b1 << 8) | b2;
+
+        res.push(CHARS[((triple >> 18) & 63) as usize] as char);
+        res.push(CHARS[((triple >> 12) & 63) as usize] as char);
+        if i + 1 < bytes.len() {
+            res.push(CHARS[((triple >> 6) & 63) as usize] as char);
+        } else {
+            res.push('=');
+        }
+        if i + 2 < bytes.len() {
+            res.push(CHARS[(triple & 63) as usize] as char);
+        } else {
+            res.push('=');
+        }
+        i += 3;
+    }
+    res
+}
+
+fn run_b64_py(host: &str, code: &str) -> Option<String> {
+    let b64 = b64_encode(code);
+    let remote_cmd = format!("python3 -c \"import base64; exec(base64.b64decode('{b64}').decode())\"");
     let output = Command::new("ssh")
-        .args(["-o", "ConnectTimeout=5", "-o", "BatchMode=yes", host, script])
+        .args(["-o", "ConnectTimeout=5", "-o", "BatchMode=yes", host, &remote_cmd])
         .output();
 
     match output {
-        Ok(o) if o.status.success() => {
-            let text = String::from_utf8_lossy(&o.stdout).trim().to_string();
-            format!("{host}: {text}")
+        Ok(o) if o.status.success() => Some(String::from_utf8_lossy(&o.stdout).trim().to_string()),
+        _ => None,
+    }
+}
+
+fn collect_azure(host: &str) -> AzureInfo {
+    if let Some(res) = run_b64_py(host, AZURE_PY_SCRIPT) {
+        let lines = res.lines().map(String::from).collect();
+        AzureInfo { lines }
+    } else {
+        AzureInfo {
+            lines: vec!["UNREACHABLE".to_string()],
         }
-        _ => format!("{host}: UNREACHABLE"),
+    }
+}
+
+fn collect_worker(host: &str) -> String {
+    if let Some(res) = run_b64_py(host, WORKER_PY_SCRIPT) {
+        format!("{host}: {res}")
+    } else {
+        format!("{host}: UNREACHABLE")
     }
 }
 
