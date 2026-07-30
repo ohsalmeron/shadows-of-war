@@ -43,7 +43,9 @@ pub fn scan_maps_root(root: &Path) -> MapCatalog {
 pub fn init(maps_root: &Path) {
     let catalog = scan_maps_root(maps_root);
     let bytes = map_file::encode_catalog(&catalog);
-    let catalog_path = maps_root.join("catalog.bin");
+    let catalog_path = std::env::var("SOW_MAPS_CATALOG_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| maps_root.join("catalog.bin"));
     if let Err(e) = std::fs::write(&catalog_path, &bytes) {
         log::error!("Failed to write {}: {}", catalog_path.display(), e);
     } else {
@@ -96,4 +98,3 @@ pub fn catalog_json() -> Vec<MapCatalogJsonEntry> {
         })
         .collect()
 }
-

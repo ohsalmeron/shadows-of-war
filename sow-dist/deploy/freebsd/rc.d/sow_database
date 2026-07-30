@@ -1,0 +1,39 @@
+#!/bin/sh
+
+# PROVIDE: sow_database
+# REQUIRE: LOGIN valkey
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="sow_database"
+rcvar="sow_database_enable"
+
+load_rc_config "${name}"
+
+: ${sow_database_enable:="NO"}
+: ${sow_database_release:="/srv/sow/current"}
+: ${sow_database_env_file:="/usr/local/etc/sow/sow.env"}
+
+pidfile="/var/run/${name}.pid"
+child_pidfile="/var/run/${name}.child.pid"
+proc="${sow_database_release}/bin/sow-database"
+required_files="${proc} ${sow_database_env_file}"
+
+command="/usr/sbin/daemon"
+command_args="-f -P ${pidfile} -p ${child_pidfile} -r -R 2 -H -o /var/log/sow/database.log -T ${name} -u sowdb ${proc}"
+
+start_precmd="${name}_prestart"
+
+sow_database_prestart()
+{
+	. "${sow_database_env_file}"
+	export RUST_LOG SOW_DB_LISTEN SOW_DB_PORT SOW_VALKEY_URL
+	export SOW_DB_SECRET SOW_REDB_PATH SOW_REPLAY_DIR
+	export CRAZYGAMES_API_KEY
+
+	install -d -o sowdb -g sow -m 0750 /var/db/sow /var/db/sow/replays
+	install -d -o sowdb -g sow -m 0750 /var/log/sow
+}
+
+run_rc_command "$1"

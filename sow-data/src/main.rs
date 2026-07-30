@@ -182,8 +182,12 @@ async fn main() {
         .layer(cors)
         .with_state(state);
 
-    // Bind and serve
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    // Bind to loopback by default. Public exposure must be an explicit
+    // deployment decision made with SOW_DB_LISTEN.
+    let addr: SocketAddr = std::env::var("SOW_DB_LISTEN")
+        .unwrap_or_else(|_| format!("127.0.0.1:{port}"))
+        .parse()
+        .expect("SOW_DB_LISTEN must be a valid socket address");
     info!("SOW-DATABASE serving on http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();

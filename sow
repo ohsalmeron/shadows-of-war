@@ -3,7 +3,7 @@
 #   ./sow       → run native client
 #   ./sow l     → local web dev (WASM + serve :8787)
 #   ./sow p     → full production deployment (web + server)
-#   ./sow b     → run backfill locally
+#   ./sow b     → build on FreeBSD and deploy backfill to Clouding
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${ROOT}"
@@ -12,7 +12,7 @@ if [[ -f "${ROOT}/sow-dist/.env" ]]; then
   set -a; source "${ROOT}/sow-dist/.env"; set +a
 fi
 
-export CARGO_TARGET_DIR="${ROOT}/dist/.cargo-target"
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-${ROOT}/target}"
 mkdir -p "${CARGO_TARGET_DIR}"
 
 BIN="${CARGO_TARGET_DIR}/debug/sow"

@@ -3,9 +3,19 @@
 # Deploy: deploy to sow server, run via nohup or cron.
 # No interaction with server code — read-only checks.
 
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 WATCHDOG_LOG=/var/log/sow/watchdog.log
-REDIS_CLI=${SOW_REDIS_CLI:-redis-cli}
+
+if command -v valkey-cli >/dev/null 2>&1; then
+    REDIS_CLI=valkey-cli
+elif command -v redis-cli >/dev/null 2>&1; then
+    REDIS_CLI=redis-cli
+else
+    REDIS_CLI=:
+fi
+
 PORTS_KEY=sow:ports
+PGREP="pgrep -l"
 
 log() { echo "$(date '+%Y-%m-%dT%H:%M:%S%z') $*" >> "$WATCHDOG_LOG"; }
 alert() { log "ALERT $*"; }
@@ -42,7 +52,7 @@ while true; do
   last_ports_count="$ports_count"
 
   # 3. sow-relay process count
-  relay_count=$(pgrep -c sow-relay 2>/dev/null || echo 0)
+  relay_count=$(pgrep sow-relay 2>/dev/null | wc -l | tr -d ' ')
   if [ "$relay_count" -eq 0 ]; then
     alert "[RELAY] Zero sow-relay processes running"
   fi
@@ -52,7 +62,7 @@ while true; do
   last_relay_count="$relay_count"
 
   # 4. sow-server alive
-  if ! pgrep -x sow-server >/dev/null 2>&1; then
+  if ! pgrep sow-server >/dev/null 2>&1; then
     alert "[SERVER] sow-server process not found"
   fi
 

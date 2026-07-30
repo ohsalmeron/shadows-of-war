@@ -4,11 +4,11 @@ set -euo pipefail
 # Shadows of War — FreeBSD Compiler VM Orchestrator
 # Adhering to the Elon Musk 5-Step Algorithm (Ponytail-Ultra Style)
 
-VM_NAME="freebsd-compiler"
-VM_DIR="/home/bizkit/vm"
+VM_NAME="YOUR_VM_NAME"
+VM_DIR="/home/YOUR_USER/vm"
 IMAGE_PATH="/var/lib/libvirt/images/FreeBSD-15.1-STABLE-amd64-ufs.qcow2"
 COMPRESSED_IMAGE="${VM_DIR}/FreeBSD-15.1-STABLE-amd64-ufs.qcow2.xz"
-WORKSPACE_DIR="/home/bizkit/shadows-of-war"
+WORKSPACE_DIR="/home/YOUR_USER/shadows-of-war"
 
 get_vm_ip() {
     # Retrieve VM IP address from DHCP leases natively

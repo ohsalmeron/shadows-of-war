@@ -7,7 +7,7 @@ import pty
 import subprocess
 
 def get_pub_key():
-    key_path = "/home/bizkit/.ssh/id_ed25519.pub"
+    key_path = "/home/YOUR_USER/.ssh/id_ed25519.pub"
     if os.path.exists(key_path):
         with open(key_path, "r") as f:
             return f.read().strip()
@@ -22,7 +22,7 @@ def main():
     # Create a master/slave pseudo-terminal pair (fake a controlling TTY)
     master_fd, slave_fd = pty.openpty()
     
-    cmd = ["sudo", "virsh", "console", "freebsd-compiler"]
+    cmd = ["sudo", "virsh", "console", "YOUR_VM_NAME"]
     print(f"Spawning via pseudo-TTY: {' '.join(cmd)}")
     
     proc = subprocess.Popen(

@@ -17,7 +17,6 @@ serde_json = { workspace = true }
 sha2 = "0.10"
 walkdir = "2"
 wasm-bindgen-cli-support = { workspace = true }
-wasm-opt = { workspace = true }
 tempfile = { workspace = true }
 axum = { workspace = true }
 tokio = { workspace = true, features = ["net"] }

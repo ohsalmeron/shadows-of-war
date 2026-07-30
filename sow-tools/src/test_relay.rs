@@ -14,8 +14,43 @@
 
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
+use reqwest::Url;
 use sow_core::protocol::{ClientMessage, ServerMessage};
 use tokio_tungstenite::tungstenite::protocol::Message;
+
+fn parse_websocket_url(value: &str) -> Result<Url, String> {
+    let url = Url::parse(value).map_err(|error| format!("invalid WebSocket URL: {error}"))?;
+
+    if !matches!(url.scheme(), "ws" | "wss") {
+        return Err(format!(
+            "unsupported URL scheme {:?}; expected ws:// or wss://",
+            url.scheme()
+        ));
+    }
+    let authority = value
+        .split_once("://")
+        .map(|(_, remainder)| remainder.split(['/', '?', '#']).next().unwrap_or_default())
+        .unwrap_or_default();
+    if authority.is_empty() {
+        return Err("WebSocket URL must include an authority".to_string());
+    }
+    if url.host_str().is_none() {
+        return Err("WebSocket URL must include a host".to_string());
+    }
+    if url.fragment().is_some() {
+        return Err("WebSocket URL must not include a fragment".to_string());
+    }
+
+    Ok(url)
+}
+
+fn relay_url(orchestrator_url: &Url, relay_base_url: Option<&Url>, relay_port: u16) -> Url {
+    let mut url = relay_base_url.unwrap_or(orchestrator_url).clone();
+    url.set_path(&format!("/relay/{relay_port}/ws/"));
+    url.set_query(None);
+    url.set_fragment(None);
+    url
+}
 
 fn step(n: u8, label: &str) {
     eprintln!("\n\x1b[1;36m[STEP {n}]\x1b[0m {label}");
@@ -82,14 +117,28 @@ async fn recv(
 )]
 struct Args {
     /// Orchestrator WebSocket URL
-    #[arg(long, default_value = "wss://shadowsofwar.io/ws/")]
-    url: String,
+    #[arg(
+        long,
+        default_value = "wss://shadowsofwar.io/ws/",
+        value_parser = parse_websocket_url
+    )]
+    url: Url,
+
+    /// Optional origin to use for the NGINX relay proxy path
+    #[arg(long, value_parser = parse_websocket_url)]
+    relay_base_url: Option<Url>,
+
+    /// Optional database account ID to include in the Join message
+    #[arg(long)]
+    database_account_id: Option<String>,
 }
 
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
     let url = args.url;
+    let relay_base_url = args.relay_base_url;
+    let database_account_id = args.database_account_id;
 
     let version = std::fs::read_to_string(".version")
         .unwrap_or_else(|_| "unknown".to_string())
@@ -102,7 +151,7 @@ async fn main() {
 
     // ── Step 1: Connect to orchestrator ─────────────────────────────────────
     step(1, "Connecting to orchestrator...");
-    let (ws, _) = tokio_tungstenite::connect_async(&url)
+    let (ws, _) = tokio_tungstenite::connect_async(url.as_str())
         .await
         .unwrap_or_else(|e| fail(&format!("Connect failed: {e}")));
     let (mut write, mut read) = ws.split();
@@ -119,7 +168,7 @@ async fn main() {
         clan_tag: "".to_string(),
         civilization: sow_core::player::Civilization::Rome,
         leader: sow_core::player::Leader::Caesar,
-        database_account_id: None,
+        database_account_id,
         host_config: None,
         password: None,
     };
@@ -243,20 +292,13 @@ async fn main() {
     // ── Step 5: Connect to relay ────────────────────────────────────────────
     step(5, &format!("Connecting to relay on port {relay_port}..."));
 
-    let relay_url = if url.contains("shadowsofwar.io") {
-        format!("wss://shadowsofwar.io/relay/{relay_port}/ws/")
-    } else {
-        // Local: replace port directly
-        let mut parsed = reqwest::Url::parse(&url).unwrap();
-        let _ = parsed.set_port(Some(relay_port));
-        parsed.to_string()
-    };
+    let relay_url = relay_url(&url, relay_base_url.as_ref(), relay_port);
     eprintln!("  Relay URL: {relay_url}");
 
     // Retry connection for up to 5 seconds (relay may still be booting)
     let mut relay_ws = None;
     for attempt in 1..=10 {
-        match tokio_tungstenite::connect_async(&relay_url).await {
+        match tokio_tungstenite::connect_async(relay_url.as_str()).await {
             Ok((ws, _)) => {
                 relay_ws = Some(ws);
                 pass(&format!("Connected to relay (attempt {attempt})"));
@@ -334,4 +376,64 @@ async fn main() {
     eprintln!("\n\x1b[1;32m═══ ALL STEPS PASSED ═══\x1b[0m");
     eprintln!("  Orchestrator handoff → Relay connection → Turn receive → Clean exit");
     eprintln!("  {turn_count} turns received in 5 seconds\n");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Args, parse_websocket_url, relay_url};
+    use clap::Parser;
+
+    #[test]
+    fn relay_defaults_to_orchestrator_scheme_and_authority() {
+        let orchestrator =
+            parse_websocket_url("wss://play.example.test:8443/ws/?token=secret").unwrap();
+
+        assert_eq!(
+            relay_url(&orchestrator, None, 25_590).as_str(),
+            "wss://play.example.test:8443/relay/25590/ws/"
+        );
+    }
+
+    #[test]
+    fn relay_base_url_overrides_the_orchestrator_origin() {
+        let orchestrator = parse_websocket_url("wss://shadowsofwar.io/ws/").unwrap();
+        let relay_base = parse_websocket_url("ws://YOUR_AZURE_IP").unwrap();
+
+        assert_eq!(
+            relay_url(&orchestrator, Some(&relay_base), 26_500).as_str(),
+            "ws://YOUR_AZURE_IP/relay/26500/ws/"
+        );
+    }
+
+    #[test]
+    fn local_and_ipv6_origins_are_supported() {
+        let local = parse_websocket_url("ws://localhost:8080/ws/").unwrap();
+        let ipv6 = parse_websocket_url("ws://[::1]:8080/ws/").unwrap();
+
+        assert_eq!(
+            relay_url(&local, None, 25_591).as_str(),
+            "ws://localhost:8080/relay/25591/ws/"
+        );
+        assert_eq!(
+            relay_url(&ipv6, None, 25_592).as_str(),
+            "ws://[::1]:8080/relay/25592/ws/"
+        );
+    }
+
+    #[test]
+    fn rejects_non_websocket_and_hostless_urls() {
+        assert!(parse_websocket_url("https://example.test/ws/").is_err());
+        assert!(parse_websocket_url("ws:///ws/").is_err());
+        assert!(parse_websocket_url("not a url").is_err());
+    }
+
+    #[test]
+    fn database_account_id_is_optional_and_parsed_verbatim() {
+        let default_args = Args::try_parse_from(["test-relay"]).unwrap();
+        assert_eq!(default_args.database_account_id, None);
+
+        let args =
+            Args::try_parse_from(["test-relay", "--database-account-id", "account-123"]).unwrap();
+        assert_eq!(args.database_account_id.as_deref(), Some("account-123"));
+    }
 }

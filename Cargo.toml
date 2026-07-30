@@ -68,7 +68,6 @@ futures-channel = "0.3"
 open = "5.3"
 arboard = { version = "3.6", default-features = false, features = ["wayland-data-control"] }
 rodio = { version = "0.22.2", default-features = false, features = ["playback", "wav"] }
-wasm-opt = { version = "0.116.1", default-features = false }
 tempfile = "3"
 
 [workspace.dependencies.bytemuck]
@@ -130,4 +129,3 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
-

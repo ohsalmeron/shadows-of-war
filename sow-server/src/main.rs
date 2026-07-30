@@ -21,8 +21,26 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 const REDIS_PORTS_KEY: &str = "sow:ports";
 const DEFAULT_RELAY_LOG_DIR: &str = "/var/log/sow";
 
-fn relay_bin() -> String {
-    std::env::var("SOW_RELAY_BIN").unwrap_or_else(|_| "./sow-relay".to_string())
+fn relay_bin() -> PathBuf {
+    if let Ok(path) = std::env::var("SOW_RELAY_BIN") {
+        if !path.is_empty() {
+            let p = PathBuf::from(path);
+            if p.exists() {
+                return p;
+            }
+        }
+    }
+    if let Ok(mut exe) = std::env::current_exe() {
+        exe.set_file_name("sow-relay");
+        if exe.exists() {
+            return exe;
+        }
+    }
+    let default_prod = PathBuf::from("/srv/sow/current/bin/sow-relay");
+    if default_prod.exists() {
+        return default_prod;
+    }
+    PathBuf::from("./sow-relay")
 }
 
 fn relay_log_path(port: u16) -> PathBuf {
@@ -66,7 +84,22 @@ fn find_free_port(redis_client: &redis::Client, con: &mut redis::Connection) -> 
             return None;
         }
     };
-    (RELAY_PORT_MIN..=RELAY_PORT_MAX).find(|p| !occupied.contains(p))
+    for port in RELAY_PORT_MIN..=RELAY_PORT_MAX {
+        if !occupied.contains(&port) {
+            let _: () = con.set_ex(format!("sow:relay:{port}"), "pending", 10).unwrap_or(());
+            return Some(port);
+        }
+        // Lazy cleanup: if port is in Valkey set but key `sow:relay:{port}` has expired, reclaim it!
+        let relay_key = format!("sow:relay:{port}");
+        let exists: bool = con.exists(&relay_key).unwrap_or(true);
+        if !exists {
+            log::info!("[LAZY-CLEANUP] Reclaiming stale port {} (relay key expired)", port);
+            let _ = con.srem::<_, _, ()>(REDIS_PORTS_KEY, port);
+            let _: () = con.set_ex(format!("sow:relay:{port}"), "pending", 10).unwrap_or(());
+            return Some(port);
+        }
+    }
+    None
 }
 
 /// All server events, comming from client
@@ -116,6 +149,17 @@ enum ServerEvent {
     },
 }
 
+/// Data collected inside the lock for a lobby that needs a relay spawned.
+/// All blocking I/O (Redis, disk, process) happens *outside* the games lock in a dedicated worker task.
+struct RelayCandidate {
+    lobby_id: u64,
+    active_empty_secs: f32,
+    tick_rate_ms: f32,
+    players_json: Vec<serde_json::Value>,
+    player_ids: Vec<String>,
+    players_tx: Vec<(u16, mpsc::Sender<Vec<u8>>)>,
+}
+
 #[tokio::main]
 async fn main() {
     env_logger::init();
@@ -130,8 +174,6 @@ async fn main() {
     ));
     {
         let mut con = redis_con.lock().unwrap();
-        let _ = con.del::<_, ()>(REDIS_PORTS_KEY);
-        log::info!("Wiped stale relay port allocations from Redis. Ready for clean start.");
         let occupied: std::collections::HashSet<u16> = match con.smembers(REDIS_PORTS_KEY) {
             Ok(s) => s,
             Err(e) => {
@@ -139,7 +181,7 @@ async fn main() {
                 std::collections::HashSet::new()
             }
         };
-        log::info!("Redis connected. Occupied relay ports: {:?}", occupied);
+        log::info!("Redis connected. Active relay ports preserved: {:?}", occupied);
     }
 
     let mut games: Vec<ServerLobby> = Vec::new();
@@ -154,13 +196,122 @@ async fn main() {
     let next_id_state = Arc::new(Mutex::new(next_lobby_id));
 
     let (global_tx, _rx) = broadcast::channel::<Vec<u8>>(100);
-    let (event_tx, mut event_rx) = mpsc::channel::<ServerEvent>(1000);
+    let (event_tx, mut event_rx) = mpsc::channel::<ServerEvent>(100000);
+    let (relay_tx, mut relay_rx) = mpsc::channel::<RelayCandidate>(1000);
 
     let games_clone = Arc::clone(&games_state);
     let next_id_clone = Arc::clone(&next_id_state);
     let global_tx_clone = global_tx.clone();
     let redis_clone = Arc::clone(&redis_con);
     let redis_client_clone = redis_client.clone();
+    let relay_tx_clone = relay_tx.clone();
+
+    // ── DEDICATED ASYNC RELAY WORKER TASK ──
+    let redis_client_worker = redis_client.clone();
+    let redis_con_worker = Arc::clone(&redis_con);
+    let redis_clone_inner = redis_clone.clone();
+    tokio::spawn(async move {
+        while let Some(rc) = relay_rx.recv().await {
+            let relay_port = {
+                let mut rcon = redis_con_worker.lock().unwrap();
+                match find_free_port(&redis_client_worker, &mut rcon) {
+                    Some(p) => match rcon.sadd::<_, _, ()>(REDIS_PORTS_KEY, p) {
+                        Ok(_) => Some(p),
+                        Err(e) => {
+                            log::error!("[REDIS] SADD {REDIS_PORTS_KEY} {p} FAILED: {e}");
+                            None
+                        }
+                    },
+                    None => None,
+                }
+            };
+
+            if let Some(port) = relay_port {
+                // DB match registration
+                if !rc.player_ids.is_empty() {
+                    let match_id = rc.lobby_id.to_string();
+                    let pids = rc.player_ids.clone();
+                    tokio::spawn(async move {
+                        let db_base_url = std::env::var("SOW_DB_URL")
+                            .unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
+                        let secret_token = std::env::var("SOW_DB_SECRET")
+                            .unwrap_or_else(|_| "sow_db_dev_secret_123_change_me_in_prod".to_string());
+                        let url = format!("{}/match/start", db_base_url.trim_end_matches('/'));
+                        let _ = reqwest::Client::new()
+                            .post(&url)
+                            .header("Authorization", format!("Bearer {}", secret_token))
+                            .json(&serde_json::json!({ "match_id": match_id, "player_ids": pids }))
+                            .send()
+                            .await;
+                    });
+                }
+
+                let relay_config = serde_json::json!({
+                    "lobby_id": rc.lobby_id,
+                    "tick_number": 0,
+                    "active_empty_secs": rc.active_empty_secs,
+                    "players": rc.players_json,
+                    "tick_rate_ms": rc.tick_rate_ms,
+                });
+
+                let log_path = relay_log_path(port);
+                let log_file = match std::fs::File::create(&log_path) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        log::error!("[RELAY] Cannot create log file {}: {}", log_path.display(), e);
+                        continue;
+                    }
+                };
+
+                let relay_bin = relay_bin();
+                log::info!("[RELAY] Handing off lobby {} to relay port {}", rc.lobby_id, port);
+                let mut child = match tokio::process::Command::new(&relay_bin)
+                    .arg("--port")
+                    .arg(port.to_string())
+                    .arg("--lobby-json")
+                    .arg(relay_config.to_string())
+                    .stdout(log_file.try_clone().unwrap_or_else(|_| std::fs::File::create("/dev/null").unwrap()))
+                    .stderr(log_file)
+                    .spawn()
+                {
+                    Ok(c) => c,
+                    Err(e) => {
+                        log::error!("[RELAY] Failed to spawn relay binary '{}': {}", relay_bin.display(), e);
+                        continue;
+                    }
+                };
+
+                log::info!("[RELAY] Spawned sow-relay for lobby {} on port {}", rc.lobby_id, port);
+
+                // Broadcast Start message to all players in the lobby with relay_port
+                let start_msg = sow_core::protocol::ServerStartMessage {
+                    config: sow_core::game_config::GameConfig::default(),
+                    my_player_id: None,
+                    lobby_id: Some(rc.lobby_id),
+                    seed: 0,
+                    players: vec![],
+                    missed_turns: vec![],
+                    map_data: None,
+                    relay_port: Some(port),
+                };
+                if let Ok(start_json) = bincode::serialize(&sow_core::protocol::ServerMessage::Start(Box::new(start_msg))) {
+                    for (pid, tx) in &rc.players_tx {
+                        let _ = tx.try_send(start_json.clone());
+                    }
+                }
+
+                let pid = child.id();
+                let rcon_arc = redis_clone_inner.clone();
+                tokio::spawn(async move {
+                    let status = child.wait().await;
+                    log::info!("[RELAY] Relay for lobby {} (PID {:?}, port {}) exited: {:?}", rc.lobby_id, pid, port, status);
+                    let mut rcon = rcon_arc.lock().unwrap();
+                    let _ = rcon.srem::<_, _, ()>(REDIS_PORTS_KEY, port);
+                    let _ = rcon.del::<_, ()>(format!("sow:relay:{port}"));
+                });
+            }
+        }
+    });
 
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_millis(100));
@@ -171,157 +322,68 @@ async fn main() {
                     let tick_start = tokio::time::Instant::now();
                     tick_count += 1;
 
-                    let mut games = games_clone.lock().await;
-                    let mut nid = next_id_clone.lock().await;
-                    master_tick(&mut games, &mut nid);
+                    // ── PHASE 1: In-memory work under the lock (microseconds) ──
+                    let (ready_candidates, broadcast_json) = {
+                        let mut games = games_clone.lock().await;
+                        let mut nid = next_id_clone.lock().await;
+                        master_tick(&mut games, &mut nid);
 
-                    for lobby in &mut *games {
-                        if lobby.phase == lobby::LobbyPhase::Loading && lobby.countdown_secs <= 3.0 && lobby.relay_port.is_none() {
-                            let mut rcon = redis_clone.lock().unwrap();
-                            let relay_port = match find_free_port(&redis_client_clone, &mut rcon) {
-                                Some(p) => p,
-                                None => {
-                                    continue;
-                                }
-                            };
-                            match rcon.sadd::<_, _, ()>(REDIS_PORTS_KEY, relay_port) {
-                                Ok(_) => {},
-                                Err(e) => {
-                                    log::error!("[REDIS] SADD {REDIS_PORTS_KEY} {relay_port} FAILED: {e}");
-                                    continue;
-                                }
-                            }
-                            drop(rcon);
-
-                            let mut players_json = Vec::new();
-                            let mut player_ids = Vec::new();
-                            for p in &lobby.players {
-                                players_json.push(serde_json::json!({
-                                    "player_id": p.player_id,
-                                    "name": p.name,
-                                    "database_account_id": p.database_account_id,
-                                }));
-                                if let Some(acc_id) = &p.database_account_id {
-                                    player_ids.push(acc_id.clone());
-                                }
-                            }
-
-                            if !player_ids.is_empty() {
-                                let match_id = lobby.id.to_string();
-                                tokio::spawn(async move {
-                                    let db_base_url = std::env::var("SOW_DB_URL")
-                                        .unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
-                                    let secret_token = std::env::var("SOW_DB_SECRET")
-                                        .unwrap_or_else(|_| "sow_db_dev_secret_123_change_me_in_prod".to_string());
-
-                                    let url = format!("{}/match/start", db_base_url.trim_end_matches('/'));
-                                    let client = reqwest::Client::new();
-
-                                    let payload = serde_json::json!({
-                                        "match_id": match_id,
-                                        "player_ids": player_ids,
-                                    });
-
-                                    match client.post(&url)
-                                        .header("Authorization", format!("Bearer {}", secret_token))
-                                        .json(&payload)
-                                        .send()
-                                        .await
-                                    {
-                                        Ok(res) => {
-                                            if res.status().is_success() {
-                                                log::info!("Successfully registered starting match {} with database.", match_id);
-                                            } else {
-                                                log::warn!("Database match/start endpoint returned status: {}", res.status());
-                                            }
-                                        }
-                                        Err(e) => {
-                                            log::error!("Failed to register starting match {} with database: {}", match_id, e);
-                                        }
+                        // Extract lobbies that completed Loading and are ready for relay
+                        let mut ready_candidates = Vec::new();
+                        let mut i = 0;
+                        while i < games.len() {
+                            if games[i].phase == lobby::LobbyPhase::ReadyForRelay {
+                                let lobby = games.remove(i);
+                                let mut players_json = Vec::new();
+                                let mut player_ids = Vec::new();
+                                let mut players_tx = Vec::new();
+                                for p in &lobby.players {
+                                    players_json.push(serde_json::json!({
+                                        "player_id": p.player_id,
+                                        "name": p.name,
+                                        "database_account_id": p.database_account_id,
+                                    }));
+                                    if let Some(acc_id) = &p.database_account_id {
+                                        player_ids.push(acc_id.clone());
                                     }
+                                    players_tx.push((p.player_id, p.tx.clone()));
+                                }
+                                ready_candidates.push(RelayCandidate {
+                                    lobby_id: lobby.id,
+                                    active_empty_secs: lobby.active_empty_secs,
+                                    tick_rate_ms: lobby.config.tick_rate_ms,
+                                    players_json,
+                                    player_ids,
+                                    players_tx,
                                 });
-                            }
-
-                            let relay_config = serde_json::json!({
-                                "lobby_id": lobby.id,
-                                "tick_number": 0,
-                                "active_empty_secs": lobby.active_empty_secs,
-                                "players": players_json,
-                                "tick_rate_ms": lobby.config.tick_rate_ms,
-                            });
-
-                            let log_path = relay_log_path(relay_port);
-                            let log_file = match std::fs::File::create(&log_path) {
-                                Ok(f) => f,
-                                Err(e) => {
-                                    log::error!(
-                                        "[RELAY] Cannot create log file {}: {}",
-                                        log_path.display(),
-                                        e
-                                    );
-                                    let mut rcon = redis_clone.lock().unwrap();
-                                    if let Err(e) = rcon.srem::<_, _, ()>(REDIS_PORTS_KEY, relay_port) {
-                                        log::error!("[REDIS] SREM {REDIS_PORTS_KEY} {relay_port} FAILED: {e}");
-                                    }
-                                    continue;
-                                }
-                            };
-                            let log_file2 = match log_file.try_clone() {
-                                Ok(f) => f,
-                                Err(e) => {
-                                    log::error!("[RELAY] Cannot clone log file handle: {}", e);
-                                    let mut rcon = redis_clone.lock().unwrap();
-                                    if let Err(e) = rcon.srem::<_, _, ()>(REDIS_PORTS_KEY, relay_port) {
-                                        log::error!("[REDIS] SREM {REDIS_PORTS_KEY} {relay_port} FAILED: {e}");
-                                    }
-                                    continue;
-                                }
-                            };
-                            log::info!("[RELAY] Spawning relay for lobby {} on port {}", lobby.id, relay_port);
-                            let mut cmd = tokio::process::Command::new(relay_bin());
-                            cmd.arg("--port").arg(relay_port.to_string())
-                               .arg("--lobby-json").arg(relay_config.to_string())
-                               .stdin(std::process::Stdio::null())
-                               .stdout(std::process::Stdio::from(log_file2))
-                               .stderr(std::process::Stdio::from(log_file));
-
-                            match cmd.spawn() {
-                                Ok(_) => {
-                                    log::info!("Spawned sow-relay for lobby {} on port {}", lobby.id, relay_port);
-                                    lobby.relay_port = Some(relay_port);
-                                }
-                                Err(e) => {
-                                    log::error!("Failed to spawn relay for lobby {}: {}", lobby.id, e);
-                                    let mut rcon = redis_clone.lock().unwrap();
-                                    if let Err(e) = rcon.srem::<_, _, ()>(REDIS_PORTS_KEY, relay_port) {
-                                        log::error!("[REDIS] SREM {REDIS_PORTS_KEY} {relay_port} FAILED: {e}");
-                                    }
-                                }
+                            } else {
+                                i += 1;
                             }
                         }
-                    }
 
-                    // Extract lobbies ready for relay
-                    let mut ready_lobbies = Vec::new();
-                    let mut i = 0;
-                    while i < games.len() {
-                        if games[i].phase == lobby::LobbyPhase::ReadyForRelay {
-                            ready_lobbies.push(games.remove(i));
+                        // Build broadcast data (serialization is in-memory)
+                        let broadcast_json = if tick_count % 10 == 0 {
+                            let lobbies_info = build_lobby_broadcast(&games);
+                            let broadcast_msg = ServerLobbiesBroadcastMessage { lobbies: lobbies_info };
+                            match bincode::serialize(&sow_core::protocol::ServerMessage::LobbiesBroadcast(broadcast_msg)) {
+                                Ok(json) => Some(json),
+                                Err(e) => { log::error!("[BROADCAST] Failed to serialize LobbiesBroadcast: {}", e); None }
+                            }
                         } else {
-                            i += 1;
-                        }
+                            None
+                        };
+
+                        (ready_candidates, broadcast_json)
+                    }; // ── LOCK RELEASED ──
+
+                    // Enqueue relay candidates to background worker task (zero I/O in tick)
+                    for rc in ready_candidates {
+                        let _ = relay_tx_clone.try_send(rc);
                     }
 
-                    // Throttle the global lobbies broadcast to run once every 1,000ms (10 ticks)
-                    if tick_count % 10 == 0 {
-                        let lobbies_info = build_lobby_broadcast(&games);
-                        log::debug!("[BROADCAST] {} lobbies in broadcast", lobbies_info.len());
-
-                        let broadcast_msg = ServerLobbiesBroadcastMessage { lobbies: lobbies_info };
-                        match bincode::serialize(&sow_core::protocol::ServerMessage::LobbiesBroadcast(broadcast_msg)) {
-                            Ok(json) => { let _ = global_tx_clone.send(json); }
-                            Err(e) => { log::error!("[BROADCAST] Failed to serialize LobbiesBroadcast: {}", e); }
-                        }
+                    // ── PHASE 3: Broadcast + perf (no lock needed) ──
+                    if let Some(json) = broadcast_json {
+                        let _ = global_tx_clone.send(json);
                     }
 
                     // Precise latency performance metric logger
@@ -329,77 +391,7 @@ async fn main() {
                     if elapsed > 10 {
                         log::warn!("[PERF] Event loop lag detected! Master tick execution took {}ms", elapsed);
                     }
-
-                    for lobby in ready_lobbies {
-                        if let Some(relay_port) = lobby.relay_port {
-                            let mut player_infos = Vec::new();
-                            for (i, p) in lobby.players.iter().enumerate() {
-                                let (team, color) = if lobby.game_mode == "Teams" {
-                                    // Honor the lobby-stage assignment the host set; fall back to
-                                    // alternating by join index if a player was never assigned.
-                                    let team = p.team.unwrap_or(if i % 2 == 0 {
-                                        sow_core::protocol::Team::Red
-                                    } else {
-                                        sow_core::protocol::Team::Blue
-                                    });
-                                    let color = match team {
-                                        sow_core::protocol::Team::Red => [1.0, 0.2, 0.2],
-                                        sow_core::protocol::Team::Blue => [0.2, 0.5, 1.0],
-                                    };
-                                    (Some(team), color)
-                                } else {
-                                    (None, p.leader.filler_rgb())
-                                };
-
-                                player_infos.push(sow_core::protocol::PlayerInfo {
-                                    id: p.player_id,
-                                    name: if p.clan_tag.is_empty() { p.name.clone() } else { format!("[{}] {}", p.clan_tag, p.name) },
-                                    player_type: sow_core::player::PlayerType::Human,
-                                    color,
-                                    team,
-                                    spawn_x: 0,
-                                    spawn_y: 0,
-                                    civilization: p.civilization,
-                                    leader: p.leader,
-                                });
-                            }
-
-                            let start_msg = sow_core::protocol::ServerStartMessage {
-                                config: lobby.config.clone(),
-                                my_player_id: None,
-                                lobby_id: Some(lobby.id),
-                                seed: lobby.seed,
-                                players: player_infos,
-                                missed_turns: vec![],
-                                map_data: None,
-                                relay_port: Some(relay_port),
-                            };
-
-                            log::info!("[RELAY] Handing off lobby {} to relay port {}", lobby.id, relay_port);
-                            for p in &lobby.players {
-                                let mut player_start = start_msg.clone();
-                                player_start.my_player_id = Some(p.player_id);
-                                match bincode::serialize(&sow_core::protocol::ServerMessage::Start(Box::new(player_start))) {
-                                    Ok(json) => { let _ = p.tx.try_send(json); }
-                                    Err(e) => { log::error!("[RELAY] Failed to serialize Start for player {} in lobby {}: {}", p.player_id, lobby.id, e); }
-                                }
-                            }
-                        } else {
-                            log::error!("[RELAY] Lobby {} has no relay_port — cannot hand off. Sending LobbyClosed.", lobby.id);
-                            let msg = sow_core::protocol::ServerLobbyClosedMessage {
-                                lobby_id: lobby.id,
-                                reason: "Server failed to allocate relay".to_string(),
-                                rematch_lobby_id: None,
-                            };
-                            if let Ok(json) = bincode::serialize(&sow_core::protocol::ServerMessage::LobbyClosed(msg)) {
-                                for p in &lobby.players {
-                                    let _ = p.tx.try_send(json.clone());
-                                }
-                            }
-                        }
-                    }
                 }
-
                 Some(event) = event_rx.recv() => {
                     let mut games = games_clone.lock().await;
                     let mut nid = next_id_clone.lock().await;
@@ -578,7 +570,7 @@ async fn main() {
             let (mut write, mut read) = ws_stream.split();
             log::info!("Client connected from IP: {}", ip_str);
 
-            let (direct_tx, mut direct_rx) = mpsc::channel::<Vec<u8>>(100);
+            let (direct_tx, mut direct_rx) = mpsc::channel::<Vec<u8>>(4096);
 
             // Send immediate single-cast LobbiesBroadcast snapshot on connection so the home menu loads instantly
             {

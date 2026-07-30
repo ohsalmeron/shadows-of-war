@@ -8,8 +8,13 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tokio::time::{sleep, Duration};
+use tokio::time::{sleep, Duration, Instant};
 use tokio_tungstenite::tungstenite::protocol::Message;
+
+#[derive(Default)]
+struct RelayMetrics {
+    turn_timestamps: Vec<(u64, f64)>, // (turn_number, seconds_since_epoch)
+}
 
 #[derive(Parser, Debug)]
 #[command(
@@ -423,6 +428,11 @@ async fn run_bot(
         .await
         .map_err(|e| e.to_string())?;
 
+    let mut metrics = RelayMetrics::default();
+    let relay_start = Instant::now();
+    let mut last_turn_at: Option<Instant> = None;
+    let mut turn_gaps: Vec<f64> = Vec::with_capacity(4096);
+
     loop {
         let msg = match recv_msg(&mut r_read, 15).await {
             Ok(m) => m,
@@ -430,6 +440,30 @@ async fn run_bot(
         };
 
         if let ServerMessage::Turn(turn) = msg {
+            let now = Instant::now();
+            if let Some(last) = last_turn_at {
+                let gap = now.saturating_duration_since(last).as_secs_f64();
+                turn_gaps.push(gap);
+            }
+            last_turn_at = Some(now);
+            metrics.turn_timestamps.push((turn.turn.turn_number, relay_start.elapsed().as_secs_f64()));
+
+            if metrics.turn_timestamps.len() % 100 == 0 {
+                let mut min_gap = f64::MAX;
+                let mut max_gap = 0.0f64;
+                let mut total = 0.0f64;
+                for g in &turn_gaps[turn_gaps.len().saturating_sub(100)..] {
+                    min_gap = min_gap.min(*g);
+                    max_gap = max_gap.max(*g);
+                    total += *g;
+                }
+                let avg = total / turn_gaps[turn_gaps.len().saturating_sub(100)..].len() as f64;
+                println!(
+                    "[Bot {}] turn#{} gap_window(100) min={:.1}ms avg={:.1}ms max={:.1}ms total_turns={}",
+                    bot_index, turn.turn.turn_number, min_gap * 1000.0, avg * 1000.0, max_gap * 1000.0,
+                    metrics.turn_timestamps.len()
+                );
+            }
             let intent = if active {
                 let mut intent_to_send = None;
 
@@ -520,6 +554,21 @@ async fn run_bot(
                     .await;
             }
         }
+    }
+
+    if !turn_gaps.is_empty() {
+        let total = turn_gaps.len() as f64;
+        let sum: f64 = turn_gaps.iter().sum();
+        let avg = sum / total;
+        let mut sorted = turn_gaps.clone();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let p50 = sorted[(sorted.len() as f64 * 0.50) as usize];
+        let p95 = sorted[(sorted.len() as f64 * 0.95) as usize];
+        let p99 = sorted[(sorted.len() as f64 * 0.99) as usize];
+        println!(
+            "[Bot {}] RELAY STATS: {} turns, gaps(ms) avg={:.1} p50={:.1} p95={:.1} p99={:.1}",
+            bot_index, turn_gaps.len(), avg * 1000.0, p50 * 1000.0, p95 * 1000.0, p99 * 1000.0
+        );
     }
 
     let leave = ClientMessage::Leave {};

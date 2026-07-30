@@ -57,13 +57,13 @@ Instead of shipping massive `.wav` files, the game features a custom **harmonic 
 | `sow-server` | Lobbies and matchmaking orchestration. |
 | `sow-database` | Player data, profiles, and API microservices. |
 | `sow-tools` | Developer CLI for map generation from OSM bounding boxes and asset packing. |
-| `sow-dist` | Deployment scripts, Docker/Debian VPS templates, and the `./sow` CLI tool. |
+| `sow-dist` | FreeBSD build/deployment pipeline and the `./sow` CLI tool. |
 
 ---
 
 ## 🎮 Developer Guide & Building
 
-The project uses a custom deployment script `./sow` to handle building, packing WASM, and deploying to Google Cloud.
+The project uses `./sow` as its single build and deployment entrypoint.
 
 ### Playing / Testing Locally
 
@@ -101,13 +101,21 @@ Because the game logic and renderer are built on generic, standard Rust abstract
     cargo apk run -p sow-client
     ```
 
-### Advanced Deployments (`./sow`)
-The `./sow` script coordinates building the WASM bundles, compiling the GNU binaries for the backend, and shipping them over GCP IAP. *(Requires `gcloud auth login` and `tar`)*
+### Production deployment (`./sow p`)
 
-*   `./sow ptr -v` : Deploys to the staging (PTR) environment.
-*   `./sow prod -v` : Deploys to production (`shadowsofwar.io`).
-*   `./sow cg` : Compiles and synchronizes the CrazyGames distribution.
-*   `./sow infra --confirm-destroy` : Completely reprovisions a fresh Debian 13 VPS with Nginx, TLS, and Valkey.
+`./sow p` is the only production deployment path. It builds the web client,
+runs the FreeBSD server tests, builds the native server/database/relay
+binaries, assembles one checksummed release, activates it on `sow`, and rolls
+back automatically if origin verification fails. Web and backend work run in
+parallel; unchanged artifacts are reused and only affected services restart.
+
+```bash
+./sow p
+```
+
+Use `./sow p -v` when the public patch version must also be incremented.
+
+Arch build hosts require the `binaryen` and `rust-wasm` packages.
 
 ### Source file size guard
 

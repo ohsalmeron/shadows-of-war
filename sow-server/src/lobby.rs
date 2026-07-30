@@ -46,6 +46,9 @@ pub struct ServerLobby {
     pub config: GameConfig,
     pub game_mode: String,
     pub relay_port: Option<u16>,
+    /// True while a relay spawn is in-flight (outside the games lock) to prevent
+    /// the next tick from re-collecting the same lobby.
+    pub relay_pending: bool,
     /// Only set for Custom lobbies — the player_id of whoever created the lobby.
     pub host_player_id: Option<u16>,
     pub password: Option<String>,
@@ -129,6 +132,7 @@ fn spawn_waiting_lobby(
         config,
         game_mode: game_mode.to_string(),
         relay_port: None,
+        relay_pending: false,
         host_player_id: None,
         password,
         host_name,

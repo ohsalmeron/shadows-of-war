@@ -1,0 +1,55 @@
+#!/bin/sh
+
+# PROVIDE: sow_server
+# REQUIRE: LOGIN valkey sow_database
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="sow_server"
+rcvar="sow_server_enable"
+
+load_rc_config "${name}"
+
+: ${sow_server_enable:="NO"}
+: ${sow_server_release:="/srv/sow/current"}
+: ${sow_server_env_file:="/usr/local/etc/sow/sow.env"}
+
+pidfile="/var/run/${name}.pid"
+child_pidfile="/var/run/${name}.child.pid"
+proc="${sow_server_release}/bin/sow-server"
+required_files="${proc} ${sow_server_env_file}"
+
+command="/usr/sbin/daemon"
+command_args="-f -P ${pidfile} -p ${child_pidfile} -r -R 2 -H -o /var/log/sow/server.log -T ${name} -u sowserver ${proc}"
+
+start_precmd="${name}_prestart"
+
+sow_server_prestart()
+{
+	. "${sow_server_env_file}"
+	: ${SOW_RELAY_LISTEN_HOST:="127.0.0.1"}
+	: ${SOW_RELAY_LOG_DIR:="/var/log/sow"}
+	case "${SOW_RELAY_LOG_DIR}" in
+	/var/log/sow|/var/log/sow/*)
+		;;
+	*)
+		echo "SOW_RELAY_LOG_DIR must be under /var/log/sow" >&2
+		return 1
+		;;
+	esac
+	if [ -r "${sow_server_release}/VERSION" ]; then
+		SOW_BUILD_VERSION="$(tr -d '\r\n' < "${sow_server_release}/VERSION")"
+	fi
+	export RUST_LOG SOW_BUILD_VERSION SOW_VALKEY_URL SOW_REDIS_URL
+	export SOW_DB_URL SOW_DB_SECRET SOW_WS_LISTEN SOW_MAPS_HTTP_LISTEN
+	export SOW_MAPS_ROOT SOW_MAPS_CATALOG_PATH SOW_RELAY_BIN
+	export SOW_RELAY_LISTEN_HOST SOW_RELAY_LOG_DIR
+	export SOW_BOT_WS_URL SOW_BOT_MANAGER_BIN
+
+	install -d -o sowserver -g sow -m 0750 "${SOW_RELAY_LOG_DIR}"
+	install -d -o sowserver -g sow -m 0750 /var/db/sow/server
+	/usr/local/bin/valkey-cli -h 127.0.0.1 ping | grep -q PONG
+}
+
+run_rc_command "$1"

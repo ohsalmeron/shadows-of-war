@@ -66,8 +66,18 @@ pub(crate) fn apply_lobbies_broadcast(
     let joined_snapshot =
         joined_id.and_then(|id| state.lobbies.iter().find(|l| l.id == id).cloned());
     state.lobbies = broadcast.lobbies.clone();
-    if let (Some(id), Some(snap)) = (joined_id, joined_snapshot) {
-        if !state.lobbies.iter().any(|l| l.id == id) {
+    if let Some(id) = joined_id {
+        if let Some(broadcast_lobby) = state.lobbies.iter_mut().find(|l| l.id == id) {
+            // If the joined lobby is in the broadcast, preserve live timer if countdown is active
+            if let Some(ref snap) = joined_snapshot {
+                if snap.is_counting_down && snap.timer_secs < broadcast_lobby.timer_secs {
+                    broadcast_lobby.timer_secs = snap.timer_secs;
+                    broadcast_lobby.is_counting_down = snap.is_counting_down;
+                }
+            }
+        } else if let Some(snap) = joined_snapshot {
+            // If the joined lobby is in Loading/ReadyForRelay phase and omitted from broadcast,
+            // push the existing live snapshot so the UI retains live timer_secs and players.
             state.lobbies.push(snap);
         }
     }
