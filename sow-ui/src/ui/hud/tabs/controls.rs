@@ -1,10 +1,10 @@
 use crate::UiAction;
-use egui::{vec2, Color32};
+use egui::{Color32, vec2};
 use sow_i18n::Language;
 
 use super::super::overlays::mobile;
 use super::super::panels::troop_spawn;
-use super::super::state::{building_emoji, BottomHudTab, HudState};
+use super::super::state::{BottomHudTab, HudState, building_emoji};
 
 enum StripItem {
     Building(sow_core::game::BuildingKind),
@@ -336,18 +336,28 @@ pub(in crate::ui::hud) enum HudSidebarMain {
     EventLog,
 }
 
-#[allow(clippy::too_many_arguments)]
+pub(in crate::ui::hud) struct HudSidebarOpts<'a> {
+    pub content_w: f32,
+    pub compact: bool,
+    pub action: &'a mut Option<UiAction>,
+    pub lang: Language,
+    pub cancel_intents: &'a mut Vec<sow_core::protocol::GameplayIntent>,
+    pub main: HudSidebarMain,
+    pub asset_loader: &'a crate::ui::asset_loader::AssetLoader,
+}
+
 pub(in crate::ui::hud) fn draw_hud_sidebar_row(
     ui: &mut egui::Ui,
     state: &mut HudState,
-    content_w: f32,
-    compact: bool,
-    _action: &mut Option<UiAction>,
-    lang: Language,
-    cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>,
-    main: HudSidebarMain,
-    asset_loader: &crate::ui::asset_loader::AssetLoader,
+    opts: HudSidebarOpts<'_>,
 ) {
+    let content_w = opts.content_w;
+    let compact = opts.compact;
+    let _action = opts.action;
+    let lang = opts.lang;
+    let cancel_intents = opts.cancel_intents;
+    let main = opts.main;
+    let asset_loader = opts.asset_loader;
     let spawn_active = state.spawn_timer_secs.is_some();
     let dialog_active = state.bottom_dialog.is_some();
     let row_gap = sow_ui_kit::theme::margin::TIGHT as f32;
@@ -377,10 +387,7 @@ pub(in crate::ui::hud) fn draw_hud_sidebar_row(
                     if let Some(dlg) = state.bottom_dialog.clone() {
                         let clicked = crate::widgets::paint_dialog_contents(
                             ui,
-                            dlg.visual.as_ref(),
-                            dlg.name.as_deref(),
-                            &dlg.title,
-                            &dlg.body,
+                            (dlg.visual.as_ref(), dlg.name.as_deref(), &dlg.title, &dlg.body),
                             &dlg.buttons,
                             asset_loader,
                             compact,
@@ -474,28 +481,12 @@ pub(in crate::ui::hud) fn draw_hud_sidebar_row(
     );
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(in crate::ui::hud) fn draw_controls_row(
     ui: &mut egui::Ui,
     state: &mut HudState,
-    content_w: f32,
-    compact: bool,
-    cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>,
-    lang: Language,
-    action: &mut Option<UiAction>,
-    asset_loader: &crate::ui::asset_loader::AssetLoader,
+    opts: HudSidebarOpts<'_>,
 ) {
-    draw_hud_sidebar_row(
-        ui,
-        state,
-        content_w,
-        compact,
-        action,
-        lang,
-        cancel_intents,
-        HudSidebarMain::Controls,
-        asset_loader,
-    );
+    draw_hud_sidebar_row(ui, state, opts);
 }
 
 pub(in crate::ui::hud) fn draw_controls_tab(

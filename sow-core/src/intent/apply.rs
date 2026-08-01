@@ -99,7 +99,8 @@ impl SowEngine {
                 }
                 log::debug!(
                     "apply_stamped_intent: cancel attack_id={} for player {} — not found or not owner",
-                    attack_id, pid
+                    attack_id,
+                    pid
                 );
             }
             GameplayIntent::Attack(attack) => {
@@ -257,6 +258,9 @@ impl SowEngine {
             GameplayIntent::LaunchNuke { target_tile, .. } => {
                 self.apply_launch_nuke_intent(stamped.player_id, *target_tile);
             }
+            // INK TIDE lockstep input: never reaches the SoW engine — the
+            // racer sim runs on the racer clients. Opaque to SoW.
+            GameplayIntent::RacerControls(_) => {}
             GameplayIntent::Spawn { x, y } => {
                 if let crate::game::GamePhase::Spawning { .. } = self.state.phase {
                     let x = *x;
@@ -329,7 +333,11 @@ impl SowEngine {
                             .unwrap_or((false, false));
 
                         if is_teammate {
-                            log::warn!("ABERRATION: Player {} tried to propose alliance to teammate/ally {} in team game", proposer, target);
+                            log::warn!(
+                                "ABERRATION: Player {} tried to propose alliance to teammate/ally {} in team game",
+                                proposer,
+                                target
+                            );
                             return;
                         }
 

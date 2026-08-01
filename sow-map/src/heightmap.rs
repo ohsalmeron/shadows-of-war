@@ -75,11 +75,7 @@ impl WorldHeightmap {
 /// MapGenerator pixel → encoded blue channel.
 pub fn openfront_blue_from_rgba(px: [u8; 4]) -> u8 {
     let [_r, _g, b, a] = px;
-    if a < 20 || b == 106 {
-        106
-    } else {
-        b
-    }
+    if a < 20 || b == 106 { 106 } else { b }
 }
 
 pub fn heightmap_search_paths() -> Vec<PathBuf> {

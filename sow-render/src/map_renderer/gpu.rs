@@ -1,5 +1,5 @@
 use super::cpu_prep::{
-    compute_has_border, fill_terrain_buffer, get_neighbors, MapGlobals, PlayerColors,
+    MapGlobals, PlayerColors, compute_has_border, fill_terrain_buffer, get_neighbors,
 };
 use crate::context::RenderContext;
 use blade_graphics as gpu;
@@ -321,14 +321,13 @@ impl MapRenderer {
     }
 
     /// Write dirty ownership tiles to the upload buffer and copy to GPU.
-    #[allow(unused_variables)]
     pub fn update(
         &mut self,
         encoder: &mut gpu::CommandEncoder,
         context: &gpu::Context,
         dirty_tiles: &[sow_core::protocol::DirtyTile],
         conquest_duration: f32,
-        explored: &sow_core::bitset::DenseBitSet,
+        _explored: &sow_core::bitset::DenseBitSet,
         visible: &sow_core::bitset::DenseBitSet,
         force_full_upload: bool,
     ) {
@@ -362,26 +361,30 @@ impl MapRenderer {
         let slice = unsafe { std::slice::from_raw_parts_mut(dst_ptr as *mut u32, total_u32) };
 
         // Helper: pack owner + flash + border/water/fog flags into the GPU buffer
-        let pack =
-            |slice: &mut [u32], owners: &[u16], flash: &[u8], fade: u8, tile_idx: u32, has_water: bool| {
-                let i = tile_idx as usize;
-                let x = tile_idx % width;
-                let y = tile_idx / width;
-                let dst = (y * u32_per_row + x) as usize;
+        let pack = |slice: &mut [u32],
+                    owners: &[u16],
+                    flash: &[u8],
+                    fade: u8,
+                    tile_idx: u32,
+                    has_water: bool| {
+            let i = tile_idx as usize;
+            let x = tile_idx % width;
+            let y = tile_idx / width;
+            let dst = (y * u32_per_row + x) as usize;
 
-                let has_border = compute_has_border(tile_idx, owners, width, height);
+            let has_border = compute_has_border(tile_idx, owners, width, height);
 
-                let mut val = owners[i] as u32 | ((flash[i] as u32) << 16);
-                if has_border {
-                    val |= 1 << 24;
-                }
-                if has_water {
-                    val |= 1 << 25;
-                }
-                let fade_6bit = (fade >> 2) as u32; // scale 0..255 to 0..63
-                val |= fade_6bit << 26;
-                slice[dst] = val;
-            };
+            let mut val = owners[i] as u32 | ((flash[i] as u32) << 16);
+            if has_border {
+                val |= 1 << 24;
+            }
+            if has_water {
+                val |= 1 << 25;
+            }
+            let fade_6bit = (fade >> 2) as u32; // scale 0..255 to 0..63
+            val |= fade_6bit << 26;
+            slice[dst] = val;
+        };
 
         let has_water = &self.has_water_neighbor;
 
@@ -520,14 +523,7 @@ impl MapRenderer {
                 }
                 let f = vision_fade[i].saturating_sub(fade_decay_amount.min(255) as u8);
                 vision_fade[i] = f;
-                pack(
-                    slice,
-                    owners,
-                    conquest_flash,
-                    f,
-                    tile_idx,
-                    has_water[i],
-                );
+                pack(slice, owners, conquest_flash, f, tile_idx, has_water[i]);
                 let y = tile_idx / width;
                 dirty_chunks[(y / chunk_h) as usize] = true;
                 fade_dirty = true;

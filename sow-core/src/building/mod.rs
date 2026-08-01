@@ -141,11 +141,13 @@ mod tests {
             modules: crate::building::CityModules::default(),
         });
         engine.execute_construction();
-        assert!(engine
-            .state
-            .events
-            .iter()
-            .any(|e| matches!(e, GameEvent::StructureReady { id: 7, .. })));
+        assert!(
+            engine
+                .state
+                .events
+                .iter()
+                .any(|e| matches!(e, GameEvent::StructureReady { id: 7, .. }))
+        );
     }
 
     #[test]

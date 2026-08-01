@@ -107,11 +107,7 @@ mod tests {
         let mut seen = std::collections::HashSet::new();
         for e in all() {
             assert!(!e.name.is_empty(), "empty entity name");
-            assert!(
-                seen.insert(e.name),
-                "duplicate geo entity name: {}",
-                e.name
-            );
+            assert!(seen.insert(e.name), "duplicate geo entity name: {}", e.name);
             assert!(
                 (-90.0..=90.0).contains(&e.lat),
                 "{}: lat {} out of range",

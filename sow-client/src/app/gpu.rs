@@ -68,20 +68,19 @@ impl SowApp {
         }
         if self.gfx.window.is_none() {
             #[cfg(any(target_os = "android", target_os = "ios"))]
-            #[allow(unused_mut)]
-            let mut attributes =
+            let attributes =
                 winit::window::WindowAttributes::default().with_title("Shadows of War");
 
             #[cfg(target_os = "ios")]
-            {
+            let attributes = {
                 let ios_attrs = winit::platform::ios::WindowAttributesIos::default()
                     .with_valid_orientations(
                         winit::platform::ios::ValidOrientations::LandscapeAndPortrait,
                     )
                     .with_prefers_status_bar_hidden(true)
                     .with_prefers_home_indicator_hidden(true);
-                attributes = attributes.with_platform_attributes(Box::new(ios_attrs));
-            }
+                attributes.with_platform_attributes(Box::new(ios_attrs))
+            };
             #[cfg(target_arch = "wasm32")]
             let mut attributes = {
                 let (w, h) = crate::web_canvas::canvas_logical_size();

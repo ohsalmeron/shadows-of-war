@@ -1,8 +1,8 @@
-use egui::{pos2, vec2, Align2, Color32, RichText};
+use egui::{Align2, Color32, RichText, pos2, vec2};
 use sow_i18n::Language;
 
 use super::super::state::{
-    hud_map_controls_anchor_offset, HudState, HUD_MAP_CONTROLS_MOBILE_FALLBACK_CLEARANCE,
+    HUD_MAP_CONTROLS_MOBILE_FALLBACK_CLEARANCE, HudState, hud_map_controls_anchor_offset,
 };
 
 pub(in crate::ui::hud) fn draw_emoji_panel(

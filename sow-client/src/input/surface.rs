@@ -1,6 +1,6 @@
 use crate::app::SowApp;
 use crate::render::world::movers::world_to_tile;
-use crate::{camera_zoom_upper_bound, CAMERA_MIN_ZOOM};
+use crate::{CAMERA_MIN_ZOOM, camera_zoom_upper_bound};
 use blade_graphics as gpu;
 use egui::Vec2;
 

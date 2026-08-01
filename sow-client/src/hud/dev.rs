@@ -436,12 +436,9 @@ impl SowApp {
                 &stats,
                 [x, y],
                 font_size,
-                [1.0, 1.0, 1.0, 1.0], // color white
-                [0.0, 0.0, 0.0, 1.0], // outline color black
+                ([1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 1.0]),
                 sow_render::TmpFontSettings::default(),
-                1.0, // align right (align_x = 1.0)
-                1.0, // char_spacing
-                1.0, // emoji_scale
+                (1.0, 1.0, 1.0),
             );
         }
     }

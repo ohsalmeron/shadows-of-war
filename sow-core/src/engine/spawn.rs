@@ -408,7 +408,12 @@ impl SowEngine {
         for (i, s) in spawns.iter().enumerate() {
             let bot_id = 104 + i as u16;
             let Some((sx, sy)) = self.nearest_free_land(s.x, s.y) else {
-                log::warn!("spawn_scripted: no land near '{}' ({},{})", s.name, s.x, s.y);
+                log::warn!(
+                    "spawn_scripted: no land near '{}' ({},{})",
+                    s.name,
+                    s.x,
+                    s.y
+                );
                 continue;
             };
             let mut player = if s.is_nation {

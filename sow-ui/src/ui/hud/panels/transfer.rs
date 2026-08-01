@@ -1,4 +1,4 @@
-use egui::{vec2, Color32, RichText, Slider};
+use egui::{Color32, RichText, Slider, vec2};
 use sow_i18n::Language;
 
 use super::super::state::HudState;

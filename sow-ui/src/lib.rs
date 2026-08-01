@@ -6,8 +6,8 @@ extern crate self as sow_ui_kit;
 
 pub mod kit;
 pub use kit::{
-    assets, atlas_texture, atlas_uv, register_emoji_atlas, register_game_assets, texture_options,
-    theme, ui_font, ClientPhase, EMOJI_ATLAS_BYTES,
+    ClientPhase, EMOJI_ATLAS_BYTES, assets, atlas_texture, atlas_uv, register_emoji_atlas,
+    register_game_assets, texture_options, theme, ui_font,
 };
 
 pub use app::ClientApp;

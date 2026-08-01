@@ -381,17 +381,14 @@ impl MoverScene {
         });
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn arc_visible(
         &self,
         points: &[[f32; 2]],
         head: [f32; 2],
         params: &MoverPackParams<'_>,
-        min_sx: f32,
-        min_sy: f32,
-        max_sx: f32,
-        max_sy: f32,
+        bounds: (f32, f32, f32, f32),
     ) -> bool {
+        let (min_sx, min_sy, max_sx, max_sy) = bounds;
         for pt in points {
             let sx = params.camera_x + pt[0] * params.camera_zoom;
             let sy = params.camera_y + pt[1] * params.camera_zoom;
@@ -508,10 +505,7 @@ impl MoverScene {
                     trail_points,
                     world_pos,
                     params,
-                    min_sx,
-                    min_sy,
-                    max_sx,
-                    max_sy,
+                    (min_sx, min_sy, max_sx, max_sy),
                 ) {
                     self.push_trail_segments(
                         renderer,

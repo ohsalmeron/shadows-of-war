@@ -51,30 +51,33 @@ pub fn paint_circular_avatar(
     );
 }
 
-#[allow(clippy::too_many_arguments)]
+pub struct AvatarRenderOpts<'a> {
+    pub center: egui::Pos2,
+    pub radius: f32,
+    pub player_id: u16,
+    pub player_name: &'a str,
+    pub player_type: sow_core::player::PlayerType,
+    pub player_color: [f32; 3],
+    pub leader: &'a sow_core::player::Leader,
+}
+
 pub fn draw_player_avatar(
     painter: &egui::Painter,
-    center: egui::Pos2,
-    radius: f32,
-    player_id: u16,
-    player_name: &str,
-    player_type: sow_core::player::PlayerType,
-    player_color: [f32; 3],
-    leader: &sow_core::player::Leader,
+    opts: &AvatarRenderOpts,
     asset_loader: &sow_ui::ui::asset_loader::AssetLoader,
 ) {
-    let vibrant_color = crate::hud::nameplate::ensure_readable_nameplate_color(player_color);
+    let vibrant_color = crate::hud::nameplate::ensure_readable_nameplate_color(opts.player_color);
 
-    match player_type {
+    match opts.player_type {
         sow_core::player::PlayerType::Nation => {
-            paint_circular_avatar(painter, center, radius, None, vibrant_color, vibrant_color);
+            paint_circular_avatar(painter, opts.center, opts.radius, None, vibrant_color, vibrant_color);
         }
         sow_core::player::PlayerType::Bot => {
-            paint_circular_avatar(painter, center, radius, None, vibrant_color, vibrant_color);
-            let animal = sow_core::player::tribe_animal(player_id, player_name);
-            let emoji_size = radius * 2.0 * 0.7;
+            paint_circular_avatar(painter, opts.center, opts.radius, None, vibrant_color, vibrant_color);
+            let animal = sow_core::player::tribe_animal(opts.player_id, opts.player_name);
+            let emoji_size = opts.radius * 2.0 * 0.7;
             let emoji_rect =
-                egui::Rect::from_center_size(center, egui::vec2(emoji_size, emoji_size));
+                egui::Rect::from_center_size(opts.center, egui::vec2(emoji_size, emoji_size));
             if !sow_ui_kit::widgets::try_paint_emoji(
                 painter,
                 animal,
@@ -87,14 +90,14 @@ pub fn draw_player_avatar(
                     egui::Color32::WHITE,
                 );
                 let emoji_pos = egui::pos2(
-                    center.x - emoji_galley.size().x / 2.0,
-                    center.y - emoji_galley.size().y / 2.0,
+                    opts.center.x - emoji_galley.size().x / 2.0,
+                    opts.center.y - emoji_galley.size().y / 2.0,
                 );
                 painter.galley(emoji_pos, emoji_galley, egui::Color32::WHITE);
             }
         }
         sow_core::player::PlayerType::Human => {
-            let leader_rgb = leader.filler_rgb();
+            let leader_rgb = opts.leader.filler_rgb();
             let leader_color = egui::Color32::from_rgb(
                 (leader_rgb[0] * 255.0).round() as u8,
                 (leader_rgb[1] * 255.0).round() as u8,
@@ -102,10 +105,10 @@ pub fn draw_player_avatar(
             );
             let avatar_tex = asset_loader
                 .avatars
-                .get(leader)
+                .get(opts.leader)
                 .or(asset_loader.avatar_fallback.as_ref());
             let tex_id = avatar_tex.map(|t| t.id());
-            paint_circular_avatar(painter, center, radius, tex_id, leader_color, leader_color);
+            paint_circular_avatar(painter, opts.center, opts.radius, tex_id, leader_color, leader_color);
         }
     }
 }
@@ -123,78 +126,79 @@ pub fn avatar_slot(leader: Option<sow_core::player::Leader>) -> usize {
 
 /// GPU-pipeline avatar: fill/portrait + decorative frame rings + category emoji (tribe animal
 /// for bots, empire symbol for nations), all via the text-emoji `TextRenderer`. Physical px.
-#[allow(clippy::too_many_arguments)]
+pub struct GpuAvatarOpts<'a> {
+    pub center: [f32; 2],
+    pub radius: f32,
+    pub player_id: u16,
+    pub player_name: &'a str,
+    pub player_type: sow_core::player::PlayerType,
+    pub player_color: [f32; 3],
+    pub leader: sow_core::player::Leader,
+}
+
 pub fn draw_player_avatar_gpu(
     tr: &mut crate::render::gpu::TextRenderer,
-    center: [f32; 2],
-    radius: f32,
-    player_id: u16,
-    player_name: &str,
-    player_type: sow_core::player::PlayerType,
-    player_color: [f32; 3],
-    leader: sow_core::player::Leader,
+    opts: &GpuAvatarOpts,
 ) {
-    let vibrant = crate::hud::nameplate::ensure_readable_nameplate_color(player_color);
+    let vibrant = crate::hud::nameplate::ensure_readable_nameplate_color(opts.player_color);
     let vibrant_arr = vibrant.to_array().map(|v| v as f32 / 255.0);
 
     // Fill / portrait, and pick the frame color.
-    let frame = match player_type {
+    let frame = match opts.player_type {
         sow_core::player::PlayerType::Human => {
-            let rgb = leader.filler_rgb();
+            let rgb = opts.leader.filler_rgb();
             let leader_arr = [rgb[0], rgb[1], rgb[2], 1.0];
             match tr
-                .avatar_uv(avatar_slot(Some(leader)))
+                .avatar_uv(avatar_slot(Some(opts.leader)))
                 .or_else(|| tr.avatar_uv(avatar_slot(None)))
             {
-                Some(uv) => tr.push_sprite(center, radius, uv, [1.0, 1.0, 1.0, 1.0]),
-                None => tr.push_disc(center, radius, leader_arr), // until the portrait arrives
+                Some(uv) => tr.push_sprite(opts.center, opts.radius, uv, [1.0, 1.0, 1.0, 1.0]),
+                None => tr.push_disc(opts.center, opts.radius, leader_arr), // until the portrait arrives
             }
             leader_arr
         }
         _ => {
-            tr.push_disc(center, radius, vibrant_arr);
+            tr.push_disc(opts.center, opts.radius, vibrant_arr);
             vibrant_arr
         }
     };
 
     // Decorative frame rings (over the fill), matching the egui avatar.
-    let border = (radius * 0.12).max(1.0);
+    let border = (opts.radius * 0.12).max(1.0);
     tr.push_ring(
-        center,
-        radius + border * 0.3,
+        opts.center,
+        opts.radius + border * 0.3,
         [0.0, 0.0, 0.0, 160.0 / 255.0],
         border,
     );
-    tr.push_ring(center, radius, frame, border * 0.8);
+    tr.push_ring(opts.center, opts.radius, frame, border * 0.8);
     tr.push_ring(
-        center,
-        radius - border * 0.15,
+        opts.center,
+        opts.radius - border * 0.15,
         [1.0, 1.0, 1.0, 80.0 / 255.0],
         border * 0.35,
     );
 
     // Category emoji sits on top: tribe animal for bots, empire symbol for nations.
-    let glyph = match player_type {
+    let glyph = match opts.player_type {
         sow_core::player::PlayerType::Bot => {
-            Some(sow_core::player::tribe_animal(player_id, player_name))
+            Some(sow_core::player::tribe_animal(opts.player_id, opts.player_name))
         }
         sow_core::player::PlayerType::Nation => {
-            Some(sow_core::player::empire_emoji(player_id, player_name))
+            Some(sow_core::player::empire_emoji(opts.player_id, opts.player_name))
         }
         sow_core::player::PlayerType::Human => None,
     };
     if let Some(glyph) = glyph {
         // ~75% of the circle (push_emoji quad = half * 2.5 diameter). No custom outline —
         // the SDF outline per dev font settings applies globally if enabled.
-        let half = radius * 0.65;
+        let half = opts.radius * 0.65;
         tr.push_emoji(
             glyph,
-            center,
+            opts.center,
             half,
             [1.0, 1.0, 1.0, 1.0],
-            [0.0, 0.0, 0.0, 1.0],
-            0.0,
-            0.0,
+            ([0.0, 0.0, 0.0, 1.0], 0.0, 0.0),
         );
     }
 }

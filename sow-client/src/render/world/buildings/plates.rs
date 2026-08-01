@@ -27,8 +27,13 @@ pub(crate) fn paint_building_upgrade_plate(
     let zoom_scaled = camera_zoom / sf;
     let font_size = {
         let raw = zoom_scaled * 0.65 * final_scale;
-        if dev.clamp_text_zoom { raw.clamp(10.0, 16.0) } else { raw }
-    }.round();
+        if dev.clamp_text_zoom {
+            raw.clamp(10.0, 16.0)
+        } else {
+            raw
+        }
+    }
+    .round();
 
     let padding_x = 10.0_f32 * final_scale;
     let padding_y = 6.0_f32 * final_scale;
@@ -157,9 +162,7 @@ pub(crate) fn paint_new_build_ghost(
             [phys_x, phys_y],
             half,
             [1.0, 1.0, 1.0, 0.75], // ghost: 75% opacity
-            [0.0, 0.0, 0.0, 0.75],
-            outline_px,
-            shadow_px,
+            ([0.0, 0.0, 0.0, 0.75], outline_px, shadow_px),
         ) {
             return;
         }
@@ -189,8 +192,13 @@ pub(crate) fn paint_gold_preview_indicator(
     let dev = sow_ui_kit::theme::dev_config::DevConfig::get();
     let font_size = {
         let raw = zoom_scaled * 0.65 * final_scale;
-        if dev.clamp_text_zoom { raw.clamp(10.0, 20.0) } else { raw }
-    }.round();
+        if dev.clamp_text_zoom {
+            raw.clamp(10.0, 20.0)
+        } else {
+            raw
+        }
+    }
+    .round();
     let font_id = egui::FontId::proportional(font_size);
     let emoji_size = font_size * 1.4;
     let prepared_amount = sow_ui::widgets::prepare_name(painter, amount_text, &font_id);

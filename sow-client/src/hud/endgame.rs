@@ -3,7 +3,6 @@ use egui::{Align2, Color32, FontId, RichText};
 use sow_core::protocol::Team;
 
 impl SowApp {
-    #[allow(deprecated)]
     pub(crate) fn render_endgame_ui(&mut self, ctx: &egui::Context) {
         let lang = self.ui.app.settings_state.language;
         let strings = &sow_i18n::get(lang).endgame;

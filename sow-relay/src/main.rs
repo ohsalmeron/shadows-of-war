@@ -7,8 +7,8 @@ use sow_core::protocol::{
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tokio::sync::{Mutex, mpsc};
 use tokio::sync::mpsc::error::TrySendError;
+use tokio::sync::{Mutex, mpsc};
 use tokio::time::{Duration, interval};
 use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::protocol::Message;
@@ -85,11 +85,7 @@ fn log_player_stats(
         .and_then(|()| con.expire(&key, 3600));
 }
 
-fn trigger_match_finalize(
-    match_id: u64,
-    lobby_json: String,
-    match_history: Arc<Mutex<Vec<Turn>>>,
-) {
+fn trigger_match_finalize(match_id: u64, lobby_json: String, match_history: Arc<Mutex<Vec<Turn>>>) {
     tokio::spawn(async move {
         let history = match_history.lock().await.clone();
         let replay_bytes = match bincode::serialize(&history) {
@@ -151,22 +147,25 @@ fn trigger_match_finalize(
         }
 
         if !success {
-            error!(
-                "[CRITICAL] Failed to upload match {match_id} to database after 5 attempts."
-            );
-            
+            error!("[CRITICAL] Failed to upload match {match_id} to database after 5 attempts.");
+
             // Try local Valkey dead-letter fallback
             let url = std::env::var("SOW_VALKEY_URL")
                 .or_else(|_| std::env::var("SOW_REDIS_URL"))
                 .unwrap_or_else(|_| "redis://127.0.0.1/".to_string());
-            
+
             let mut valkey_success = false;
             if let Ok(client) = redis::Client::open(url) {
                 if let Ok(mut con) = client.get_connection() {
                     let key = "sow:match_history:dead_letter";
-                    let fallback_payload = bincode::serialize(&(lobby_json.clone(), replay_bytes.clone())).unwrap_or_default();
+                    let fallback_payload =
+                        bincode::serialize(&(lobby_json.clone(), replay_bytes.clone()))
+                            .unwrap_or_default();
                     if let Ok(()) = con.lpush::<_, _, ()>(key, fallback_payload) {
-                        warn!("[FALLBACK] Saved raw replay backup in local Valkey queue under key '{}' for match {match_id}", key);
+                        warn!(
+                            "[FALLBACK] Saved raw replay backup in local Valkey queue under key '{}' for match {match_id}",
+                            key
+                        );
                         valkey_success = true;
                     }
                 }
@@ -175,10 +174,14 @@ fn trigger_match_finalize(
             if !valkey_success {
                 // Extreme backup: save directly to host disk so DevOps can recover it easily
                 let backup_dir = "/tmp/sow_crash_replays";
-                error!("[ALERT] Valkey local fallback also failed! Dumping raw payload directly to local disk at {} for match {match_id}", backup_dir);
+                error!(
+                    "[ALERT] Valkey local fallback also failed! Dumping raw payload directly to local disk at {} for match {match_id}",
+                    backup_dir
+                );
                 let _ = std::fs::create_dir_all(backup_dir);
                 let _ = std::fs::write(format!("{}/{}.json", backup_dir, match_id), &lobby_json);
-                let _ = std::fs::write(format!("{}/{}.replay", backup_dir, match_id), &replay_bytes);
+                let _ =
+                    std::fs::write(format!("{}/{}.replay", backup_dir, match_id), &replay_bytes);
             }
         }
     });

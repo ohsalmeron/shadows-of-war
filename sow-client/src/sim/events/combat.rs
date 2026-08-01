@@ -1,19 +1,25 @@
 use crate::app::SowApp;
 use sow_core::protocol::SimSnapshot;
 
+pub(crate) struct CaptureEventInfo {
+    pub pos: (u32, u32),
+    pub new_owner: u16,
+    pub previous_owner: u16,
+    pub troops: f64,
+}
+
 impl SowApp {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn handle_tile_captured(
         &mut self,
         snap: &SimSnapshot,
         my_id: u16,
         played_combat_this_tick: &mut bool,
-        x: u32,
-        y: u32,
-        new_owner: u16,
-        previous_owner: u16,
-        troops: f64,
+        info: &CaptureEventInfo,
     ) {
+        let (x, y) = info.pos;
+        let new_owner = info.new_owner;
+        let previous_owner = info.previous_owner;
+        let troops = info.troops;
         if *played_combat_this_tick || my_id == 0 {
             return;
         }
@@ -22,7 +28,7 @@ impl SowApp {
         }
         *played_combat_this_tick = true;
 
-        use sow_audio::{play_combat_sound, CombatSoundKind};
+        use sow_audio::{CombatSoundKind, play_combat_sound};
         use sow_core::player::PlayerType;
 
         let kind = if previous_owner == my_id {

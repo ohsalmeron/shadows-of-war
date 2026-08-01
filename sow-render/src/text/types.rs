@@ -47,7 +47,12 @@ pub fn avatar_slot_uv(slot: usize) -> [f32; 4] {
     let ah = (AVATAR_ROWS * AVATAR_CELL) as f32;
     let u0 = (col * AVATAR_CELL) as f32 / aw;
     let v0 = (row * AVATAR_CELL) as f32 / ah;
-    [u0, v0, u0 + AVATAR_CELL as f32 / aw, v0 + AVATAR_CELL as f32 / ah]
+    [
+        u0,
+        v0,
+        u0 + AVATAR_CELL as f32 / aw,
+        v0 + AVATAR_CELL as f32 / ah,
+    ]
 }
 
 #[repr(C)]

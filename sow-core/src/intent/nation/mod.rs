@@ -10,7 +10,7 @@ mod diplomacy;
 mod profile;
 mod structures;
 
-use profile::{get_bot_ai_profile, AiSlot, BotDecision};
+use profile::{AiSlot, BotDecision, get_bot_ai_profile};
 use structures::{cheapest_gold_cost, iq_build_interval_base};
 
 impl SowEngine {
@@ -144,10 +144,8 @@ impl SowEngine {
             let (neighbor_players, has_neutral) = self.nation_scan_neighbors(bot_id);
 
             self.nation_run_diplomacy_for_slot(
-                bot_id,
-                bot_iq,
-                alliance_cost,
-                send_cost,
+                (bot_id, bot_iq),
+                (alliance_cost, send_cost),
                 &neighbor_players,
                 has_neutral,
                 &mut decisions,
@@ -163,10 +161,8 @@ impl SowEngine {
 
             self.nation_run_combat_for_slot(
                 slot,
-                bot_id,
-                bot_iq,
-                attack_cost,
-                alliance_cost,
+                (bot_id, bot_iq),
+                (attack_cost, alliance_cost),
                 &neighbor_players,
                 has_neutral,
                 &mut decisions,

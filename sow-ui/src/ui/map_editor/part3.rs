@@ -136,18 +136,17 @@ fn draw_viewport_overlay(ui: &mut Ui, viewport: MapEditorViewport, state: &MapEd
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn draw_confirm_dialog(
+pub(super) fn draw_confirm_dialog(
     ctx: &Context,
-    title: &str,
-    body: &str,
-    yes_label: &str,
-    no_label: &str,
+    msg: (&str, &str),
+    labels: (&str, &str),
     open: &mut bool,
     compact: bool,
     on_yes: impl FnOnce() -> MapEditorAction,
     action: &mut MapEditorAction,
 ) {
+    let (title, body) = msg;
+    let (yes_label, no_label) = labels;
     if !*open {
         return;
     }

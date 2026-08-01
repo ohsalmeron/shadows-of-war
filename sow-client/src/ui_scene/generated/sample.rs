@@ -5,7 +5,7 @@
 //! authored UI inherits the real look and renders 1:1. The future exporter produces this same
 //! form from `assets/ui/sample.json`.
 
-use egui::{pos2, Id, RichText};
+use egui::{Id, RichText, pos2};
 use sow_ui_kit::theme;
 
 /// Render the `sample` scene. Absolute-positioned (Unity-style) via a fixed-pos `Area`, centered

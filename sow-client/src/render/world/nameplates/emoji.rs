@@ -1,17 +1,29 @@
+pub(crate) struct SideBadgeOpts<'a> {
+    pub pos: egui::Pos2,
+    pub size: f32,
+    pub player_id: u16,
+    pub is_me: bool,
+    pub active: bool,
+    pub anim_id_str: &'static str,
+    pub emoji: &'a str,
+    pub color_glow: Option<egui::Color32>,
+    pub flash_alpha: f32,
+}
+
 /// Status badge drawn at an absolute screen position (beside avatar). Spring entrance + glow.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_side_status_badge(
     painter: &egui::Painter,
-    pos: egui::Pos2,
-    size: f32,
-    player_id: u16,
-    is_me: bool,
-    active: bool,
-    anim_id_str: &'static str,
-    emoji: &str,
-    color_glow: Option<egui::Color32>,
-    flash_alpha: f32,
+    opts: &SideBadgeOpts,
 ) {
+    let pos = opts.pos;
+    let size = opts.size;
+    let player_id = opts.player_id;
+    let is_me = opts.is_me;
+    let active = opts.active;
+    let anim_id_str = opts.anim_id_str;
+    let emoji = opts.emoji;
+    let color_glow = opts.color_glow;
+    let flash_alpha = opts.flash_alpha;
     let anim_id = egui::Id::new((anim_id_str, player_id));
     if !sow_ui_kit::theme::dev_config::DevConfig::get().vfx_status_emojis {
         return;

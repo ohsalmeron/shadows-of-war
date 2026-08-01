@@ -23,10 +23,10 @@ mod pointer;
 mod steps;
 
 use crate::app::SowApp;
-use objectives::{draw_objectives_panel, ObjRow, ObjState};
+use objectives::{ObjRow, ObjState, draw_objectives_panel};
 use pointer::draw_tutorial_pointer;
 use sow_ui::widgets::{BottomDialog, DialogButton, SpeakerVisual, ThemeButtonStyle};
-use steps::{objective_progress, ADVISOR, CHAPTER_1};
+use steps::{ADVISOR, CHAPTER_1, objective_progress};
 
 /// How long a non-destructive dialog holds the bottom panel before auto-advancing (the takeover is
 /// "for a limited time"; a tap on the panel or a click on the map skips it sooner). Destructive or
@@ -51,6 +51,17 @@ pub enum TutorialStep {
 /// the second condition structurally, so a stale `tutorial_active` can never paint over multiplayer.
 pub(crate) const fn tutorial_renders(active: bool, is_offline: bool) -> bool {
     active && is_offline
+}
+
+pub(crate) struct DialogPayload<'a> {
+    pub id: &'a str,
+    pub visual: Option<SpeakerVisual>,
+    pub name: Option<String>,
+    pub title: String,
+    pub body: String,
+    pub buttons: Vec<DialogButton>,
+    pub click_anywhere: bool,
+    pub auto_dismiss: Option<f32>,
 }
 
 impl SowApp {
@@ -237,14 +248,16 @@ impl SowApp {
             // A quest just completed: a portrait-less "Quest Complete" flash, auto-dismissing.
             let clicked = self.present_dialog(
                 ctx,
-                &format!("tutorial_completion_{}_{}", self.sim.config.seed, idx),
-                None,
-                None,
-                "🏆 Quest Complete".to_string(),
-                format!("{title} — onward, Iceni!"),
-                Vec::new(),
-                true,
-                Some(QUEST_COMPLETE_SECS),
+                DialogPayload {
+                    id: &format!("tutorial_completion_{}_{}", self.sim.config.seed, idx),
+                    visual: None,
+                    name: None,
+                    title: "🏆 Quest Complete".to_string(),
+                    body: format!("{title} — onward, Iceni!"),
+                    buttons: Vec::new(),
+                    click_anywhere: true,
+                    auto_dismiss: Some(QUEST_COMPLETE_SECS),
+                },
             );
             let elapsed = self
                 .ui
@@ -275,14 +288,16 @@ impl SowApp {
                 });
             let clicked = self.present_dialog(
                 ctx,
-                &format!("tutorial_intro_{}_{}", self.sim.config.seed, name),
-                visual,
-                Some(line.speaker),
-                line.title,
-                line.body,
-                vec![DialogButton::new("Got it", ThemeButtonStyle::Primary)],
-                true,
-                Some(DIALOG_AUTODISMISS_SECS),
+                DialogPayload {
+                    id: &format!("tutorial_intro_{}_{}", self.sim.config.seed, name),
+                    visual,
+                    name: Some(line.speaker),
+                    title: line.title,
+                    body: line.body,
+                    buttons: vec![DialogButton::new("Got it", ThemeButtonStyle::Primary)],
+                    click_anywhere: true,
+                    auto_dismiss: Some(DIALOG_AUTODISMISS_SECS),
+                },
             );
             let elapsed = self
                 .ui
@@ -314,14 +329,16 @@ impl SowApp {
             };
             let clicked = self.present_dialog(
                 ctx,
-                &format!("tutorial_dialog_{}_{}", self.sim.config.seed, idx),
-                Some(SpeakerVisual::Avatar(ADVISOR)),
-                Some("Boudica".to_string()),
-                step.title.to_string(),
-                step.body.to_string(),
-                buttons,
-                !is_last_step, // whole panel closes it only if not last step
-                auto_dismiss,
+                DialogPayload {
+                    id: &format!("tutorial_dialog_{}_{}", self.sim.config.seed, idx),
+                    visual: Some(SpeakerVisual::Avatar(ADVISOR)),
+                    name: Some("Boudica".to_string()),
+                    title: step.title.to_string(),
+                    body: step.body.to_string(),
+                    buttons,
+                    click_anywhere: !is_last_step,
+                    auto_dismiss,
+                },
             );
             let elapsed = self
                 .ui
@@ -364,19 +381,20 @@ impl SowApp {
     /// One frame async: the payload is drawn later this frame and the click arrives next frame via
     /// `bottom_dialog_click` — imperceptible for a dismiss. The click is **id-tagged**, so a click
     /// left over from a different dialog still fading out is discarded rather than misattributed.
-    #[allow(clippy::too_many_arguments)]
+
     fn present_dialog(
         &mut self,
         _ctx: &egui::Context,
-        id: &str,
-        visual: Option<SpeakerVisual>,
-        name: Option<String>,
-        title: String,
-        body: String,
-        buttons: Vec<DialogButton>,
-        click_anywhere: bool,
-        auto_dismiss: Option<f32>,
+        payload: DialogPayload,
     ) -> Option<usize> {
+        let id = payload.id;
+        let visual = payload.visual;
+        let name = payload.name;
+        let title = payload.title;
+        let body = payload.body;
+        let buttons = payload.buttons;
+        let click_anywhere = payload.click_anywhere;
+        let auto_dismiss = payload.auto_dismiss;
         let clicked = match self.ui.app.hud_state.bottom_dialog_click.take() {
             Some((cid, idx)) if cid == id => Some(idx),
             _ => None,

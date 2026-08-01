@@ -1,6 +1,6 @@
 use crate::diplomacy::{
-    alliance_propose_roll_cap, is_valid_alliance_target, should_reject_traitor_request,
-    ALLIANCE_RENEWAL_WINDOW_TICKS,
+    ALLIANCE_RENEWAL_WINDOW_TICKS, alliance_propose_roll_cap, is_valid_alliance_target,
+    should_reject_traitor_request,
 };
 use crate::engine::SowEngine;
 use crate::player::PlayerType;
@@ -52,17 +52,16 @@ impl SowEngine {
         (neighbor_players, has_neutral)
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn nation_run_diplomacy_for_slot(
         &mut self,
-        bot_id: u16,
-        bot_iq: u32,
-        alliance_cost: f64,
-        send_cost: f64,
+        bot: (u16, u32),
+        costs: (f64, f64),
         neighbor_players: &[u16],
         has_neutral: bool,
         decisions: &mut Vec<BotDecision>,
     ) {
+        let (bot_id, bot_iq) = bot;
+        let (alliance_cost, send_cost) = costs;
         // ── Alliance Proposal Evaluation ───────────────────────────────
         let mut proposals_to_accept = Vec::new();
         for prop in &self.alliances_proposed {

@@ -80,8 +80,7 @@ impl SowEngine {
                             0,
                             prod.kind,
                             prod.kind.max_health(), // Treat troops as health for ships
-                            spawn_tile,
-                            spawn_tile,
+                            (spawn_tile, spawn_tile),
                             vec![],
                         ));
                     }

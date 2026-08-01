@@ -1,8 +1,8 @@
 //! Full-screen leader hero backdrop — on-demand load, book-style page turns between leaders.
 
 use crate::ui::animation::{
-    leader_page_in_alpha, leader_page_out_alpha, leader_page_turn_t, LEADER_PAGE_FADE_IN_START,
-    LEADER_PAGE_LOADING_MIN, LEADER_PAGE_TURN_DURATION,
+    LEADER_PAGE_FADE_IN_START, LEADER_PAGE_LOADING_MIN, LEADER_PAGE_TURN_DURATION,
+    leader_page_in_alpha, leader_page_out_alpha, leader_page_turn_t,
 };
 use crate::ui::asset_loader::AssetLoader;
 use crate::widgets::avatar_picker::{
@@ -128,17 +128,24 @@ fn paint_page_spine(ui: &Ui, screen_rect: Rect, turn_t: f32, forward: bool) {
     );
 }
 
-#[allow(clippy::too_many_arguments)]
-fn draw_page_turn(
-    ui: &mut Ui,
+struct PageTurnCtx<'a> {
     screen_rect: Rect,
     mobile: bool,
-    asset_loader: &AssetLoader,
-    transition: &LeaderBackdropTransition,
+    asset_loader: &'a AssetLoader,
+    transition: &'a LeaderBackdropTransition,
     turn_t: f32,
-    incoming_tex: Option<&egui::TextureHandle>,
-    loading_label: &str,
-) {
+    incoming_tex: Option<&'a egui::TextureHandle>,
+    loading_label: &'a str,
+}
+
+fn draw_page_turn(ui: &mut Ui, ctx: &PageTurnCtx) {
+    let screen_rect = ctx.screen_rect;
+    let mobile = ctx.mobile;
+    let asset_loader = ctx.asset_loader;
+    let transition = ctx.transition;
+    let turn_t = ctx.turn_t;
+    let incoming_tex = ctx.incoming_tex;
+    let loading_label = ctx.loading_label;
     let w = screen_rect.width();
     let forward = transition.turn_forward;
     let out_sign = if forward { -1.0 } else { 1.0 };
@@ -205,17 +212,24 @@ fn advance_phase(transition: &mut LeaderBackdropTransition, target_ready: bool, 
 }
 
 /// Draw hero backdrop; returns true when `selected` changed this frame.
-#[allow(clippy::too_many_arguments)]
-pub fn draw_leader_hero_backdrop(
-    ui: &mut Ui,
-    screen_rect: Rect,
-    selected: Leader,
-    mobile: bool,
-    asset_loader: &mut AssetLoader,
-    transition: &mut LeaderBackdropTransition,
-    loading_label: &str,
-    draw_picker_gradient: bool,
-) -> bool {
+pub struct LeaderHeroBackdropCtx<'a> {
+    pub screen_rect: Rect,
+    pub selected: Leader,
+    pub mobile: bool,
+    pub asset_loader: &'a mut AssetLoader,
+    pub transition: &'a mut LeaderBackdropTransition,
+    pub loading_label: &'a str,
+    pub draw_picker_gradient: bool,
+}
+
+pub fn draw_leader_hero_backdrop(ui: &mut Ui, ctx: &mut LeaderHeroBackdropCtx) -> bool {
+    let screen_rect = ctx.screen_rect;
+    let selected = ctx.selected;
+    let mobile = ctx.mobile;
+    let asset_loader = &mut *ctx.asset_loader;
+    let transition = &mut *ctx.transition;
+    let loading_label = ctx.loading_label;
+    let draw_picker_gradient = ctx.draw_picker_gradient;
     asset_loader.set_leader_portrait_focus(selected, mobile);
 
     let reduced_motion = crate::ui::theme::anim_duration_from_ctx(ui.ctx()) <= 0.02;
@@ -264,13 +278,15 @@ pub fn draw_leader_hero_backdrop(
             let turn_t = leader_page_turn_t(elapsed);
             draw_page_turn(
                 ui,
-                screen_rect,
-                mobile,
-                asset_loader,
-                transition,
-                turn_t,
-                incoming_tex,
-                loading_label,
+                &PageTurnCtx {
+                    screen_rect,
+                    mobile,
+                    asset_loader,
+                    transition,
+                    turn_t,
+                    incoming_tex,
+                    loading_label,
+                },
             );
         }
         BackdropPhase::Loading | BackdropPhase::Steady => {

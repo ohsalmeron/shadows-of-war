@@ -513,13 +513,15 @@ impl SowApp {
                                 .allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::hover());
                             crate::hud::avatar::draw_player_avatar(
                                 ui.painter(),
-                                avatar_rect.center(),
-                                10.0, // radius
-                                info.owner_id,
-                                &info.name,
-                                info.player_type,
-                                info.player_color_raw,
-                                &info.leader,
+                                &crate::hud::avatar::AvatarRenderOpts {
+                                    center: avatar_rect.center(),
+                                    radius: 10.0,
+                                    player_id: info.owner_id,
+                                    player_name: &info.name,
+                                    player_type: info.player_type,
+                                    player_color: info.player_color_raw,
+                                    leader: &info.leader,
+                                },
                                 &self.ui.app.asset_loader,
                             );
 

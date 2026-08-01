@@ -22,6 +22,15 @@ pub struct CoastlineGeometry {
     pub segments: Vec<Vec<(f32, f32)>>,
 }
 
+/// Geographic bounding box in WGS84 degrees, shared by all OSM rasterizer entry points.
+#[derive(Clone, Copy)]
+pub struct MapBBox {
+    pub min_lon: f64,
+    pub min_lat: f64,
+    pub max_lon: f64,
+    pub max_lat: f64,
+}
+
 pub fn map_dimensions(
     min_lon: f64,
     min_lat: f64,
@@ -34,39 +43,29 @@ pub fn map_dimensions(
     (width, height)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn extract_coastlines(
     data: &Value,
-    min_lon: f64,
-    _min_lat: f64,
-    _max_lon: f64,
-    max_lat: f64,
+    bbox: MapBBox,
     scale: f64,
     width: u32,
     height: u32,
 ) -> CoastlineGeometry {
-    let (_, _, segments) = collect_geometry(
-        data, min_lon, _min_lat, _max_lon, max_lat, scale, width, height,
-    );
-    CoastlineGeometry { segments }
+    let geo = collect_geometry(data, bbox, scale, width, height);
+    CoastlineGeometry {
+        segments: geo.coastlines,
+    }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn stamp_water_polygons(
     grid: &mut [MapTile],
     data: &Value,
-    min_lon: f64,
-    min_lat: f64,
-    max_lon: f64,
-    max_lat: f64,
+    bbox: MapBBox,
     scale: f64,
     width: u32,
     height: u32,
 ) {
-    let (_, water_rings, _) = collect_geometry(
-        data, min_lon, min_lat, max_lon, max_lat, scale, width, height,
-    );
-    for ring in &water_rings {
+    let geo = collect_geometry(data, bbox, scale, width, height);
+    for ring in &geo.water_rings {
         fill_polygon(width, height, &ring.points, |idx| {
             grid[idx] = MapTile::from_byte(PURE_WATER);
         });
@@ -121,23 +120,28 @@ pub fn build_landmass_from_coastlines(
     (width, height, grid)
 }
 
-#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+struct GeometryResult {
+    water_rings: Vec<LabeledRing>,
+    coastlines: Vec<Vec<(f32, f32)>>,
+}
+
 fn collect_geometry(
     data: &Value,
-    min_lon: f64,
-    _min_lat: f64,
-    _max_lon: f64,
-    max_lat: f64,
+    bbox: MapBBox,
     scale: f64,
     width: u32,
     height: u32,
-) -> (Vec<LabeledRing>, Vec<LabeledRing>, Vec<Vec<(f32, f32)>>) {
-    let mut land_rings = Vec::new();
+) -> GeometryResult {
+    let min_lon = bbox.min_lon;
+    let max_lat = bbox.max_lat;
     let mut water_rings = Vec::new();
     let mut coastlines = Vec::new();
 
     let Some(elements) = data.get("elements").and_then(|e| e.as_array()) else {
-        return (land_rings, water_rings, coastlines);
+        return GeometryResult {
+            water_rings,
+            coastlines,
+        };
     };
 
     for element in elements {
@@ -172,9 +176,8 @@ fn collect_geometry(
                 }
                 if let Some(kind) = classify_way(tags) {
                     let ring = LabeledRing { points };
-                    match kind {
-                        FillKind::Land => land_rings.push(ring),
-                        FillKind::Water => water_rings.push(ring),
+                    if kind == FillKind::Water {
+                        water_rings.push(ring);
                     }
                 }
             }
@@ -198,9 +201,8 @@ fn collect_geometry(
                             geometry_to_points(geom, min_lon, max_lat, scale, width, height);
                         if points.len() >= 3 {
                             let ring = LabeledRing { points };
-                            match kind {
-                                FillKind::Land => land_rings.push(ring),
-                                FillKind::Water => water_rings.push(ring),
+                            if kind == FillKind::Water {
+                                water_rings.push(ring);
                             }
                         }
                     }
@@ -210,7 +212,10 @@ fn collect_geometry(
         }
     }
 
-    (land_rings, water_rings, coastlines)
+    GeometryResult {
+        water_rings,
+        coastlines,
+    }
 }
 
 fn lon_lat_to_pixel(

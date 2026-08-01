@@ -377,7 +377,6 @@ pub fn draw_terms_privacy_footer(
     );
 }
 
-
 /// Home screen, built from fixed panels so the chrome never scrolls — the only scroll
 /// region is the Public Games list in the middle of the central panel. The selected
 /// leader is already conveyed by the full-bleed backdrop and the identity avatar, so
@@ -407,7 +406,6 @@ fn draw_home(
     let compact = sow_ui_kit::theme::compact_viewport(root_ui.ctx());
     let scale = sow_ui_kit::theme::viewport_scale(root_ui.ctx());
     let section_gap = 12.0 * scale;
-    let action_min_h = 48.0 * scale;
     let muted = sow_ui_kit::theme::palette::text_muted();
     // Wide enough to place the CREATE button beside the Quick Match card.
     let wide = root_ui.available_width() > 760.0;
@@ -431,7 +429,13 @@ fn draw_home(
                     egui::Layout::top_down(egui::Align::Min),
                     |ui| {
                         profile::draw_user_profile_header(
-                            ui, state, compact, 56.0, asset_loader, lang, action,
+                            ui,
+                            state,
+                            compact,
+                            56.0,
+                            asset_loader,
+                            lang,
+                            action,
                         );
                     },
                 );
@@ -472,8 +476,13 @@ fn draw_home(
                         egui::Layout::top_down(egui::Align::Min),
                         |ui| {
                             browser::draw_left_column(
-                                ui, state, section_gap, action_min_h, compact, 0.0,
-                                action, asset_loader, lang,
+                                ui,
+                                state,
+                                compact,
+                                0.0,
+                                action,
+                                asset_loader,
+                                lang,
                             );
                         },
                     );
@@ -507,8 +516,7 @@ fn draw_home(
                     if wide {
                         ui.horizontal(|ui| {
                             let create_w = 200.0;
-                            let comp_w =
-                                (ui.available_width() - create_w - section_gap).max(160.0);
+                            let comp_w = (ui.available_width() - create_w - section_gap).max(160.0);
                             ui.allocate_ui_with_layout(
                                 egui::vec2(comp_w, bar_h),
                                 egui::Layout::top_down(egui::Align::Min),
@@ -527,11 +535,10 @@ fn draw_home(
                     } else {
                         join_browser::draw_private_join_row(ui, state, strings, action);
                         ui.add_space(section_gap * 0.5);
-                        let create_btn =
-                            crate::widgets::ThemeButton::new(&strings.create_game_btn)
-                                .style(crate::widgets::ThemeButtonStyle::Secondary)
-                                .min_size(egui::vec2(ui.available_width(), bar_h))
-                                .text_size(18.0);
+                        let create_btn = crate::widgets::ThemeButton::new(&strings.create_game_btn)
+                            .style(crate::widgets::ThemeButtonStyle::Secondary)
+                            .min_size(egui::vec2(ui.available_width(), bar_h))
+                            .text_size(18.0);
                         open_create = ui.add(create_btn).clicked();
                     }
                     if open_create {
@@ -569,13 +576,15 @@ pub fn draw(
         let use_portrait = backdrop_rect.width() < backdrop_rect.height();
         crate::widgets::draw_leader_hero_backdrop(
             root_ui,
-            backdrop_rect,
-            state.selected_leader,
-            use_portrait,
-            asset_loader,
-            &mut state.leader_backdrop,
-            &strings.loading_leader_portrait,
-            false,
+            &mut crate::widgets::LeaderHeroBackdropCtx {
+                screen_rect: backdrop_rect,
+                selected: state.selected_leader,
+                mobile: use_portrait,
+                asset_loader,
+                transition: &mut state.leader_backdrop,
+                loading_label: &strings.loading_leader_portrait,
+                draw_picker_gradient: false,
+            },
         );
     }
 
@@ -590,7 +599,14 @@ pub fn draw(
         });
 
     if state.show_custom_game && !state.is_waiting {
-        custom_game::draw(root_ui, state, asset_loader, &mut action, lang, reduced_motion);
+        custom_game::draw(
+            root_ui,
+            state,
+            asset_loader,
+            &mut action,
+            lang,
+            reduced_motion,
+        );
     } else if state.is_waiting {
         // Lobby waiting room fills the space between the top and the (already-drawn) footer.
         CentralPanel::default()
@@ -603,7 +619,12 @@ pub fn draw(
                     compact,
                 );
                 queue_overlay::draw_queue_overlay(
-                    ui, state, action_min_h, &mut action, asset_loader, lang,
+                    ui,
+                    state,
+                    action_min_h,
+                    &mut action,
+                    asset_loader,
+                    lang,
                 );
             });
     } else {

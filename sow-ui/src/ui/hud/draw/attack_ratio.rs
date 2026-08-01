@@ -4,9 +4,9 @@
 //! draggable knob is allowed to spill past it.
 
 use crate::UiAction;
-use egui::{pos2, vec2, Align2, Color32, CornerRadius, Rect, Stroke};
+use egui::{Align2, Color32, CornerRadius, Rect, Stroke, pos2, vec2};
 
-use super::super::state::{hud_map_controls_anchor_offset, HudState};
+use super::super::state::{HudState, hud_map_controls_anchor_offset};
 
 const KNOB_D: f32 = 28.0;
 const TRACK_W: f32 = 10.0;

@@ -2,7 +2,18 @@ use super::super::*;
 use super::cluster::RenderedBuilding;
 use crate::render::world::utils::*;
 
-#[allow(clippy::too_many_arguments)]
+pub(super) struct BunkerPaintOpts<'a> {
+    pub painter: &'a egui::Painter,
+    pub snap: &'a sow_core::protocol::SimSnapshot,
+    pub config: &'a sow_core::game_config::GameConfig,
+    pub b: &'a RenderedBuilding,
+    pub center: egui::Pos2,
+    pub zoom_scaled: f32,
+    pub sf: f32,
+    pub edge_cache_stale: bool,
+    pub player_colors: &'a [egui::Color32],
+}
+
 pub(super) fn paint_bunker_effects(
     ui: &mut crate::app::UiState,
     sim: &crate::app::SimState,
@@ -10,17 +21,18 @@ pub(super) fn paint_bunker_effects(
     time: &crate::app::TimeState,
     gfx: &crate::app::GraphicsState,
     ctx: &RenderContext,
-    painter: &egui::Painter,
-    snap: &sow_core::protocol::SimSnapshot,
-    config: &sow_core::game_config::GameConfig,
-    b: &RenderedBuilding,
-    center: egui::Pos2,
-    _base_size: f32,
-    zoom_scaled: f32,
-    sf: f32,
-    edge_cache_stale: bool,
-    player_colors: &[egui::Color32],
+    opts: &BunkerPaintOpts,
 ) {
+    let painter = opts.painter;
+    let snap = opts.snap;
+    let config = opts.config;
+    let b = opts.b;
+    let center = opts.center;
+    let zoom_scaled = opts.zoom_scaled;
+    let sf = opts.sf;
+    let edge_cache_stale = opts.edge_cache_stale;
+    let player_colors = opts.player_colors;
+
     if zoom_scaled < 2.5 {
         return;
     }

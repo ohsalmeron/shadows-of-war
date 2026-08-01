@@ -489,10 +489,8 @@ pub fn draw_map_editor(
 
     draw_confirm_dialog(
         ctx,
-        &strings.confirm_exit_title,
-        &strings.confirm_exit_body,
-        &strings.confirm_yes,
-        &strings.confirm_no,
+        (&strings.confirm_exit_title, &strings.confirm_exit_body),
+        (&strings.confirm_yes, &strings.confirm_no),
         &mut state.show_exit_confirm,
         compact,
         || MapEditorAction::Exit,
@@ -503,10 +501,8 @@ pub fn draw_map_editor(
     let export_body = strings.confirm_export_body.replace("{}", &slug);
     draw_confirm_dialog(
         ctx,
-        &strings.confirm_export_title,
-        &export_body,
-        &strings.confirm_yes,
-        &strings.confirm_no,
+        (&strings.confirm_export_title, &export_body),
+        (&strings.confirm_yes, &strings.confirm_no),
         &mut state.show_export_confirm,
         compact,
         || MapEditorAction::Export,

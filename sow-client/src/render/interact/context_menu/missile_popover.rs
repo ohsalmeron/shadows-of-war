@@ -1,22 +1,24 @@
 use crate::app::SowApp;
 use egui::Color32;
 
+use super::popovers::ContextMenuTileOpts;
+
 impl SowApp {
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn draw_missile_popover(
         &mut self,
         _ui: &mut egui::Ui,
         ctx: &egui::Context,
-        tile_idx: u32,
-        center: egui::Pos2,
-        scale: f32,
-        compact: bool,
-        screen: egui::Rect,
-        outer_r: f32,
-        is_own_territory: bool,
-        radial_missile_active: bool,
-        missile_active_id: egui::Id,
+        opts: &ContextMenuTileOpts,
     ) {
+        let tile_idx = opts.tile_idx;
+        let center = opts.center;
+        let scale = opts.scale;
+        let compact = opts.compact;
+        let screen = opts.screen;
+        let outer_r = opts.outer_r;
+        let is_own_territory = opts.is_own_territory;
+        let radial_missile_active = opts.radial_missile_active;
+        let missile_active_id = opts.missile_active_id;
         // Render Missile sub-popover
         if radial_missile_active && !is_own_territory {
             let mut area = egui::Area::new(egui::Id::new("radial_missile_popover"))

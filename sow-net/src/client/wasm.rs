@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use wasm_bindgen::prelude::*;
 use web_sys::{Event, MessageEvent, WebSocket};

@@ -1,5 +1,5 @@
 use crate::app::SowApp;
-use crate::{camera_zoom_upper_bound, CAMERA_MIN_ZOOM};
+use crate::{CAMERA_MIN_ZOOM, camera_zoom_upper_bound};
 
 impl SowApp {
     pub fn check_surface(&mut self) {

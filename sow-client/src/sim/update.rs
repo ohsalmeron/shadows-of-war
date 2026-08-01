@@ -373,7 +373,12 @@ impl SowApp {
                                     self.input.camera_y =
                                         self.input.screen_h * 0.5 - target_world_cy * target_zoom;
                                     self.input.has_snapped_camera_to_spawn = true;
-                                    log::info!("Game started! Camera smoothly arrived at player spawn at ({}, {}), zoom={}", target_world_cx, target_world_cy, self.input.camera_zoom);
+                                    log::info!(
+                                        "Game started! Camera smoothly arrived at player spawn at ({}, {}), zoom={}",
+                                        target_world_cx,
+                                        target_world_cy,
+                                        self.input.camera_zoom
+                                    );
                                 }
 
                                 // Request redraw while animating

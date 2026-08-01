@@ -29,8 +29,7 @@ pub fn paint_premium_glow_galley(
         base_color,
         super::text_glow::HUD_PREMIUM,
         None,
-        Some(shadow_color),
-        Some(shadow_color),
+        (Some(shadow_color), Some(shadow_color)),
     );
 }
 
@@ -39,24 +38,18 @@ fn paint_pixel_shadow_galley(
     painter: &egui::Painter,
     pos: Pos2,
     galley: Arc<Galley>,
-    base_color: Color32,
+    shadow_color: Color32,
 ) {
-    const LAYERS: [(f32, f32, u8); 6] = [
-        (0.0, 1.0, 230),
-        (1.0, 1.0, 175),
-        (0.0, 2.0, 120),
-        (1.0, 2.0, 70),
-        (2.0, 2.0, 35),
-        (1.0, 3.0, 18),
-    ];
-    for &(dx, dy, alpha) in &LAYERS {
-        painter.galley_with_override_text_color(
-            pos + Vec2::new(dx, dy),
+    let text_color = Color32::WHITE;
+    let offsets = [(1.0, 1.0), (0.0, 1.0), (1.0, 0.0)];
+    for &(dx, dy) in &offsets {
+        painter.galley(
+            pos + egui::vec2(dx, dy),
             galley.clone(),
-            Color32::from_black_alpha(alpha),
+            shadow_color.linear_multiply(0.4),
         );
     }
-    painter.galley_with_override_text_color(pos, galley, base_color);
+    painter.galley(pos, galley, text_color);
 }
 
 /// Thinner soft pixel shadow specifically for regular weight fonts to prevent muddiness.
@@ -121,8 +114,7 @@ pub fn paint_premium_glow_galley_regular(
         base_color,
         super::text_glow::HUD_PREMIUM_REGULAR,
         None,
-        Some(shadow_color),
-        Some(shadow_color.linear_multiply(0.7)),
+        (Some(shadow_color), Some(shadow_color.linear_multiply(0.7))),
     );
 }
 

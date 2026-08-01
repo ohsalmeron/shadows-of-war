@@ -441,7 +441,9 @@ pub fn play_bunker_defense_sound(seed: u32, spatial: SpatialSoundParams) {
     super::engine::LAST_BUNKER_SOUND_MS.store(now, std::sync::atomic::Ordering::Relaxed);
 
     let SpatialSoundParams { wx, wy, .. } = spatial;
-    let session = super::music::music_session().lock().unwrap_or_else(|e| e.into_inner());
+    let session = super::music::music_session()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut rng = SimpleRng::new(seed ^ super::music::tile_hash(wx, wy));
     let base_degree = super::music::pick_base_degree(&session, wx, wy, &mut rng);
     let start_freq = super::music::freq_at(session.root_octave + 1, base_degree);

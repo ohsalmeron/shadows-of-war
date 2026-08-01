@@ -1,24 +1,26 @@
 use crate::app::SowApp;
 use egui::Color32;
 
+use super::popovers::ContextMenuTileOpts;
+
 impl SowApp {
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn draw_build_popover(
         &mut self,
         _ui: &mut egui::Ui,
         ctx: &egui::Context,
-        tile_idx: u32,
-        center: egui::Pos2,
-        scale: f32,
-        compact: bool,
-        screen: egui::Rect,
-        outer_r: f32,
-        col: u32,
-        row: u32,
-        is_own_territory: bool,
-        radial_build_active: bool,
-        build_active_id: egui::Id,
+        opts: &ContextMenuTileOpts,
     ) {
+        let tile_idx = opts.tile_idx;
+        let center = opts.center;
+        let scale = opts.scale;
+        let compact = opts.compact;
+        let screen = opts.screen;
+        let outer_r = opts.outer_r;
+        let col = opts.col;
+        let row = opts.row;
+        let is_own_territory = opts.is_own_territory;
+        let radial_build_active = opts.radial_build_active;
+        let build_active_id = opts.build_active_id;
         // Render Build sub-popover
         if radial_build_active && is_own_territory {
             let mut area =

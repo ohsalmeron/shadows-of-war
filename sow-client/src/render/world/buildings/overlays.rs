@@ -2,25 +2,38 @@ use super::cluster::RenderedBuilding;
 use super::plates::*;
 use crate::render::world::utils::get_level_str;
 
-#[allow(clippy::too_many_arguments)]
+pub(super) struct BuildingOverlayOpts<'a> {
+    pub painter: &'a egui::Painter,
+    pub snap: &'a sow_core::protocol::SimSnapshot,
+    pub config: &'a sow_core::game_config::GameConfig,
+    pub b: &'a RenderedBuilding,
+    pub center: egui::Pos2,
+    pub base_size: f32,
+    pub zoom_scaled: f32,
+    pub final_scale: f32,
+    pub sf: f32,
+    pub hovered_tile_idx: Option<u32>,
+    pub player_colors: &'a [egui::Color32],
+}
+
 pub(super) fn paint_building_overlays(
     ui: &mut crate::app::UiState,
     sim: &crate::app::SimState,
     input: &crate::app::InputState,
-    _time: &crate::app::TimeState,
     gfx: &mut crate::app::GraphicsState,
-    painter: &egui::Painter,
-    snap: &sow_core::protocol::SimSnapshot,
-    config: &sow_core::game_config::GameConfig,
-    b: &RenderedBuilding,
-    center: egui::Pos2,
-    base_size: f32,
-    zoom_scaled: f32,
-    final_scale: f32,
-    sf: f32,
-    hovered_tile_idx: Option<u32>,
-    player_colors: &[egui::Color32],
+    opts: &BuildingOverlayOpts,
 ) {
+    let painter = opts.painter;
+    let snap = opts.snap;
+    let config = opts.config;
+    let b = opts.b;
+    let center = opts.center;
+    let base_size = opts.base_size;
+    let zoom_scaled = opts.zoom_scaled;
+    let final_scale = opts.final_scale;
+    let sf = opts.sf;
+    let hovered_tile_idx = opts.hovered_tile_idx;
+    let player_colors = opts.player_colors;
     let dev = sow_ui_kit::theme::dev_config::DevConfig::get();
     let is_my_building = sim.my_player_id == Some(b.owner_id);
 
@@ -105,8 +118,13 @@ pub(super) fn paint_building_overlays(
         let text_val = get_level_str(b.active_level);
         let font_size = {
             let raw = zoom_scaled * 0.65 * final_scale;
-            if dev.clamp_text_zoom { raw.clamp(8.0, 18.0) } else { raw }
-        }.round();
+            if dev.clamp_text_zoom {
+                raw.clamp(8.0, 18.0)
+            } else {
+                raw
+            }
+        }
+        .round();
         let bg_center = egui::pos2(center.x + base_size * 0.45, center.y - base_size * 0.45);
 
         let mut gpu_text_rendered = false;
@@ -135,12 +153,9 @@ pub(super) fn paint_building_overlays(
                 text_val,
                 [bg_center.x * sf, baseline_y],
                 font_size * font_size_scale * sf,
-                color_arr,
-                outline_color_arr,
+                (color_arr, outline_color_arr),
                 settings,
-                0.5,
-                char_spacing,
-                emoji_scale,
+                (0.5, char_spacing, emoji_scale),
             );
         }
 

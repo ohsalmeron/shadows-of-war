@@ -39,8 +39,7 @@ pub(super) fn execute(
         "test -d {} && command -v cargo >/dev/null",
         shell_quote(&build_root)
     );
-    run("ssh", &[&build_host, &build_check], None)
-        .context("FreeBSD build VM not ready")?;
+    run("ssh", &[&build_host, &build_check], None).context("FreeBSD build VM not ready")?;
 
     let source = format!("{}/", paths.root.display());
     let destination = format!("{build_host}:{build_root}/");
@@ -88,21 +87,30 @@ pub(super) fn execute(
         let rc_d_remote = "/tmp/sow_backfill.rc";
         run(
             "scp",
-            &[rc_d_src.to_str().context("rc.d path")?, &format!("{host}:{rc_d_remote}")],
+            &[
+                rc_d_src.to_str().context("rc.d path")?,
+                &format!("{host}:{rc_d_remote}"),
+            ],
             None,
         )?;
         run(
             "ssh",
             &[
                 host,
-                &format!("sudo install -o root -g wheel -m 0755 {rc_d_remote} /usr/local/etc/rc.d/sow_backfill && rm {rc_d_remote}"),
+                &format!(
+                    "sudo install -o root -g wheel -m 0755 {rc_d_remote} /usr/local/etc/rc.d/sow_backfill && rm {rc_d_remote}"
+                ),
             ],
             None,
         )?;
 
         run(
             "scp",
-            &["-3", &format!("{build_host}:{remote_bin}"), &format!("{host}:/tmp/sow-backfill")],
+            &[
+                "-3",
+                &format!("{build_host}:{remote_bin}"),
+                &format!("{host}:/tmp/sow-backfill"),
+            ],
             None,
         )?;
         run(
@@ -118,7 +126,10 @@ pub(super) fn execute(
         if map_src.is_file() {
             run(
                 "scp",
-                &[map_src.to_str().context("map path")?, &format!("{host}:/tmp/map.bin")],
+                &[
+                    map_src.to_str().context("map path")?,
+                    &format!("{host}:/tmp/map.bin"),
+                ],
                 None,
             )?;
             run(
@@ -139,7 +150,9 @@ pub(super) fn execute(
             "ssh",
             &[
                 host,
-                &format!("sudo tee /usr/local/etc/sow-backfill.conf >/dev/null <<'CONF'\n{conf}CONF"),
+                &format!(
+                    "sudo tee /usr/local/etc/sow-backfill.conf >/dev/null <<'CONF'\n{conf}CONF"
+                ),
             ],
             None,
         )?;

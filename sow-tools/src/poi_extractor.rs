@@ -15,17 +15,15 @@ const PLACE_TYPES: &[&str] = &[
     "neighbourhood",
 ];
 
-#[allow(clippy::too_many_arguments)]
 pub fn extract_bots(
     data: &Value,
-    min_lon: f64,
-    _min_lat: f64,
-    _max_lon: f64,
-    max_lat: f64,
+    bbox: sow_map::osm_coast::MapBBox,
     scale: f64,
     map_width: u32,
     map_height: u32,
 ) -> Vec<POISpawn> {
+    let min_lon = bbox.min_lon;
+    let max_lat = bbox.max_lat;
     let mut spawns = Vec::new();
 
     let Some(elements) = data.get("elements").and_then(|e| e.as_array()) else {

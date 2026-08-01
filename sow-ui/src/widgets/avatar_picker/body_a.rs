@@ -208,11 +208,8 @@ fn draw_left_vertical_scrollbar(
         &mut state,
         scroll_id,
         &response,
-        handle_rect,
-        scroll_track,
-        handle_len,
-        handle_travel,
-        max_offset,
+        (handle_rect, scroll_track),
+        (handle_len, handle_travel, max_offset),
     ) {
         ui.ctx().request_repaint();
     }
@@ -242,18 +239,16 @@ fn draw_left_vertical_scrollbar(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn handle_response_drag_or_track_click(
     ui: &mut egui::Ui,
     state: &mut egui::scroll_area::State,
     scroll_id: egui::Id,
     bar_response: &egui::Response,
-    handle_rect: Rect,
-    scroll_track: Rect,
-    handle_len: f32,
-    handle_travel: f32,
-    max_offset: f32,
+    rects: (Rect, Rect),
+    metrics: (f32, f32, f32),
 ) -> bool {
+    let (handle_rect, scroll_track) = rects;
+    let (handle_len, handle_travel, max_offset) = metrics;
     let mut changed = false;
 
     if bar_response.dragged() {

@@ -1,6 +1,6 @@
 use super::state::*;
 use crate::render::gpu::{MapRenderer, RenderContext};
-use crate::{spawn_sow_client_connect, EngineInitEvent, MapDownloadEvent};
+use crate::{EngineInitEvent, MapDownloadEvent, spawn_sow_client_connect};
 use blade_egui::GuiPainter;
 use blade_graphics as gpu;
 use egui::{Context, RawInput, Rect};
@@ -92,11 +92,11 @@ impl SowApp {
         #[cfg(target_arch = "wasm32")]
         let ime_bridge = crate::ime::WasmImeBridge::new();
 
-        #[allow(unused_mut)]
-        let mut ws_url =
-            std::env::var("SOW_WS_URL").unwrap_or_else(|_| "wss://ws.shadowsofwar.io/ws/".to_string());
+        let ws_url = std::env::var("SOW_WS_URL")
+            .unwrap_or_else(|_| "wss://ws.shadowsofwar.io/ws/".to_string());
         #[cfg(target_arch = "wasm32")]
-        {
+        let ws_url = {
+            let mut ws_url = ws_url;
             if let Some(window) = web_sys::window() {
                 let mut found_in_js = false;
                 if let Ok(val) =
@@ -119,7 +119,8 @@ impl SowApp {
                     }
                 }
             }
-        }
+            ws_url
+        };
         app.main_menu_state.server_address = ws_url.clone();
         let orchestrator_url = ws_url.clone();
 
@@ -185,8 +186,7 @@ impl SowApp {
         let last_ping_time = Instant::now();
         let last_frame_time = Instant::now();
 
-        #[allow(unused_mut)]
-        let mut sow_app = Self {
+        let sow_app = Self {
             gfx: GraphicsState {
                 window,
                 surface,
@@ -371,6 +371,8 @@ impl SowApp {
             #[cfg(target_arch = "wasm32")]
             boot_ready_since: None,
         };
+        #[cfg(target_arch = "wasm32")]
+        let mut sow_app = sow_app;
         #[cfg(target_arch = "wasm32")]
         if let Some(portal) = crate::store_portals::load_portal_progress() {
             sow_app.progress = portal;

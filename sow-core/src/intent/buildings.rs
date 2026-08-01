@@ -1,6 +1,6 @@
 use crate::building::{
-    resolve_structure_spawn_tile, structure_build_cost_gold, structure_kind_enabled, Building,
-    CityModules, ModuleKind,
+    Building, CityModules, ModuleKind, resolve_structure_spawn_tile, structure_build_cost_gold,
+    structure_kind_enabled,
 };
 use crate::engine::SowEngine;
 use crate::game::{BuildingKind, GameEvent, GamePhase};

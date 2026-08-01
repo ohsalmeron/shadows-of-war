@@ -10,8 +10,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use egui::{Event, ImeEvent, Key, Modifiers};
-use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::closure::Closure;
 use web_sys::HtmlInputElement;
 
 const PROXY_ID: &str = "sow-wasm-ime-proxy";

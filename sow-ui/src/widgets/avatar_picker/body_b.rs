@@ -50,13 +50,15 @@ pub fn draw_leader_picker_modal(
             let use_portrait = screen_rect.width() < screen_rect.height();
             crate::widgets::leader_backdrop::draw_leader_hero_backdrop(
                 ui,
-                screen_rect,
-                *selected_leader,
-                use_portrait,
-                asset_loader,
-                leader_backdrop,
-                loading_label,
-                true,
+                &mut crate::widgets::leader_backdrop::LeaderHeroBackdropCtx {
+                    screen_rect,
+                    selected: *selected_leader,
+                    mobile: use_portrait,
+                    asset_loader,
+                    transition: leader_backdrop,
+                    loading_label,
+                    draw_picker_gradient: true,
+                },
             );
 
             let reign_dates = match *selected_leader {

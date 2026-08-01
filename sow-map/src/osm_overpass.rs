@@ -1,5 +1,5 @@
 use reqwest::Client;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::error::Error;
 use std::fs;
@@ -79,17 +79,17 @@ pub fn tile_bboxes(
 }
 
 /// Fetch coastlines one tile at a time, extract projected segments, drop raw JSON each iteration.
-#[allow(clippy::too_many_arguments)]
 pub async fn fetch_coastlines_tiled(
-    min_lon: f64,
-    min_lat: f64,
-    max_lon: f64,
-    max_lat: f64,
+    bbox: crate::osm_coast::MapBBox,
     scale: f64,
     map_width: u32,
     map_height: u32,
     cache_name: Option<&str>,
 ) -> Result<CoastlineGeometry, Box<dyn Error>> {
+    let min_lon = bbox.min_lon;
+    let min_lat = bbox.min_lat;
+    let max_lon = bbox.max_lon;
+    let max_lat = bbox.max_lat;
     let tiles = tile_bboxes(min_lon, min_lat, max_lon, max_lat);
     log::info!(
         "Overpass coastlines: {} tile(s) for bbox [{min_lon:.4}, {min_lat:.4}, {max_lon:.4}, {max_lat:.4}]",
@@ -139,9 +139,8 @@ pub async fn fetch_coastlines_tiled(
             }
         }
 
-        let extracted = crate::osm_coast::extract_coastlines(
-            &json, min_lon, min_lat, max_lon, max_lat, scale, map_width, map_height,
-        );
+        let extracted =
+            crate::osm_coast::extract_coastlines(&json, bbox, scale, map_width, map_height);
         log::info!("    {} coastline segments", extracted.segments.len());
 
         if let Some(ref dir) = cache_dir {
@@ -166,17 +165,17 @@ pub async fn fetch_coastlines_tiled(
 }
 
 /// Fetch lake/bay polygons one tile at a time and stamp them onto the grid immediately.
-#[allow(clippy::too_many_arguments)]
 pub async fn stamp_water_tiled(
     grid: &mut [sow_core::map::MapTile],
-    min_lon: f64,
-    min_lat: f64,
-    max_lon: f64,
-    max_lat: f64,
+    bbox: crate::osm_coast::MapBBox,
     scale: f64,
     map_width: u32,
     map_height: u32,
 ) -> Result<(), Box<dyn Error>> {
+    let min_lon = bbox.min_lon;
+    let min_lat = bbox.min_lat;
+    let max_lon = bbox.max_lon;
+    let max_lat = bbox.max_lat;
     let tiles = tile_bboxes(min_lon, min_lat, max_lon, max_lat);
     eprintln!("Overpass water bodies: {} tile(s)", tiles.len());
 
@@ -211,9 +210,7 @@ pub async fn stamp_water_tiled(
         }
 
         let before = grid.iter().filter(|t| t.is_water()).count();
-        crate::osm_coast::stamp_water_polygons(
-            grid, &json, min_lon, min_lat, max_lon, max_lat, scale, map_width, map_height,
-        );
+        crate::osm_coast::stamp_water_polygons(grid, &json, bbox, scale, map_width, map_height);
         let after = grid.iter().filter(|t| t.is_water()).count();
         if after > before {
             stamped += 1;

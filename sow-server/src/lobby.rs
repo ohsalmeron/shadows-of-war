@@ -46,9 +46,6 @@ pub struct ServerLobby {
     pub config: GameConfig,
     pub game_mode: String,
     pub relay_port: Option<u16>,
-    /// True while a relay spawn is in-flight (outside the games lock) to prevent
-    /// the next tick from re-collecting the same lobby.
-    pub relay_pending: bool,
     /// Only set for Custom lobbies — the player_id of whoever created the lobby.
     pub host_player_id: Option<u16>,
     pub password: Option<String>,
@@ -71,17 +68,26 @@ impl ServerLobby {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+pub struct SpawnLobbyOpts {
+    pub game_mode: String,
+    pub kind: LobbyKind,
+    pub is_private: bool,
+    pub config_override: Option<GameConfig>,
+    pub password: Option<String>,
+    pub host_name: String,
+}
+
 fn spawn_waiting_lobby(
     games: &mut Vec<ServerLobby>,
     next_id: &mut u64,
-    game_mode: &str,
-    kind: LobbyKind,
-    is_private: bool,
-    config_override: Option<GameConfig>,
-    password: Option<String>,
-    host_name: String,
+    opts: SpawnLobbyOpts,
 ) {
+    let game_mode = opts.game_mode;
+    let kind = opts.kind;
+    let is_private = opts.is_private;
+    let config_override = opts.config_override;
+    let password = opts.password;
+    let host_name = opts.host_name;
     let id = *next_id;
     *next_id += 1;
     let mut config = if let Some(mut c) = config_override {
@@ -132,7 +138,6 @@ fn spawn_waiting_lobby(
         config,
         game_mode: game_mode.to_string(),
         relay_port: None,
-        relay_pending: false,
         host_player_id: None,
         password,
         host_name,
@@ -151,12 +156,14 @@ fn ensure_queue_depth(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
         spawn_waiting_lobby(
             games,
             next_id,
-            "FFA",
-            LobbyKind::Matchmaking,
-            false,
-            None,
-            None,
-            String::new(),
+            SpawnLobbyOpts {
+                game_mode: "FFA".to_string(),
+                kind: LobbyKind::Matchmaking,
+                is_private: false,
+                config_override: None,
+                password: None,
+                host_name: String::new(),
+            },
         );
     }
     if games
@@ -168,12 +175,14 @@ fn ensure_queue_depth(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
         spawn_waiting_lobby(
             games,
             next_id,
-            "Teams",
-            LobbyKind::Matchmaking,
-            false,
-            None,
-            None,
-            String::new(),
+            SpawnLobbyOpts {
+                game_mode: "Teams".to_string(),
+                kind: LobbyKind::Matchmaking,
+                is_private: false,
+                config_override: None,
+                password: None,
+                host_name: String::new(),
+            },
         );
     }
 }
@@ -341,22 +350,36 @@ fn resolve_join_target(requested: Option<u64>, games: &[ServerLobby]) -> Option<
     primary_lobby_id(games, "FFA")
 }
 
-#[allow(clippy::too_many_arguments)]
+pub struct JoinPlayerOpts {
+    pub name: String,
+    pub clan_tag: String,
+    pub civilization: sow_core::player::Civilization,
+    pub leader: sow_core::player::Leader,
+    pub client_tx: mpsc::Sender<Vec<u8>>,
+    pub target_lobby_id: Option<u64>,
+    pub host_private: bool,
+    pub database_account_id: Option<String>,
+    pub host_config: Option<Box<GameConfig>>,
+    pub password: Option<String>,
+    pub ip: String,
+}
+
 pub fn join_player(
     games: &mut Vec<ServerLobby>,
     next_id: &mut u64,
-    name: String,
-    clan_tag: String,
-    civilization: sow_core::player::Civilization,
-    leader: sow_core::player::Leader,
-    client_tx: mpsc::Sender<Vec<u8>>,
-    target_lobby_id: Option<u64>,
-    host_private: bool,
-    database_account_id: Option<String>,
-    host_config: Option<Box<GameConfig>>,
-    password: Option<String>,
-    ip: String,
+    opts: JoinPlayerOpts,
 ) -> Result<(u64, u16, String, bool), String> {
+    let name = opts.name;
+    let clan_tag = opts.clan_tag;
+    let civilization = opts.civilization;
+    let leader = opts.leader;
+    let client_tx = opts.client_tx;
+    let target_lobby_id = opts.target_lobby_id;
+    let host_private = opts.host_private;
+    let database_account_id = opts.database_account_id;
+    let host_config = opts.host_config;
+    let password = opts.password;
+    let ip = opts.ip;
     let mut is_new_host = false;
     let lobby_id = if host_private {
         if target_lobby_id.is_some() {
@@ -378,12 +401,14 @@ pub fn join_player(
         spawn_waiting_lobby(
             games,
             next_id,
-            &game_mode,
-            LobbyKind::Custom,
-            true,
-            host_config.map(|c| *c),
-            password.clone(),
-            name.clone(),
+            SpawnLobbyOpts {
+                game_mode,
+                kind: LobbyKind::Custom,
+                is_private: true,
+                config_override: host_config.map(|c| *c),
+                password: password.clone(),
+                host_name: name.clone(),
+            },
         );
         is_new_host = true;
         games.last().unwrap().id
@@ -399,12 +424,14 @@ pub fn join_player(
         spawn_waiting_lobby(
             games,
             next_id,
-            &game_mode,
-            LobbyKind::Custom,
-            false,
-            Some(*config),
-            password.clone(),
-            name.clone(),
+            SpawnLobbyOpts {
+                game_mode,
+                kind: LobbyKind::Custom,
+                is_private: false,
+                config_override: Some(*config),
+                password: password.clone(),
+                host_name: name.clone(),
+            },
         );
         is_new_host = true;
         games.last().unwrap().id
@@ -418,30 +445,40 @@ pub fn join_player(
                     spawn_waiting_lobby(
                         games,
                         next_id,
-                        "FFA",
-                        LobbyKind::Custom,
-                        true,
-                        None,
-                        None,
-                        String::new(),
+                        SpawnLobbyOpts {
+                            game_mode: "FFA".to_string(),
+                            kind: LobbyKind::Custom,
+                            is_private: true,
+                            config_override: None,
+                            password: None,
+                            host_name: String::new(),
+                        },
                     );
                     let new_lobby = games.last_mut().unwrap();
                     new_lobby.id = req; // Override the ID to match the rematch ID
                     req
-                } else if games.iter().any(|g| g.id == req && g.kind == LobbyKind::Matchmaking) {
-                    log::info!("[JOIN] Requested matchmaking lobby {} not joinable, falling back", req);
+                } else if games
+                    .iter()
+                    .any(|g| g.id == req && g.kind == LobbyKind::Matchmaking)
+                {
+                    log::info!(
+                        "[JOIN] Requested matchmaking lobby {} not joinable, falling back",
+                        req
+                    );
                     if let Some(fallback_id) = resolve_join_target(None, games) {
                         fallback_id
                     } else {
                         spawn_waiting_lobby(
                             games,
                             next_id,
-                            "FFA",
-                            LobbyKind::Matchmaking,
-                            false,
-                            None,
-                            None,
-                            String::new(),
+                            SpawnLobbyOpts {
+                                game_mode: "FFA".to_string(),
+                                kind: LobbyKind::Matchmaking,
+                                is_private: false,
+                                config_override: None,
+                                password: None,
+                                host_name: String::new(),
+                            },
                         );
                         games.last().unwrap().id
                     }
@@ -466,12 +503,14 @@ pub fn join_player(
                 spawn_waiting_lobby(
                     games,
                     next_id,
-                    "FFA",
-                    LobbyKind::Matchmaking,
-                    false,
-                    None,
-                    None,
-                    String::new(),
+                    SpawnLobbyOpts {
+                        game_mode: "FFA".to_string(),
+                        kind: LobbyKind::Matchmaking,
+                        is_private: false,
+                        config_override: None,
+                        password: None,
+                        host_name: String::new(),
+                    },
                 );
                 games.last().unwrap().id
             }
@@ -888,7 +927,12 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                         Ok(sync_json) => {
                             for p in &lobby.players {
                                 if let Err(e) = p.tx.try_send(sync_json.clone()) {
-                                    log::debug!("[LOADING] SyncState send failed for player {} in lobby {}: {}", p.player_id, lobby.id, e);
+                                    log::debug!(
+                                        "[LOADING] SyncState send failed for player {} in lobby {}: {}",
+                                        p.player_id,
+                                        lobby.id,
+                                        e
+                                    );
                                 }
                             }
                         }
@@ -924,7 +968,10 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                                     }
                                 });
                             } else {
-                                log::error!("[LOADING] Failed to serialize LobbyClosed for lobby {} — dropping all slow clients", lobby.id);
+                                log::error!(
+                                    "[LOADING] Failed to serialize LobbyClosed for lobby {} — dropping all slow clients",
+                                    lobby.id
+                                );
                                 lobby
                                     .players
                                     .retain(|p| lobby.ready_players.contains(&p.player_id));
@@ -936,11 +983,18 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                             );
                         }
                         if lobby.players.is_empty() {
-                            log::warn!("[SERVER ORCHESTRATOR] Lobby {} aborted relay spawn: No validated human players remaining (they disconnected or failed map sync).", lobby.id);
+                            log::warn!(
+                                "[SERVER ORCHESTRATOR] Lobby {} aborted relay spawn: No validated human players remaining (they disconnected or failed map sync).",
+                                lobby.id
+                            );
                             // If everyone dropped, just remove the lobby
                             true
                         } else {
-                            log::info!("[SERVER ORCHESTRATOR] Lobby {} marked ReadyForRelay with {} validated human players.", lobby.id, lobby.players.len());
+                            log::info!(
+                                "[SERVER ORCHESTRATOR] Lobby {} marked ReadyForRelay with {} validated human players.",
+                                lobby.id,
+                                lobby.players.len()
+                            );
                             lobby.phase = LobbyPhase::ReadyForRelay;
                             false
                         }

@@ -224,11 +224,7 @@ pub fn draw_standard_modal<R>(
 
     let y_offset = if *is_open {
         let t = progress;
-        if t >= 1.0 {
-            0.0
-        } else {
-            -80.0 * (1.0 - t)
-        }
+        if t >= 1.0 { 0.0 } else { -80.0 * (1.0 - t) }
     } else {
         0.0
     };

@@ -139,7 +139,10 @@ fn push_spawn(entry: &Value, spawns: &mut Vec<MapSpawn>) {
 
 pub fn clamp_map_dimensions_proportional(width: u32, height: u32, max_pixels: u32) -> (u32, u32) {
     if (width as u64) * (height as u64) <= max_pixels as u64 {
-        return (sow_core::maps::align_map_dim(width), sow_core::maps::align_map_dim(height));
+        return (
+            sow_core::maps::align_map_dim(width),
+            sow_core::maps::align_map_dim(height),
+        );
     }
     let aspect = width as f64 / height as f64;
     let h = (max_pixels as f64 / aspect).sqrt();
@@ -168,7 +171,8 @@ fn import_from_bin_or_manifest(
         let width = map.width;
         let height = map.height;
         if (width as u64) * (height as u64) > sow_core::maps::MAX_MAP_PIXELS as u64 {
-            let (target_w, target_h) = clamp_map_dimensions_proportional(width, height, sow_core::maps::MAX_MAP_PIXELS);
+            let (target_w, target_h) =
+                clamp_map_dimensions_proportional(width, height, sow_core::maps::MAX_MAP_PIXELS);
             let mut rescaled = Vec::with_capacity((target_w * target_h) as usize);
             for ty in 0..target_h {
                 for tx in 0..target_w {
@@ -232,7 +236,8 @@ fn import_from_bin_or_manifest(
 
     let mut terrain = raw;
     if (width as u64) * (height as u64) > sow_core::maps::MAX_MAP_PIXELS as u64 {
-        let (target_w, target_h) = clamp_map_dimensions_proportional(width, height, sow_core::maps::MAX_MAP_PIXELS);
+        let (target_w, target_h) =
+            clamp_map_dimensions_proportional(width, height, sow_core::maps::MAX_MAP_PIXELS);
         let mut rescaled = Vec::with_capacity((target_w * target_h) as usize);
         for ty in 0..target_h {
             for tx in 0..target_w {

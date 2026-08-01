@@ -1,13 +1,12 @@
-use blade_graphics as gpu;
 use crate::context::RenderContext;
 use crate::text::msdf::FontAtlas;
 use crate::text::texture::FontAtlasTexture;
 use crate::text::types::{
-    TextGlobals, TmpFontSettings, TextInstanceGpu, TextShaderData,
-    KIND_GLYPH, KIND_EMOJI, KIND_DISC, KIND_RING, KIND_SPRITE, KIND_RECT,
-    AVATAR_CELL, AVATAR_COLS, AVATAR_ROWS, AVATAR_SLOT_COUNT,
-    avatar_slot_uv,
+    AVATAR_CELL, AVATAR_COLS, AVATAR_ROWS, AVATAR_SLOT_COUNT, KIND_DISC, KIND_EMOJI, KIND_GLYPH,
+    KIND_RECT, KIND_RING, KIND_SPRITE, TextGlobals, TextInstanceGpu, TextShaderData,
+    TmpFontSettings, avatar_slot_uv,
 };
+use blade_graphics as gpu;
 
 pub fn emoji_uv_opt(emoji: &str) -> Option<[f32; 4]> {
     sow_data::emoji::lookup(emoji).map(|r| {
@@ -179,19 +178,17 @@ impl TextRenderer {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn push_string(
         &mut self,
         text: &str,
         pos: [f32; 2],
         font_size: f32,
-        color: [f32; 4],
-        outline_color: [f32; 4],
+        colors: ([f32; 4], [f32; 4]),
         settings: TmpFontSettings,
-        align_x: f32,
-        char_spacing: f32,
-        emoji_scale: f32,
+        layout: (f32, f32, f32),
     ) {
+        let (color, outline_color) = colors;
+        let (align_x, char_spacing, emoji_scale) = layout;
         if text.is_empty() {
             return;
         }
@@ -247,7 +244,9 @@ impl TextRenderer {
                 }
                 continue;
             }
-            let has_selector = chars.peek().is_some_and(|&(_, next_ch)| next_ch == '\u{fe0f}');
+            let has_selector = chars
+                .peek()
+                .is_some_and(|&(_, next_ch)| next_ch == '\u{fe0f}');
             let char_len = ch.len_utf8();
             let total_len = if has_selector {
                 char_len + '\u{fe0f}'.len_utf8()
@@ -301,7 +300,13 @@ impl TextRenderer {
     /// advance math `push_string` emits (glyph xadvance + kerning; emoji = `font_size * emoji_scale`;
     /// everything scaled by `char_spacing`). Lets callers size text boxes from the real GPU layout
     /// instead of an egui galley. Keep this loop in lockstep with `push_string`'s advance path.
-    pub fn measure_string(&self, text: &str, font_size: f32, char_spacing: f32, emoji_scale: f32) -> f32 {
+    pub fn measure_string(
+        &self,
+        text: &str,
+        font_size: f32,
+        char_spacing: f32,
+        emoji_scale: f32,
+    ) -> f32 {
         if text.is_empty() {
             return 0.0;
         }
@@ -320,7 +325,9 @@ impl TextRenderer {
                 prev_char = Some(ch);
                 continue;
             }
-            let has_selector = chars.peek().is_some_and(|&(_, next_ch)| next_ch == '\u{fe0f}');
+            let has_selector = chars
+                .peek()
+                .is_some_and(|&(_, next_ch)| next_ch == '\u{fe0f}');
             let char_len = ch.len_utf8();
             let stripped = &text[byte_idx..byte_idx + char_len];
             if emoji_uv_opt(stripped).is_some() {
@@ -340,17 +347,15 @@ impl TextRenderer {
     /// Push a screen-space emoji with alpha-dilated outline + drop shadow.
     /// `screen_pos` is the center in physical pixels, `half_size` the half-extent.
     /// Returns `false` if the emoji isn't in the atlas.
-    #[allow(clippy::too_many_arguments)]
     pub fn push_emoji(
         &mut self,
         emoji: &str,
         screen_pos: [f32; 2],
         half_size: f32,
         tint: [f32; 4],
-        outline_color: [f32; 4],
-        outline_thickness: f32,
-        shadow_offset_y: f32,
+        outline: ([f32; 4], f32, f32),
     ) -> bool {
+        let (outline_color, outline_thickness, shadow_offset_y) = outline;
         let Some(emoji_uv) = emoji_uv_opt(emoji) else {
             return false;
         };
@@ -408,7 +413,13 @@ impl TextRenderer {
 
     /// Push a circle-clipped image sprite from the avatar atlas. `center`/`radius` are physical
     /// pixels; `uv_rect` comes from [`avatar_uv`](Self::avatar_uv); `tint` multiplies the texels.
-    pub fn push_sprite(&mut self, center: [f32; 2], radius: f32, uv_rect: [f32; 4], tint: [f32; 4]) {
+    pub fn push_sprite(
+        &mut self,
+        center: [f32; 2],
+        radius: f32,
+        uv_rect: [f32; 4],
+        tint: [f32; 4],
+    ) {
         self.push_inst(TextInstanceGpu {
             screen_pos: [center[0] - radius, center[1] - radius],
             size: [radius * 2.0, radius * 2.0],
@@ -536,19 +547,39 @@ impl TextRenderer {
     }
 
     pub fn destroy(&mut self, render_ctx: &RenderContext) {
-        render_ctx.context.destroy_render_pipeline(&mut self.pipeline);
+        render_ctx
+            .context
+            .destroy_render_pipeline(&mut self.pipeline);
         render_ctx.context.destroy_buffer(self.buffer);
         render_ctx.context.destroy_sampler(self.sampler);
         render_ctx.context.destroy_sampler(self.emoji_sampler);
         render_ctx.context.destroy_sampler(self.avatar_sampler);
-        render_ctx.context.destroy_texture_view(self.font_atlas_tex.view);
-        render_ctx.context.destroy_texture(self.font_atlas_tex.texture);
-        render_ctx.context.destroy_buffer(self.font_atlas_tex.buffer);
-        render_ctx.context.destroy_texture_view(self.emoji_atlas_tex.view);
-        render_ctx.context.destroy_texture(self.emoji_atlas_tex.texture);
-        render_ctx.context.destroy_buffer(self.emoji_atlas_tex.buffer);
-        render_ctx.context.destroy_texture_view(self.avatar_atlas_tex.view);
-        render_ctx.context.destroy_texture(self.avatar_atlas_tex.texture);
-        render_ctx.context.destroy_buffer(self.avatar_atlas_tex.buffer);
+        render_ctx
+            .context
+            .destroy_texture_view(self.font_atlas_tex.view);
+        render_ctx
+            .context
+            .destroy_texture(self.font_atlas_tex.texture);
+        render_ctx
+            .context
+            .destroy_buffer(self.font_atlas_tex.buffer);
+        render_ctx
+            .context
+            .destroy_texture_view(self.emoji_atlas_tex.view);
+        render_ctx
+            .context
+            .destroy_texture(self.emoji_atlas_tex.texture);
+        render_ctx
+            .context
+            .destroy_buffer(self.emoji_atlas_tex.buffer);
+        render_ctx
+            .context
+            .destroy_texture_view(self.avatar_atlas_tex.view);
+        render_ctx
+            .context
+            .destroy_texture(self.avatar_atlas_tex.texture);
+        render_ctx
+            .context
+            .destroy_buffer(self.avatar_atlas_tex.buffer);
     }
 }

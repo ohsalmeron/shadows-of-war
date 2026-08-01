@@ -1,4 +1,3 @@
-
 pub(crate) fn compute_visibility(
     map_w: u32,
     map_h: u32,
@@ -69,9 +68,7 @@ pub(crate) fn compute_visibility(
         ally_or_self[pid as usize] = is_allied || is_teammate;
     }
 
-    let is_ally_or_self = |other_owner: u16| -> bool {
-        ally_or_self[other_owner as usize]
-    };
+    let is_ally_or_self = |other_owner: u16| -> bool { ally_or_self[other_owner as usize] };
 
     // Helper to add a radius of visibility (accepting fog_visible as parameter to avoid borrow checker errors)
     let add_vision = |tile_idx: u32, radius: i32, f_vis: &mut sow_core::bitset::DenseBitSet| {
@@ -197,7 +194,6 @@ pub(crate) fn compute_visibility(
             add_vision(f.current_tile, fleet_radius + bonus, fog_visible);
         }
     }
-
 
     // 4. Merge visible into explored
     let total_blocks = fog_visible.blocks.len();

@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MsdfChar {
@@ -68,7 +68,8 @@ pub struct FontAtlas {
 impl FontAtlas {
     pub fn load_static() -> Self {
         let json_str = include_str!("../../../assets/static/fonts/msdf-atlas.json");
-        let atlas: MsdfAtlas = serde_json::from_str(json_str).expect("Failed to parse MSDF atlas JSON");
+        let atlas: MsdfAtlas =
+            serde_json::from_str(json_str).expect("Failed to parse MSDF atlas JSON");
         let mut char_map = HashMap::new();
         for c in &atlas.chars {
             if let Some(first_char) = c.char.chars().next() {
@@ -76,7 +77,9 @@ impl FontAtlas {
             }
         }
         let mut kerning_map = HashMap::new();
-        let char_by_id: HashMap<u32, char> = atlas.chars.iter()
+        let char_by_id: HashMap<u32, char> = atlas
+            .chars
+            .iter()
             .filter_map(|c| c.char.chars().next().map(|ch| (c.id, ch)))
             .collect();
         for k in &atlas.kernings {

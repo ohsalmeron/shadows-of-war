@@ -1,5 +1,5 @@
 use crate::app::SowApp;
-use crate::{camera_zoom_upper_bound, CAMERA_MIN_ZOOM};
+use crate::{CAMERA_MIN_ZOOM, camera_zoom_upper_bound};
 use egui::Pos2;
 use sow_ui_kit::ClientPhase;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
@@ -600,11 +600,7 @@ impl SowApp {
                         MouseScrollDelta::PixelDelta(pos) => {
                             let x = pos.x as f32 / 50.0;
                             let y = pos.y as f32 / 50.0;
-                            if y.abs() >= x.abs() {
-                                y
-                            } else {
-                                x
-                            }
+                            if y.abs() >= x.abs() { y } else { x }
                         }
                     };
                     let zoom_factor = 1.0 + scroll * 0.15;

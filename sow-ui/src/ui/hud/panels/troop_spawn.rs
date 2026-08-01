@@ -1,4 +1,4 @@
-use egui::{pos2, vec2, Align2, Color32, RichText, Stroke};
+use egui::{Align2, Color32, RichText, Stroke, pos2, vec2};
 use sow_i18n::Language;
 
 use super::super::state::HudState;

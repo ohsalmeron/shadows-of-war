@@ -444,28 +444,28 @@ pub fn get(lang: Language) -> &'static LanguageStrings {
 pub fn get(lang: Language) -> &'static LanguageStrings {
     match lang {
         Language::Spanish => ES_STRINGS.get_or_init(|| {
-            load_language_with_map_editor(
-                include_str!("../strings/es/main_menu.toml"),
-                include_str!("../strings/es/settings.toml"),
-                include_str!("../strings/es/loading_screen.toml"),
-                include_str!("../strings/es/endgame.toml"),
-                include_str!("../strings/es/hud.toml"),
-                include_str!("../strings/es/tutorial.toml"),
-                include_str!("../strings/es/map_editor.toml"),
-                include_str!("../strings/es/credits.toml"),
-            )
+            load_language_with_map_editor(I18nLoadCtx {
+                main_menu_toml: include_str!("../strings/es/main_menu.toml"),
+                settings_toml: include_str!("../strings/es/settings.toml"),
+                loading_screen_toml: include_str!("../strings/es/loading_screen.toml"),
+                endgame_toml: include_str!("../strings/es/endgame.toml"),
+                hud_toml: include_str!("../strings/es/hud.toml"),
+                tutorial_toml: include_str!("../strings/es/tutorial.toml"),
+                map_editor_toml: include_str!("../strings/es/map_editor.toml"),
+                credits_toml: include_str!("../strings/es/credits.toml"),
+            })
         }),
         _ => EN_STRINGS.get_or_init(|| {
-            load_language_with_map_editor(
-                include_str!("../strings/en/main_menu.toml"),
-                include_str!("../strings/en/settings.toml"),
-                include_str!("../strings/en/loading_screen.toml"),
-                include_str!("../strings/en/endgame.toml"),
-                include_str!("../strings/en/hud.toml"),
-                include_str!("../strings/en/tutorial.toml"),
-                include_str!("../strings/en/map_editor.toml"),
-                include_str!("../strings/en/credits.toml"),
-            )
+            load_language_with_map_editor(I18nLoadCtx {
+                main_menu_toml: include_str!("../strings/en/main_menu.toml"),
+                settings_toml: include_str!("../strings/en/settings.toml"),
+                loading_screen_toml: include_str!("../strings/en/loading_screen.toml"),
+                endgame_toml: include_str!("../strings/en/endgame.toml"),
+                hud_toml: include_str!("../strings/en/hud.toml"),
+                tutorial_toml: include_str!("../strings/en/tutorial.toml"),
+                map_editor_toml: include_str!("../strings/en/map_editor.toml"),
+                credits_toml: include_str!("../strings/en/credits.toml"),
+            })
         }),
     }
 }
@@ -505,26 +505,28 @@ fn load_language(
 }
 
 #[cfg(feature = "map-editor")]
-#[allow(clippy::too_many_arguments)]
-fn load_language_with_map_editor(
-    main_menu_toml: &str,
-    settings_toml: &str,
-    loading_screen_toml: &str,
-    endgame_toml: &str,
-    hud_toml: &str,
-    tutorial_toml: &str,
-    map_editor_toml: &str,
-    credits_toml: &str,
-) -> LanguageStrings {
+struct I18nLoadCtx<'a> {
+    main_menu_toml: &'a str,
+    settings_toml: &'a str,
+    loading_screen_toml: &'a str,
+    endgame_toml: &'a str,
+    hud_toml: &'a str,
+    tutorial_toml: &'a str,
+    map_editor_toml: &'a str,
+    credits_toml: &'a str,
+}
+
+#[cfg(feature = "map-editor")]
+fn load_language_with_map_editor(ctx: I18nLoadCtx) -> LanguageStrings {
     LanguageStrings {
-        main_menu: toml::from_str(main_menu_toml).expect("Failed to parse main_menu.toml"),
-        settings: toml::from_str(settings_toml).expect("Failed to parse settings.toml"),
-        loading_screen: toml::from_str(loading_screen_toml)
+        main_menu: toml::from_str(ctx.main_menu_toml).expect("Failed to parse main_menu.toml"),
+        settings: toml::from_str(ctx.settings_toml).expect("Failed to parse settings.toml"),
+        loading_screen: toml::from_str(ctx.loading_screen_toml)
             .expect("Failed to parse loading_screen.toml"),
-        endgame: toml::from_str(endgame_toml).expect("Failed to parse endgame.toml"),
-        hud: toml::from_str(hud_toml).expect("Failed to parse hud.toml"),
-        tutorial: toml::from_str(tutorial_toml).expect("Failed to parse tutorial.toml"),
-        map_editor: toml::from_str(map_editor_toml).expect("Failed to parse map_editor.toml"),
-        credits: toml::from_str(credits_toml).expect("Failed to parse credits.toml"),
+        endgame: toml::from_str(ctx.endgame_toml).expect("Failed to parse endgame.toml"),
+        hud: toml::from_str(ctx.hud_toml).expect("Failed to parse hud.toml"),
+        tutorial: toml::from_str(ctx.tutorial_toml).expect("Failed to parse tutorial.toml"),
+        map_editor: toml::from_str(ctx.map_editor_toml).expect("Failed to parse map_editor.toml"),
+        credits: toml::from_str(ctx.credits_toml).expect("Failed to parse credits.toml"),
     }
 }

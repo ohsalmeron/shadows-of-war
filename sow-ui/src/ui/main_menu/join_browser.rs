@@ -1,6 +1,6 @@
 use super::{GameModeFilter, MainMenuState};
-use crate::widgets::LobbyCard;
 use crate::UiAction;
+use crate::widgets::LobbyCard;
 use egui::{Color32, CornerRadius, Frame, Margin, RichText, Stroke};
 
 fn filter_pill(ui: &mut egui::Ui, label: &str, active: bool) -> bool {

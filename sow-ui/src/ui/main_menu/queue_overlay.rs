@@ -180,51 +180,52 @@ pub fn draw_queue_overlay(
 
                 let body = ui.available_rect_before_wrap();
                 let host = HostControls::from_state(state, lobby.id);
+                let body_opts = QueueBodyOpts {
+                    state,
+                    lobby,
+                    asset_loader,
+                    lang,
+                    body,
+                    host,
+                    action_min_h,
+                    action,
+                };
 
                 if compact {
-                    draw_body_compact(
-                        ui,
-                        state,
-                        lobby,
-                        asset_loader,
-                        lang,
-                        body,
-                        host,
-                        action_min_h,
-                        action,
-                    );
+                    draw_body_compact(ui, body_opts);
                 } else {
-                    draw_body_desktop(
-                        ui,
-                        state,
-                        lobby,
-                        asset_loader,
-                        lang,
-                        body,
-                        host,
-                        action_min_h,
-                        action,
-                    );
+                    draw_body_desktop(ui, body_opts);
                 }
             });
         });
     });
 }
 
-/// Desktop: two equal columns filling `body`. Left = map summary with the
-/// action row pinned to its bottom edge; right = players roster.
-#[allow(clippy::too_many_arguments)]
-fn draw_body_desktop(
-    ui: &mut Ui,
-    state: &MainMenuState,
-    lobby: &sow_core::protocol::LobbyInfo,
-    asset_loader: &crate::ui::asset_loader::AssetLoader,
+struct QueueBodyOpts<'a> {
+    state: &'a MainMenuState,
+    lobby: &'a sow_core::protocol::LobbyInfo,
+    asset_loader: &'a crate::ui::asset_loader::AssetLoader,
     lang: sow_i18n::Language,
     body: egui::Rect,
     host: HostControls,
     action_min_h: f32,
-    action: &mut Option<UiAction>,
+    action: &'a mut Option<UiAction>,
+}
+
+/// Desktop: two equal columns filling `body`. Left = map summary with the
+/// action row pinned to its bottom edge; right = players roster.
+fn draw_body_desktop(
+    ui: &mut Ui,
+    opts: QueueBodyOpts<'_>,
 ) {
+    let state = opts.state;
+    let lobby = opts.lobby;
+    let asset_loader = opts.asset_loader;
+    let lang = opts.lang;
+    let body = opts.body;
+    let host = opts.host;
+    let action_min_h = opts.action_min_h;
+    let action = opts.action;
     let col_w = (body.width() - COLUMN_GAP) * 0.5;
     let left = egui::Rect::from_min_size(body.min, egui::vec2(col_w, body.height()));
     let right = egui::Rect::from_min_size(
@@ -242,18 +243,18 @@ fn draw_body_desktop(
 
 /// Compact / mobile: one scrollable column (summary + players) with the action
 /// row pinned to the bottom of the card, always visible.
-#[allow(clippy::too_many_arguments)]
 fn draw_body_compact(
     ui: &mut Ui,
-    state: &MainMenuState,
-    lobby: &sow_core::protocol::LobbyInfo,
-    asset_loader: &crate::ui::asset_loader::AssetLoader,
-    lang: sow_i18n::Language,
-    body: egui::Rect,
-    host: HostControls,
-    action_min_h: f32,
-    action: &mut Option<UiAction>,
+    opts: QueueBodyOpts<'_>,
 ) {
+    let state = opts.state;
+    let lobby = opts.lobby;
+    let asset_loader = opts.asset_loader;
+    let lang = opts.lang;
+    let body = opts.body;
+    let host = opts.host;
+    let action_min_h = opts.action_min_h;
+    let action = opts.action;
     // Total vertical space owned by the pinned action row, including the padding
     // that keeps it clear of the card's bottom edge.
     let actions_zone_h = action_min_h + ACTIONS_BOTTOM_PAD;

@@ -97,13 +97,10 @@ pub fn paint_glow_galley(
         base_color,
         style,
         reference_height,
-        None,
-        None,
+        (None, None),
     );
 }
 
-/// Same as [`paint_glow_galley`] but allows overriding outline/shadow colors (HUD legacy).
-#[allow(clippy::too_many_arguments)]
 pub fn paint_glow_galley_colors(
     painter: &Painter,
     pos: Pos2,
@@ -111,9 +108,9 @@ pub fn paint_glow_galley_colors(
     base_color: Color32,
     style: TextGlowStyle,
     reference_height: Option<f32>,
-    outline_override: Option<Color32>,
-    shadow_override: Option<Color32>,
+    color_overrides: (Option<Color32>, Option<Color32>),
 ) {
+    let (outline_override, shadow_override) = color_overrides;
     if galley.is_empty() {
         return;
     }

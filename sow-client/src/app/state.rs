@@ -142,7 +142,8 @@ pub struct ClickMarker {
     pub start_time: web_time::Instant,
 }
 
-#[allow(clippy::type_complexity)]
+pub type AttackTroopLabel = (f64, String, std::sync::Arc<egui::Galley>);
+
 pub struct UiState {
     pub app: sow_ui::ClientApp,
     pub egui_ctx: egui::Context,
@@ -193,7 +194,7 @@ pub struct UiState {
     pub cached_hovered_building_level: u8,
     pub cached_hovered_building_tooltip: String,
     pub attack_troop_labels:
-        std::collections::HashMap<u64, (f64, String, std::sync::Arc<egui::Galley>)>,
+        std::collections::HashMap<u64, AttackTroopLabel>,
     pub attack_troop_labels_last_update: std::collections::HashMap<u64, web_time::Instant>,
     pub cached_galleys: std::collections::HashMap<(String, u32), std::sync::Arc<egui::Galley>>,
     pub cached_prepared_names:

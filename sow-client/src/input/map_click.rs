@@ -254,7 +254,11 @@ impl SowApp {
                     for dx in -search_radius..=search_radius {
                         let tx = col + dx;
                         let ty = row + dy;
-                        if tx >= 0 && tx < self.sim.map_w as i32 && ty >= 0 && ty < self.sim.map_h as i32 {
+                        if tx >= 0
+                            && tx < self.sim.map_w as i32
+                            && ty >= 0
+                            && ty < self.sim.map_h as i32
+                        {
                             let dist = sow_core::building::hex_distance(col, row, tx, ty);
                             if dist <= search_radius {
                                 let n_idx = (ty * self.sim.map_w as i32 + tx) as usize;
@@ -351,17 +355,17 @@ impl SowApp {
                     .map(|mr| mr.terrain.as_slice())
                     .unwrap_or(&[]);
 
-                let target_res = resolve_build_target_tile(
+                let target_res = resolve_build_target_tile(&super::placement::PlacementQuery {
                     kind,
-                    col,
-                    row,
-                    self.sim.map_w,
-                    self.sim.map_h,
+                    click_x: col,
+                    click_y: row,
+                    map_w: self.sim.map_w,
+                    map_h: self.sim.map_h,
                     owners,
                     terrain,
                     my_id,
-                    &snap.buildings,
-                );
+                    buildings: &snap.buildings,
+                });
 
                 let cost = {
                     let i = sow_core::game::BuildingKind::ALL

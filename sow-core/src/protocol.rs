@@ -98,6 +98,20 @@ pub enum GameplayIntent {
         kind: crate::game::NukeKind,
         target_tile: u32,
     },
+    /// INK TIDE (Wave-Racer-style) boat controls — lockstep input for the
+    /// racer. The relay treats this opaquely: stamps, stores, broadcasts.
+    /// Only racer clients decode it. Appended last so existing variant
+    /// indices (and SoW clients) are untouched.
+    RacerControls(RacerControlsIntent),
+}
+
+/// Boat control frame for INK TIDE lockstep turns.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct RacerControlsIntent {
+    pub steer: f64,
+    pub throttle: f64,
+    pub brake: f64,
+    pub drift: bool,
 }
 
 /// Stamped intent bundled into a turn (attack or cancel).
@@ -431,11 +445,7 @@ impl BuildingSnapshot {
                 break;
             }
         }
-        if lvl == 1 && ticks > 0 {
-            0
-        } else {
-            lvl
-        }
+        if lvl == 1 && ticks > 0 { 0 } else { lvl }
     }
 }
 

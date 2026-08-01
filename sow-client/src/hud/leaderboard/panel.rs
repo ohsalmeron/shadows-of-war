@@ -1,9 +1,23 @@
 use super::rows::*;
-use super::{LeaderboardRanking, LeaderboardRowDisplay, TeamRanking, INITIAL_VISIBLE_LIMIT};
+use super::{INITIAL_VISIBLE_LIMIT, LeaderboardRanking, LeaderboardRowDisplay, TeamRanking};
 use crate::app::SowApp;
 use egui::{Align2, Color32, RichText, Stroke, Vec2};
 use sow_core::protocol::Team;
 use std::collections::HashSet;
+
+pub struct LeaderboardBodyOpts<'a> {
+    pub metrics: &'a LeaderboardMetrics,
+    pub total_land_tiles: u32,
+    pub my_id: Option<u16>,
+    pub my_team: Option<Team>,
+    pub team_mode: bool,
+    pub search_active: bool,
+    pub filtered: &'a [(usize, LeaderboardRanking)],
+    pub scroll_row_count: usize,
+    pub show_sticky_self: bool,
+    pub team_rankings: &'a [TeamRanking],
+    pub win_pct: f32,
+}
 
 impl SowApp {
     fn refresh_leaderboard_cache(&mut self) {
@@ -113,24 +127,13 @@ impl SowApp {
         self.ui.leaderboard_was_open = is_open;
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn render_leaderboard_body(
         &mut self,
         ui: &mut egui::Ui,
-        metrics: &LeaderboardMetrics,
-        total_land_tiles: u32,
-        my_id: Option<u16>,
-        my_team: Option<Team>,
-        team_mode: bool,
-        search_active: bool,
-        filtered: &[(usize, LeaderboardRanking)],
-        scroll_row_count: usize,
-        show_sticky_self: bool,
-        team_rankings: &[TeamRanking],
-        win_pct: f32,
+        opts: &LeaderboardBodyOpts,
     ) {
         ui.vertical(|ui| {
-            ui.spacing_mut().item_spacing.y = if metrics.is_mobile { 10.0 } else { 8.0 };
+            ui.spacing_mut().item_spacing.y = if opts.metrics.is_mobile { 10.0 } else { 8.0 };
 
             egui::Frame::new()
                 .fill(sow_ui_kit::theme::nickname_field_bg())
@@ -140,8 +143,8 @@ impl SowApp {
                 ))
                 .corner_radius(8.0)
                 .inner_margin(egui::Margin::symmetric(
-                    if metrics.is_mobile { 14 } else { 12 },
-                    if metrics.is_mobile { 8 } else { 6 },
+                    if opts.metrics.is_mobile { 14 } else { 12 },
+                    if opts.metrics.is_mobile { 8 } else { 6 },
                 ))
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
@@ -149,10 +152,10 @@ impl SowApp {
                         ui.label(
                             RichText::new(format!(
                                 "👑 Domination Victory: Control {:.0}% of Map",
-                                win_pct * 100.0
+                                opts.win_pct * 100.0
                             ))
                             .color(sow_ui_kit::theme::accent_ranked_gold())
-                            .size(if metrics.is_mobile { 14.0 } else { 13.0 })
+                            .size(if opts.metrics.is_mobile { 14.0 } else { 13.0 })
                             .strong(),
                         );
                     });
@@ -169,7 +172,7 @@ impl SowApp {
                 .corner_radius(6.0)
                 .inner_margin(egui::Margin::symmetric(
                     8,
-                    if metrics.is_mobile { 6 } else { 4 },
+                    if opts.metrics.is_mobile { 6 } else { 4 },
                 ))
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
@@ -198,7 +201,7 @@ impl SowApp {
                     });
                 });
 
-            if team_mode && !team_rankings.is_empty() {
+            if opts.team_mode && !opts.team_rankings.is_empty() {
                 ui.add_space(4.0);
                 ui.label(
                     RichText::new("TEAMS")
@@ -206,23 +209,23 @@ impl SowApp {
                         .color(Color32::from_gray(120))
                         .strong(),
                 );
-                for team in team_rankings {
-                    let control_pct = (team.tiles as f32 / total_land_tiles as f32) * 100.0;
-                    let is_my_team = my_team == Some(team.team);
-                    paint_team_row(ui, team, control_pct, is_my_team, metrics);
+                for team in opts.team_rankings {
+                    let control_pct = (team.tiles as f32 / opts.total_land_tiles as f32) * 100.0;
+                    let is_my_team = opts.my_team == Some(team.team);
+                    paint_team_row(ui, team, control_pct, is_my_team, opts.metrics);
                     ui.add_space(2.0);
                 }
                 ui.separator();
             }
 
             let safe_bottom = ui.ctx().input(|i| i.safe_area_insets().0.bottom);
-            let mobile_back_reserve = if metrics.is_mobile {
+            let mobile_back_reserve = if opts.metrics.is_mobile {
                 52.0 + 8.0 + safe_bottom
             } else {
                 0.0
             };
-            let sticky_reserve = if show_sticky_self {
-                metrics.row_height + ui.spacing().item_spacing.y + 1.0
+            let sticky_reserve = if opts.show_sticky_self {
+                opts.metrics.row_height + ui.spacing().item_spacing.y + 1.0
             } else {
                 0.0
             };
@@ -230,18 +233,19 @@ impl SowApp {
                 (ui.available_height() - TABLE_HEADER_H - sticky_reserve - mobile_back_reserve)
                     .max(120.0);
 
-            let visible_rows: Vec<(usize, LeaderboardRanking)> = filtered
+            let visible_rows: Vec<(usize, LeaderboardRanking)> = opts.filtered
                 .iter()
-                .take(scroll_row_count)
+                .take(opts.scroll_row_count)
                 .map(|(idx, r)| (*idx, r.clone()))
                 .collect();
+
             let row_ctx = RowPaintCtx {
                 app: self,
-                total_land_tiles,
-                my_id,
+                total_land_tiles: opts.total_land_tiles,
+                my_id: opts.my_id,
             };
 
-            paint_leaderboard_header(ui, metrics);
+            paint_leaderboard_header(ui, opts.metrics);
 
             let scroll_output = egui::ScrollArea::vertical()
                 .id_salt("leaderboard_players")
@@ -252,7 +256,7 @@ impl SowApp {
                         paint_leaderboard_player_row(
                             ui,
                             &row_ctx,
-                            metrics,
+                            opts.metrics,
                             *rank_idx,
                             ranking,
                             false,
@@ -261,16 +265,16 @@ impl SowApp {
                     }
                 });
 
-            if !search_active {
+            if !opts.search_active {
                 let state = &scroll_output.state;
                 let viewport_h = scroll_output.inner_rect.height();
                 let content_h = scroll_output.content_size.y;
                 let near_bottom = state.offset.y + viewport_h >= content_h - SCROLL_NEAR_BOTTOM;
                 let visible_limit = self.ui.leaderboard_visible_limit;
-                if near_bottom && visible_limit < filtered.len() {
+                if near_bottom && visible_limit < opts.filtered.len() {
                     if self.ui.leaderboard_paged_through_limit != visible_limit {
                         self.ui.leaderboard_visible_limit =
-                            (visible_limit + SCROLL_LOAD_STEP).min(filtered.len());
+                            (visible_limit + SCROLL_LOAD_STEP).min(opts.filtered.len());
                         self.ui.leaderboard_paged_through_limit = self.ui.leaderboard_visible_limit;
                     }
                 } else if !near_bottom {
@@ -278,20 +282,20 @@ impl SowApp {
                 }
             }
 
-            if show_sticky_self {
-                if let Some(my_id) = my_id {
+            if opts.show_sticky_self {
+                if let Some(my_id) = opts.my_id {
                     ui.separator();
-                    if let Some((rank_idx, ranking)) = filtered.iter().find(|(_, r)| r.id == my_id)
+                    if let Some((rank_idx, ranking)) = opts.filtered.iter().find(|(_, r)| r.id == my_id)
                     {
                         let sticky_ctx = RowPaintCtx {
                             app: self,
-                            total_land_tiles,
+                            total_land_tiles: opts.total_land_tiles,
                             my_id: Some(my_id),
                         };
                         paint_leaderboard_player_row(
                             ui,
                             &sticky_ctx,
-                            metrics,
+                            opts.metrics,
                             *rank_idx,
                             ranking,
                             true,
@@ -301,7 +305,7 @@ impl SowApp {
                 }
             }
 
-            if metrics.is_mobile {
+            if opts.metrics.is_mobile {
                 ui.add_space(8.0);
                 let safe_bottom = ui.ctx().input(|i| i.safe_area_insets().0.bottom);
                 ui.allocate_space(Vec2::new(0.0, safe_bottom));
@@ -390,17 +394,19 @@ impl SowApp {
                 ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
                 self.render_leaderboard_body(
                     ui,
-                    &metrics,
-                    total_land_tiles,
-                    my_id,
-                    my_team,
-                    team_mode,
-                    search_active,
-                    &filtered,
-                    scroll_row_count,
-                    show_sticky_self,
-                    &team_rankings,
-                    win_pct,
+                    &LeaderboardBodyOpts {
+                        metrics: &metrics,
+                        total_land_tiles,
+                        my_id,
+                        my_team,
+                        team_mode,
+                        search_active,
+                        filtered: &filtered,
+                        scroll_row_count,
+                        show_sticky_self,
+                        team_rankings: &team_rankings,
+                        win_pct,
+                    },
                 );
             },
         );

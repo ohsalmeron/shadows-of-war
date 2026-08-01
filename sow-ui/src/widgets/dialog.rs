@@ -77,17 +77,14 @@ fn paint_speaker_disc(painter: &egui::Painter, rect: egui::Rect, rgb: [f32; 3]) 
 /// area, or scrim of its own, rendered through the emoji-atlas text pipeline. The bottom-panel
 /// takeover paints a [`BottomDialog`] with this. Returns the clicked button index, if any.
 /// Layout is 2-row: Row 1 has Avatar (left) & Wide Text Block (right); Row 2 has Buttons (bottom-right).
-#[allow(clippy::too_many_arguments)]
 pub fn paint_dialog_contents(
     ui: &mut egui::Ui,
-    visual: Option<&SpeakerVisual>,
-    name: Option<&str>,
-    title: &str,
-    body: &str,
+    content: (Option<&SpeakerVisual>, Option<&str>, &str, &str),
     buttons: &[DialogButton],
     asset_loader: &AssetLoader,
     compact: bool,
 ) -> Option<usize> {
+    let (visual, name, title, body) = content;
     let mut clicked: Option<usize> = None;
 
     ui.horizontal_top(|ui| {

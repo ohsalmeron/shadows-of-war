@@ -1,6 +1,6 @@
 //! European geo entities. Coordinates are approximate historical heartlands.
 
-use super::{geo_entity as e, GeoEntity};
+use super::{GeoEntity, geo_entity as e};
 
 pub static EUROPE: &[GeoEntity] = &[
     // --- Countries (modern) ---

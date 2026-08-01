@@ -1,5 +1,5 @@
 use crate::UiAction;
-use egui::{vec2, Align2, Color32};
+use egui::{Align2, Color32, vec2};
 use sow_i18n::Language;
 use web_time::Instant;
 

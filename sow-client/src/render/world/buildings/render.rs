@@ -1,15 +1,14 @@
-use super::super::*;
-use super::bunker::paint_bunker_effects;
+use crate::render::world::RenderContext;
+use super::bunker::{paint_bunker_effects, BunkerPaintOpts};
 use super::cluster;
-use super::overlays::paint_building_overlays;
+use super::overlays::{paint_building_overlays, BuildingOverlayOpts};
 use super::plates::*;
-use super::preview::paint_building_placement_preview;
+use super::preview::{paint_building_placement_preview, PlacementPreviewOpts};
 
 use crate::config::ClientVisualConfig;
 use crate::render::world::movers::world_to_tile;
 use crate::render::world::utils::*;
 
-#[allow(unused_variables)]
 pub(crate) fn render(
     ui: &mut crate::app::UiState,
     sim: &crate::app::SimState,
@@ -109,7 +108,11 @@ pub(crate) fn render(
                 // (same as the egui path), positioned in screen space like all other text.
                 let icon_size = {
                     let raw = get_building_icon_size(zoom_scaled);
-                    if dev.clamp_emoji_zoom { raw.clamp(8.0, 50.0) } else { raw }
+                    if dev.clamp_emoji_zoom {
+                        raw.clamp(8.0, 50.0)
+                    } else {
+                        raw
+                    }
                 };
                 let base_size = if b.count > 1 {
                     28.0_f32.max(icon_size * 1.2)
@@ -124,9 +127,7 @@ pub(crate) fn render(
                     [screen_x, screen_y],
                     base_size * sf / 2.0,
                     [1.0, 1.0, 1.0, a],
-                    [0.0, 0.0, 0.0, a],
-                    outline_px,
-                    shadow_px,
+                    ([0.0, 0.0, 0.0, a], outline_px, shadow_px),
                 );
             }
         }
@@ -149,7 +150,11 @@ pub(crate) fn render(
 
             let icon_size = {
                 let raw = get_building_icon_size(zoom_scaled);
-                if dev.clamp_emoji_zoom { raw.clamp(8.0, 50.0) } else { raw }
+                if dev.clamp_emoji_zoom {
+                    raw.clamp(8.0, 50.0)
+                } else {
+                    raw
+                }
             };
             let base_size = if b.count > 1 {
                 28.0_f32.max(icon_size * 1.2)
@@ -280,16 +285,17 @@ pub(crate) fn render(
                     time,
                     gfx,
                     ctx,
-                    &painter,
-                    snap,
-                    config,
-                    &b,
-                    center,
-                    base_size,
-                    zoom_scaled,
-                    sf,
-                    edge_cache_stale,
-                    player_colors,
+                    &BunkerPaintOpts {
+                        painter: &painter,
+                        snap,
+                        config,
+                        b: &b,
+                        center,
+                        zoom_scaled,
+                        sf,
+                        edge_cache_stale,
+                        player_colors,
+                    },
                 );
             }
 
@@ -297,19 +303,20 @@ pub(crate) fn render(
                 ui,
                 sim,
                 input,
-                time,
                 gfx,
-                &painter,
-                snap,
-                config,
-                &b,
-                center,
-                base_size,
-                zoom_scaled,
-                final_scale,
-                sf,
-                hovered_tile_idx,
-                player_colors,
+                &BuildingOverlayOpts {
+                    painter: &painter,
+                    snap,
+                    config,
+                    b: &b,
+                    center,
+                    base_size,
+                    zoom_scaled,
+                    final_scale,
+                    sf,
+                    hovered_tile_idx,
+                    player_colors,
+                },
             );
         }
 
@@ -317,15 +324,16 @@ pub(crate) fn render(
             ui,
             sim,
             input,
-            time,
             gfx,
-            &painter,
-            snap,
-            hovered_tile_idx,
-            zoom_scaled,
-            final_scale,
-            sf,
-            config,
+            &PlacementPreviewOpts {
+                painter: &painter,
+                snap,
+                hovered_tile_idx,
+                zoom_scaled,
+                final_scale,
+                sf,
+                config,
+            },
         );
     }
 }

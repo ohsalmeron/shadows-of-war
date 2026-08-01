@@ -27,7 +27,6 @@ pub(crate) const BUILDINGS_HIDE_FLOOR: f32 = 1.0;
 pub(crate) struct RenderContext<'a> {
     pub painter: &'a egui::Painter,
     pub wall_secs: f64,
-    pub current_tick: u64,
     pub dot_r: f32,
     pub visible_players: &'a [VisPlayer<'a>],
     pub zoom_scaled: f32,
@@ -56,12 +55,6 @@ impl SowApp {
             egui::Id::new("world_nameplates"),
         ));
         let wall_secs = self.time.start_time.elapsed().as_secs_f64();
-        let current_tick = self
-            .sim
-            .current_snapshot
-            .as_ref()
-            .map(|s| s.tick)
-            .unwrap_or(0);
 
         // Configuration variables removed from GameConfig
         let visual_config = ClientVisualConfig::default();
@@ -86,7 +79,11 @@ impl SowApp {
                 if dev.fog_of_war && player.id != my_id {
                     let col = player.centroid_x.floor() as i32;
                     let row = player.centroid_y.floor() as i32;
-                    if col >= 0 && row >= 0 && col < self.sim.map_w as i32 && row < self.sim.map_h as i32 {
+                    if col >= 0
+                        && row >= 0
+                        && col < self.sim.map_w as i32
+                        && row < self.sim.map_h as i32
+                    {
                         let t_idx = (row * self.sim.map_w as i32 + col) as u32;
                         if !self.sim.fog_explored.contains(t_idx) {
                             continue;
@@ -198,20 +195,12 @@ impl SowApp {
             let my_id = self.sim.my_player_id.unwrap_or(0);
             visible_players.sort_unstable_by(|a, b| {
                 let a_prec = if a.player.player_type == sow_core::player::PlayerType::Human {
-                    if a.player.id == my_id {
-                        1
-                    } else {
-                        2
-                    }
+                    if a.player.id == my_id { 1 } else { 2 }
                 } else {
                     0
                 };
                 let b_prec = if b.player.player_type == sow_core::player::PlayerType::Human {
-                    if b.player.id == my_id {
-                        1
-                    } else {
-                        2
-                    }
+                    if b.player.id == my_id { 1 } else { 2 }
                 } else {
                     0
                 };
@@ -268,7 +257,6 @@ impl SowApp {
             let ctx_struct = RenderContext {
                 painter: &painter,
                 wall_secs,
-                current_tick,
                 dot_r,
                 visible_players: &visible_players,
                 zoom_scaled,
@@ -278,11 +266,9 @@ impl SowApp {
             };
 
             fleets::render(
-                &mut self.ui,
                 &self.sim,
                 &self.input,
                 &self.time,
-                &self.gfx,
                 &ctx_struct,
             );
             railways::render(
@@ -303,10 +289,7 @@ impl SowApp {
             );
             effects::render(
                 &mut self.ui,
-                &self.sim,
                 &self.input,
-                &self.time,
-                &self.gfx,
                 &ctx_struct,
             );
             projectiles::render(
@@ -321,7 +304,6 @@ impl SowApp {
                 &mut self.ui,
                 &self.sim,
                 &self.input,
-                &self.time,
                 &mut self.gfx,
                 &ctx_struct,
             );
@@ -405,12 +387,9 @@ impl SowApp {
                                 * bounce_scale
                                 * font_size_scale
                                 * sf,
-                            color_arr,
-                            outline_color_arr,
+                            (color_arr, outline_color_arr),
                             settings,
-                            0.5,
-                            char_spacing,
-                            emoji_scale,
+                            (0.5, char_spacing, emoji_scale),
                         );
                     }
 

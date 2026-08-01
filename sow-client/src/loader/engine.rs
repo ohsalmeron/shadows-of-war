@@ -1,6 +1,6 @@
 use super::helpers::*;
-use crate::app::SowApp;
 use crate::EngineInitEvent;
+use crate::app::SowApp;
 use sow_core::protocol::SimCommand;
 use sow_ui_kit::ClientPhase;
 
@@ -277,7 +277,9 @@ impl SowApp {
 
                         let hero_ready = self.ui.app.asset_loader.boot_leader_ready(leader, mobile);
                         if self.net.client.is_some() && hero_ready {
-                            log::info!("Exit game splash: connected, hero image ready, transitioning to main menu");
+                            log::info!(
+                                "Exit game splash: connected, hero image ready, transitioning to main menu"
+                            );
                             self.ui.app.splash_state.progress = 1.0;
                             self.ui.app.splash_state.gpu_load_step = 2;
                             self.ui.app.splash_state.frames_drawn = 0;

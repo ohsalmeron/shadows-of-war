@@ -49,7 +49,11 @@ fn main() {
         glyphs.push((ch, glyph_id.0 as u32));
     }
 
-    eprintln!("Rasterizing {} glyphs at font size {}...", glyphs.len(), FONT_SIZE);
+    eprintln!(
+        "Rasterizing {} glyphs at font size {}...",
+        glyphs.len(),
+        FONT_SIZE
+    );
 
     struct GlyphSheet {
         codepoint: u32,
@@ -71,7 +75,9 @@ fn main() {
 
         // Tight ink bounds at the base size define the cell and the BMFont offsets.
         // (Ink-less glyphs such as space have no outline.)
-        let bounds = font.outline_glyph(gid.with_scale(scale)).map(|o| o.px_bounds());
+        let bounds = font
+            .outline_glyph(gid.with_scale(scale))
+            .map(|o| o.px_bounds());
 
         let (cell_w, cell_h, xoffset, yoffset) = match bounds {
             Some(b) => {
@@ -85,7 +91,12 @@ fn main() {
                 let yo = base as i32 + b.min.y.round() as i32 - PADDING as i32;
                 (cw, ch_, xo, yo)
             }
-            None => (PADDING * 2 + 1, PADDING * 2 + 1, -(PADDING as i32), base as i32 - PADDING as i32),
+            None => (
+                PADDING * 2 + 1,
+                PADDING * 2 + 1,
+                -(PADDING as i32),
+                base as i32 - PADDING as i32,
+            ),
         };
 
         let raster_w = cell_w as usize * UPSAMPLE as usize;
@@ -180,7 +191,8 @@ fn main() {
                 let dst_x = cursor_x + gx;
                 let dst_y = cursor_y + gy;
                 let dst_idx = ((dst_y * ATLAS_SIZE + dst_x) * 3) as usize;
-                atlas_pixels[dst_idx..dst_idx + 3].copy_from_slice(&sheet.pixels[src_idx..src_idx + 3]);
+                atlas_pixels[dst_idx..dst_idx + 3]
+                    .copy_from_slice(&sheet.pixels[src_idx..src_idx + 3]);
             }
         }
 
@@ -268,14 +280,18 @@ fn compute_sdf(mask: &[u8], w: usize, h: usize, spread: f32) -> Vec<f32> {
         for x in 1..w - 1 {
             let idx = y * w + x;
             let is_filled = mask[idx] > 127;
-            let is_edge = is_filled && (
-                mask[idx - 1] <= 127 || mask[idx + 1] <= 127 ||
-                mask[idx - w] <= 127 || mask[idx + w] <= 127
-            );
-            if is_edge || (!is_filled && (
-                mask[idx - 1] > 127 || mask[idx + 1] > 127 ||
-                mask[idx - w] > 127 || mask[idx + w] > 127
-            )) {
+            let is_edge = is_filled
+                && (mask[idx - 1] <= 127
+                    || mask[idx + 1] <= 127
+                    || mask[idx - w] <= 127
+                    || mask[idx + w] <= 127);
+            if is_edge
+                || (!is_filled
+                    && (mask[idx - 1] > 127
+                        || mask[idx + 1] > 127
+                        || mask[idx - w] > 127
+                        || mask[idx + w] > 127))
+            {
                 outside[idx] = 0.0;
                 inside[idx] = 0.0;
             }

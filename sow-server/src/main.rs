@@ -3,9 +3,9 @@ mod map_catalog;
 
 use futures_util::{SinkExt, StreamExt};
 use lobby::{
-    build_lobby_broadcast, force_start, is_host_teardown, join_player, kick_player, leave_player,
-    lobby_to_info, master_tick, notify_lobby_closed, set_player_team, sync_host_lobby_to_members,
-    ServerLobby,
+    JoinPlayerOpts, ServerLobby, build_lobby_broadcast, force_start, is_host_teardown, join_player, kick_player,
+    leave_player, lobby_to_info, master_tick, notify_lobby_closed, set_player_team,
+    sync_host_lobby_to_members,
 };
 use redis::Commands;
 use sow_core::protocol::{
@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
-use tokio::sync::{broadcast, mpsc, Mutex};
+use tokio::sync::{Mutex, broadcast, mpsc};
 use tokio_tungstenite::tungstenite::protocol::Message;
 
 const REDIS_PORTS_KEY: &str = "sow:ports";
@@ -72,6 +72,85 @@ fn ensure_redis_ok(client: &redis::Client, con: &mut redis::Connection) -> bool 
     }
 }
 
+// =============================================================================
+// RELAY PORT ALLOCATION — read this before touching find_free_port / os_port_free
+// =============================================================================
+//
+// CONTEXT (what this code is for)
+// Each match gets its own `sow-relay` process on a dynamic TCP port in
+// RELAY_PORT_MIN..=RELAY_PORT_MAX. The server picks a free port, tells the relay
+// to bind it, and tells the clients (via ServerStartMessage.relay_port) to connect
+// there. nginx reverse-proxies `/relay/{port}/ws/` to 127.0.0.1:{port}.
+//
+// HOW IT WAS BROKEN (the bug this probe-bind gate fixed — do NOT reintroduce it)
+// The OLD `find_free_port` trusted two Redis signals as the source of truth for
+// whether a port was free:
+//   1. the `sow:ports` SET (membership = "claimed"), and
+//   2. the `sow:relay:{port}` KEY with a TTL (heartbeat refreshed by the live relay).
+// A "lazy-cleanup" branch reclaimed any port whose `sow:relay:{port}` key had
+// EXPIRED, handing that port to a new lobby.
+//
+// That TTL is NOT liveness. Two races punched through it:
+//   (a) On spawn, the port is marked "pending" with a 10s TTL. Under load the relay
+//       can take >10s to start + bind + take over the heartbeat → the pending key
+//       expires → lazy-cleanup steals the port for ANOTHER lobby while the first
+//       relay is still coming up.
+//   (b) Any Redis hiccup lets a LIVE relay's heartbeat key lapse (60s TTL with no
+//       refresh) → lazy-cleanup steals a port whose relay is still alive and bound.
+//
+// In both cases the new relay tries `TcpListener::bind` on a port that is still
+// held → "Address already in use (os error 48)" → it exits(1). BUT the server had
+// ALREADY broadcast ServerStartMessage{relay_port} to the lobby's clients (we
+// broadcast right after spawn, before bind-confirm — see the spawn task below).
+// So those clients connect to the port and hit the OLD, still-live relay that
+// belongs to a DIFFERENT lobby. The relay validates `Ready{lobby_id}` against its
+// own lobby_id, rejects every one ("Invalid Ready request for lobby X player Y"),
+// the player is never registered, receives zero ticks, and the match stalls.
+//
+// Evidence seen in prod (relay_25623.log, 2026-08-01): "Failed to bind ... Address
+// already in use", STATUS showing lobby 142 owning port 25623, while clients from
+// lobbies 193/202/207 were routed there — 105 "Invalid Ready", 0 "reconnected".
+//
+// THE FIX
+// `os_port_free` makes the OS the source of truth. `find_free_port` probe-binds
+// every candidate port before returning it (both the normal and the lazy-cleanup
+// paths). A port is handed out ONLY if we can actually bind it right now. That
+// collapses both races: a still-held port fails the probe and is skipped, so no
+// relay is ever told to bind a taken port, and no client is ever routed to a
+// relay owned by another lobby.
+//
+// WARNING TO FUTURE AGENTS
+//   * Do NOT remove `os_port_free` "for performance" or "to simplify". It is the
+//     ONLY thing preventing wrong-relay routing. The Redis set/TTL is advisory
+//     bookkeeping, NOT liveness.
+//   * If you need port reclamation (lazy-cleanup), NEVER trust the `sow:relay:{p}`
+//     TTL alone — a relay can be alive with an expired key. Always probe the OS.
+//   * The probe bind+drop has a microscopic race window, but allocation is
+//     serialized through a single consumer of `relay_rx`, so no two allocations
+//     compete for the same port between probe and relay-bind. Do not parallelize
+//     allocation without re-validating this.
+//   * DEEPER (not done here): the server still broadcasts Start BEFORE the relay
+//     confirms its bind. Probe-bind makes that safe today. The truly robust fix is
+//     to wait for the relay's bind-confirmation (it sets `sow:relay:{port}` =
+//     lobby_id with a 60s TTL AFTER a successful bind — see sow-relay/src/main.rs)
+//     before broadcasting Start, and re-allocate on timeout. If you restructure the
+//     spawn task, prefer adding that handshake over relying on probe-bind alone.
+// =============================================================================
+
+/// The host relays bind on (must match `relay_listen_host()` in sow-relay).
+fn relay_listen_host() -> String {
+    std::env::var("SOW_RELAY_LISTEN_HOST")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "127.0.0.1".to_string())
+}
+
+/// Source of truth for "is this port free": try to bind it at the OS level.
+/// See the port-allocation note above for why this MUST gate every port handout.
+fn os_port_free(host: &str, port: u16) -> bool {
+    std::net::TcpListener::bind((host, port)).is_ok()
+}
+
 fn find_free_port(redis_client: &redis::Client, con: &mut redis::Connection) -> Option<u16> {
     if !ensure_redis_ok(redis_client, con) {
         log::error!("[REDIS] Cannot query {REDIS_PORTS_KEY} — connection down");
@@ -84,18 +163,40 @@ fn find_free_port(redis_client: &redis::Client, con: &mut redis::Connection) -> 
             return None;
         }
     };
+    let listen_host = relay_listen_host();
     for port in RELAY_PORT_MIN..=RELAY_PORT_MAX {
         if !occupied.contains(&port) {
-            let _: () = con.set_ex(format!("sow:relay:{port}"), "pending", 10).unwrap_or(());
+            if !os_port_free(&listen_host, port) {
+                // Tracked as free in Redis but bound at the OS level (orphan/leaked relay).
+                // Skip it: never hand out a port we cannot actually bind.
+                log::warn!("[PORT] {port} marked free in Redis but OS-bound; skipping");
+                continue;
+            }
+            let _: () = con
+                .set_ex(format!("sow:relay:{port}"), "pending", 10)
+                .unwrap_or(());
             return Some(port);
         }
         // Lazy cleanup: if port is in Valkey set but key `sow:relay:{port}` has expired, reclaim it!
         let relay_key = format!("sow:relay:{port}");
         let exists: bool = con.exists(&relay_key).unwrap_or(true);
         if !exists {
-            log::info!("[LAZY-CLEANUP] Reclaiming stale port {} (relay key expired)", port);
+            if !os_port_free(&listen_host, port) {
+                // Key expired but the relay process still HOLDS the port — do NOT steal it.
+                // This is the race that caused "Address already in use" + wrong-relay routing.
+                log::warn!(
+                    "[PORT] {port} relay key expired but OS-bound (live relay); not reclaiming"
+                );
+                continue;
+            }
+            log::info!(
+                "[LAZY-CLEANUP] Reclaiming stale port {} (relay key expired)",
+                port
+            );
             let _ = con.srem::<_, _, ()>(REDIS_PORTS_KEY, port);
-            let _: () = con.set_ex(format!("sow:relay:{port}"), "pending", 10).unwrap_or(());
+            let _: () = con
+                .set_ex(format!("sow:relay:{port}"), "pending", 10)
+                .unwrap_or(());
             return Some(port);
         }
     }
@@ -181,7 +282,10 @@ async fn main() {
                 std::collections::HashSet::new()
             }
         };
-        log::info!("Redis connected. Active relay ports preserved: {:?}", occupied);
+        log::info!(
+            "Redis connected. Active relay ports preserved: {:?}",
+            occupied
+        );
     }
 
     let mut games: Vec<ServerLobby> = Vec::new();
@@ -203,7 +307,6 @@ async fn main() {
     let next_id_clone = Arc::clone(&next_id_state);
     let global_tx_clone = global_tx.clone();
     let redis_clone = Arc::clone(&redis_con);
-    let redis_client_clone = redis_client.clone();
     let relay_tx_clone = relay_tx.clone();
 
     // ── DEDICATED ASYNC RELAY WORKER TASK ──
@@ -234,8 +337,9 @@ async fn main() {
                     tokio::spawn(async move {
                         let db_base_url = std::env::var("SOW_DB_URL")
                             .unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
-                        let secret_token = std::env::var("SOW_DB_SECRET")
-                            .unwrap_or_else(|_| "sow_db_dev_secret_123_change_me_in_prod".to_string());
+                        let secret_token = std::env::var("SOW_DB_SECRET").unwrap_or_else(|_| {
+                            "sow_db_dev_secret_123_change_me_in_prod".to_string()
+                        });
                         let url = format!("{}/match/start", db_base_url.trim_end_matches('/'));
                         let _ = reqwest::Client::new()
                             .post(&url)
@@ -258,30 +362,50 @@ async fn main() {
                 let log_file = match std::fs::File::create(&log_path) {
                     Ok(f) => f,
                     Err(e) => {
-                        log::error!("[RELAY] Cannot create log file {}: {}", log_path.display(), e);
+                        log::error!(
+                            "[RELAY] Cannot create log file {}: {}",
+                            log_path.display(),
+                            e
+                        );
                         continue;
                     }
                 };
 
                 let relay_bin = relay_bin();
-                log::info!("[RELAY] Handing off lobby {} to relay port {}", rc.lobby_id, port);
+                log::info!(
+                    "[RELAY] Handing off lobby {} to relay port {}",
+                    rc.lobby_id,
+                    port
+                );
                 let mut child = match tokio::process::Command::new(&relay_bin)
                     .arg("--port")
                     .arg(port.to_string())
                     .arg("--lobby-json")
                     .arg(relay_config.to_string())
-                    .stdout(log_file.try_clone().unwrap_or_else(|_| std::fs::File::create("/dev/null").unwrap()))
+                    .stdout(
+                        log_file
+                            .try_clone()
+                            .unwrap_or_else(|_| std::fs::File::create("/dev/null").unwrap()),
+                    )
                     .stderr(log_file)
                     .spawn()
                 {
                     Ok(c) => c,
                     Err(e) => {
-                        log::error!("[RELAY] Failed to spawn relay binary '{}': {}", relay_bin.display(), e);
+                        log::error!(
+                            "[RELAY] Failed to spawn relay binary '{}': {}",
+                            relay_bin.display(),
+                            e
+                        );
                         continue;
                     }
                 };
 
-                log::info!("[RELAY] Spawned sow-relay for lobby {} on port {}", rc.lobby_id, port);
+                log::info!(
+                    "[RELAY] Spawned sow-relay for lobby {} on port {}",
+                    rc.lobby_id,
+                    port
+                );
 
                 // Broadcast Start message to all players in the lobby with relay_port
                 let start_msg = sow_core::protocol::ServerStartMessage {
@@ -294,8 +418,10 @@ async fn main() {
                     map_data: None,
                     relay_port: Some(port),
                 };
-                if let Ok(start_json) = bincode::serialize(&sow_core::protocol::ServerMessage::Start(Box::new(start_msg))) {
-                    for (pid, tx) in &rc.players_tx {
+                if let Ok(start_json) = bincode::serialize(
+                    &sow_core::protocol::ServerMessage::Start(Box::new(start_msg)),
+                ) {
+                    for (_, tx) in &rc.players_tx {
                         let _ = tx.try_send(start_json.clone());
                     }
                 }
@@ -304,7 +430,13 @@ async fn main() {
                 let rcon_arc = redis_clone_inner.clone();
                 tokio::spawn(async move {
                     let status = child.wait().await;
-                    log::info!("[RELAY] Relay for lobby {} (PID {:?}, port {}) exited: {:?}", rc.lobby_id, pid, port, status);
+                    log::info!(
+                        "[RELAY] Relay for lobby {} (PID {:?}, port {}) exited: {:?}",
+                        rc.lobby_id,
+                        pid,
+                        port,
+                        status
+                    );
                     let mut rcon = rcon_arc.lock().unwrap();
                     let _ = rcon.srem::<_, _, ()>(REDIS_PORTS_KEY, port);
                     let _ = rcon.del::<_, ()>(format!("sow:relay:{port}"));
@@ -398,7 +530,19 @@ async fn main() {
                     match event {
                         ServerEvent::Join { client_tx, name, clan_tag, civilization, leader, target_lobby_id, host_private, build_version, database_account_id, host_config, password, ip } => {
                             log::info!("Player {} (clan: {}, ip: {}) joining with version: {}", name, clan_tag, ip, build_version);
-                            match join_player(&mut games, &mut nid, name, clan_tag, civilization, leader, client_tx.clone(), target_lobby_id, host_private, database_account_id, host_config, password, ip) {
+                            match join_player(&mut games, &mut nid, JoinPlayerOpts {
+                                name,
+                                clan_tag,
+                                civilization,
+                                leader,
+                                client_tx: client_tx.clone(),
+                                target_lobby_id,
+                                host_private,
+                                database_account_id,
+                                host_config,
+                                password,
+                                ip,
+                            }) {
                                 Ok((lobby_id, player_id, map_name, is_private)) => {
                                     let lobby_info = games.iter().find(|g| g.id == lobby_id).map(lobby_to_info);
                                     let ack = ServerJoinAckMessage { lobby_id, player_id, map_name, is_private, lobby_info };
@@ -502,20 +646,14 @@ async fn main() {
                 "/maps/catalog.json",
                 axum::routing::get(catalog_json_handler),
             )
-            .route(
-                "/lobbies.json",
-                axum::routing::get(lobbies_json_handler),
-            )
+            .route("/lobbies.json", axum::routing::get(lobbies_json_handler))
             .route(
                 "/admin/dashboard",
                 axum::routing::get(|| async {
                     axum::response::Html(include_str!("admin_dashboard.html"))
                 }),
             )
-            .route(
-                "/admin/api/status",
-                axum::routing::get(admin_status),
-            )
+            .route("/admin/api/status", axum::routing::get(admin_status))
             .with_state(state);
 
         let app = catalog_route
@@ -526,7 +664,10 @@ async fn main() {
             .layer(tower_http::cors::CorsLayer::permissive());
         let http_addr =
             std::env::var("SOW_MAPS_HTTP_LISTEN").unwrap_or_else(|_| "0.0.0.0:25566".to_string());
-        log::info!("SOW-SERVER HTTP serving maps and admin on http://{}", http_addr);
+        log::info!(
+            "SOW-SERVER HTTP serving maps and admin on http://{}",
+            http_addr
+        );
         let listener = tokio::net::TcpListener::bind(&http_addr).await.unwrap();
         axum::serve(listener, app).await.unwrap();
     });
@@ -576,8 +717,12 @@ async fn main() {
             {
                 let games_guard = games_state_conn.lock().await;
                 let lobbies_info = build_lobby_broadcast(&games_guard);
-                let broadcast_msg = ServerLobbiesBroadcastMessage { lobbies: lobbies_info };
-                if let Ok(json) = bincode::serialize(&sow_core::protocol::ServerMessage::LobbiesBroadcast(broadcast_msg)) {
+                let broadcast_msg = ServerLobbiesBroadcastMessage {
+                    lobbies: lobbies_info,
+                };
+                if let Ok(json) = bincode::serialize(
+                    &sow_core::protocol::ServerMessage::LobbiesBroadcast(broadcast_msg),
+                ) {
                     let _ = direct_tx.try_send(json);
                 }
             }
@@ -821,14 +966,28 @@ async fn admin_status(
                             let parts: Vec<&str> = line.splitn(2, ':').collect();
                             let key = parts[0].trim();
                             let val = parts[1].trim();
-                            if ["used_memory_human", "used_memory_peak_human",
-                                "connected_clients", "blocked_clients",
-                                "keyspace_hits", "keyspace_misses",
-                                "uptime_in_seconds", "instantaneous_ops_per_sec",
-                                "instantaneous_input_kbps", "instantaneous_output_kbps",
-                                "total_connections_received", "total_commands_processed",
-                                "expired_keys", "evicted_keys"].contains(&key) {
-                                result.insert(key.to_string(), serde_json::Value::String(val.to_string()));
+                            if [
+                                "used_memory_human",
+                                "used_memory_peak_human",
+                                "connected_clients",
+                                "blocked_clients",
+                                "keyspace_hits",
+                                "keyspace_misses",
+                                "uptime_in_seconds",
+                                "instantaneous_ops_per_sec",
+                                "instantaneous_input_kbps",
+                                "instantaneous_output_kbps",
+                                "total_connections_received",
+                                "total_commands_processed",
+                                "expired_keys",
+                                "evicted_keys",
+                            ]
+                            .contains(&key)
+                            {
+                                result.insert(
+                                    key.to_string(),
+                                    serde_json::Value::String(val.to_string()),
+                                );
                             }
                         }
                     }
@@ -837,11 +996,16 @@ async fn admin_status(
                 Err(_) => serde_json::json!({"error": "info failed"}),
             }
         }
-    }).await.unwrap_or(serde_json::json!({"error": "task failed"}));
+    })
+    .await
+    .unwrap_or(serde_json::json!({"error": "task failed"}));
 
     // Query sow-database stats
     let db_stats = match reqwest::get("http://127.0.0.1:25585/internal/stats").await {
-        Ok(r) => r.json::<serde_json::Value>().await.unwrap_or(serde_json::json!({"error": "db unreachable"})),
+        Ok(r) => r
+            .json::<serde_json::Value>()
+            .await
+            .unwrap_or(serde_json::json!({"error": "db unreachable"})),
         Err(_) => serde_json::json!({"error": "db unreachable"}),
     };
 
@@ -860,7 +1024,9 @@ async fn lobbies_json_handler(
     axum::response::Response::builder()
         .header("Content-Type", "application/json")
         .header("Cache-Control", "no-store")
-        .body(axum::body::Body::from(serde_json::to_string(&lobbies_info).unwrap()))
+        .body(axum::body::Body::from(
+            serde_json::to_string(&lobbies_info).unwrap(),
+        ))
         .unwrap()
 }
 
@@ -869,7 +1035,8 @@ async fn catalog_json_handler() -> impl axum::response::IntoResponse {
     axum::response::Response::builder()
         .header("Content-Type", "application/json")
         .header("Cache-Control", "public, max-age=60")
-        .body(axum::body::Body::from(serde_json::to_string(&catalog).unwrap()))
+        .body(axum::body::Body::from(
+            serde_json::to_string(&catalog).unwrap(),
+        ))
         .unwrap()
 }
-

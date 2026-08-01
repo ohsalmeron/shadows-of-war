@@ -1,6 +1,6 @@
 use crate::building::{Building, BuildingAggregate, BuildingGrid, DefenseGrid};
 use crate::diplomacy::{
-    AllianceProposal, ALLIANCE_REQUEST_COOLDOWN_TICKS, ALLIANCE_REQUEST_TTL_TICKS,
+    ALLIANCE_REQUEST_COOLDOWN_TICKS, ALLIANCE_REQUEST_TTL_TICKS, AllianceProposal,
     BETRAYAL_COOLDOWN_TICKS,
 };
 use crate::execution::AttackExecution;
@@ -38,8 +38,9 @@ pub struct ResourceRequestProposed {
     pub troops: f64,
 }
 
+pub type SeaLaneCalcState = (usize, Vec<crate::sea_lane::SeaLane>, Vec<(u64, u32, u32)>);
+
 #[derive(Clone)]
-#[allow(clippy::type_complexity)]
 pub struct SowEngine {
     pub state: GameState,
     pub attacks: Vec<AttackExecution>,
@@ -56,7 +57,7 @@ pub struct SowEngine {
     pub building_aggregates: Vec<BuildingAggregate>,
     pub building_aggregates_dirty: bool,
     pub sea_lanes_dirty: bool,
-    pub sea_lane_calc: Option<(usize, Vec<crate::sea_lane::SeaLane>, Vec<(u64, u32, u32)>)>,
+    pub sea_lane_calc: Option<SeaLaneCalcState>,
 
     pub alliances_proposed: Vec<AllianceProposal>,
     /// `(proposer, target)` → tick when another outgoing request is allowed.
@@ -165,8 +166,7 @@ impl SowEngine {
             return false;
         }
         let tick = self.current_tick_u32();
-        self
-            .alliance_request_cooldown_until
+        self.alliance_request_cooldown_until
             .get(&(proposer, target))
             .is_none_or(|until| *until <= tick)
     }

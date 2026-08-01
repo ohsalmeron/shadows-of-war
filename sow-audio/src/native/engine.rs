@@ -1,6 +1,6 @@
 use std::num::NonZero;
-use std::sync::atomic::AtomicU64;
 use std::sync::OnceLock;
+use std::sync::atomic::AtomicU64;
 use std::time::{Duration, Instant};
 
 use rodio::source::Source;
@@ -12,7 +12,8 @@ pub(super) const SAMPLE_RATE: u32 = 22050;
 pub(super) const OPEN_BACKOFF: Duration = Duration::from_secs(2);
 pub(super) const MAX_VOICES: u8 = 3; // ponytail: reduced to 3 for stability and less clutter
 
-pub(super) static MASTER_VOLUME: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(500); // ponytail: 50% default volume (halfway headroom up to 2x)
+pub(super) static MASTER_VOLUME: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(500); // ponytail: 50% default volume (halfway headroom up to 2x)
 
 pub fn set_master_volume(volume: f32) {
     let vol_u32 = (volume * 1000.0).clamp(0.0, 1000.0) as u32;

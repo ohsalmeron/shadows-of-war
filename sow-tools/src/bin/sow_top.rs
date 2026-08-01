@@ -72,11 +72,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .get("ESTABLISHED")
             .copied()
             .unwrap_or(0);
-        let listen_total = socket_info
-            .state_counts
-            .get("LISTEN")
-            .copied()
-            .unwrap_or(0);
+        let listen_total = socket_info.state_counts.get("LISTEN").copied().unwrap_or(0);
         let time_wait_total = socket_info
             .state_counts
             .get("TIME_WAIT")
@@ -103,13 +99,19 @@ fn main() -> Result<(), Box<dyn Error>> {
             let (rx_speed, tx_speed) = if let Some(last) = last_stats {
                 let r_bytes = curr_stats.rx_bytes.saturating_sub(last.rx_bytes);
                 let t_bytes = curr_stats.tx_bytes.saturating_sub(last.tx_bytes);
-                (format_bytes(r_bytes, elapsed), format_bytes(t_bytes, elapsed))
+                (
+                    format_bytes(r_bytes, elapsed),
+                    format_bytes(t_bytes, elapsed),
+                )
             } else {
                 ("0.00 B/s".to_string(), "0.00 B/s".to_string())
             };
             let line = format!("{}  ↓ {}  ↑ {}", iface, rx_speed, tx_speed);
-            if iface == "vtnet0" { vtnet_str = line; }
-            else { lo_str = line; }
+            if iface == "vtnet0" {
+                vtnet_str = line;
+            } else {
+                lo_str = line;
+            }
         }
         last_if_stats = current_if_stats;
 
@@ -117,31 +119,58 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let bw = |s: &str| format!("\x1B[1;36m│\x1B[0m{:<70}\x1B[1;36m│\x1B[0m", s);
 
-        print!("\x1B[1;36m┌──────────────────────────────────────────────────────────────────────────────┐\x1B[0m\n");
-        print!("{}\n", bw(&format!(" HOST: \x1B[1;32m{} \x1B[0m    UPTIME: \x1B[1;33m{}", hostname, uptime_str)));
-        print!("{}\n", bw(&format!(
-            " CPU: \x1B[1;37m{:>5.1}%\x1B[0m  (4 cores)    MEM: \x1B[1;37m{:>5.1}%\x1B[0m  (\x1B[1;37m{:.2}G\x1B[0m/\x1B[1;37m{:.2}G\x1B[0m)",
-            cpu_pct, mem_pct, used_gb, total_gb
-        )));
-        print!("\x1B[1;36m├──────────────────────────────────────────────────────────────────────────────┤\x1B[0m\n");
+        print!(
+            "\x1B[1;36m┌──────────────────────────────────────────────────────────────────────────────┐\x1B[0m\n"
+        );
+        print!(
+            "{}\n",
+            bw(&format!(
+                " HOST: \x1B[1;32m{} \x1B[0m    UPTIME: \x1B[1;33m{}",
+                hostname, uptime_str
+            ))
+        );
+        print!(
+            "{}\n",
+            bw(&format!(
+                " CPU: \x1B[1;37m{:>5.1}%\x1B[0m  (4 cores)    MEM: \x1B[1;37m{:>5.1}%\x1B[0m  (\x1B[1;37m{:.2}G\x1B[0m/\x1B[1;37m{:.2}G\x1B[0m)",
+                cpu_pct, mem_pct, used_gb, total_gb
+            ))
+        );
+        print!(
+            "\x1B[1;36m├──────────────────────────────────────────────────────────────────────────────┤\x1B[0m\n"
+        );
 
-        print!("{}\n", bw(&format!(
-            " MATCHES (sow-relay procs): \x1B[1;35m{:>5}\x1B[0m",
-            relay_process_count
-        )));
-        print!("{}\n", bw(&format!(
-            " PLAYERS IN RELAY (in-game): \x1B[1;32m{:>5}\x1B[0m",
-            relay_established
-        )));
-        print!("{}\n", bw(&format!(
-            " TCP SOCKETS  \x1B[1;37m{:>5}\x1B[0m / {}  (kern.maxfiles)",
-            total_sockets, maxfiles
-        )));
-        print!("{}\n", bw(&format!(
-            "   ESTABLISHED \x1B[1;32m{}\x1B[0m   LISTEN \x1B[1;36m{}\x1B[0m   TIME_WAIT \x1B[1;33m{}\x1B[0m",
-            established_total, listen_total, time_wait_total
-        )));
-        print!("\x1B[1;36m├──────────────────────────────────────────────────────────────────────────────┤\x1B[0m\n");
+        print!(
+            "{}\n",
+            bw(&format!(
+                " MATCHES (sow-relay procs): \x1B[1;35m{:>5}\x1B[0m",
+                relay_process_count
+            ))
+        );
+        print!(
+            "{}\n",
+            bw(&format!(
+                " PLAYERS IN RELAY (in-game): \x1B[1;32m{:>5}\x1B[0m",
+                relay_established
+            ))
+        );
+        print!(
+            "{}\n",
+            bw(&format!(
+                " TCP SOCKETS  \x1B[1;37m{:>5}\x1B[0m / {}  (kern.maxfiles)",
+                total_sockets, maxfiles
+            ))
+        );
+        print!(
+            "{}\n",
+            bw(&format!(
+                "   ESTABLISHED \x1B[1;32m{}\x1B[0m   LISTEN \x1B[1;36m{}\x1B[0m   TIME_WAIT \x1B[1;33m{}\x1B[0m",
+                established_total, listen_total, time_wait_total
+            ))
+        );
+        print!(
+            "\x1B[1;36m├──────────────────────────────────────────────────────────────────────────────┤\x1B[0m\n"
+        );
 
         if !vtnet_str.is_empty() {
             print!("{}\n", bw(&format!(" {}", vtnet_str)));
@@ -149,7 +178,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         if !lo_str.is_empty() {
             print!("{}\n", bw(&format!(" {}", lo_str)));
         }
-        print!("\x1B[1;36m└──────────────────────────────────────────────────────────────────────────────┘\x1B[0m\n");
+        print!(
+            "\x1B[1;36m└──────────────────────────────────────────────────────────────────────────────┘\x1B[0m\n"
+        );
 
         stdout.flush()?;
 
@@ -186,7 +217,9 @@ fn get_relay_process_count() -> Result<u32, Box<dyn Error>> {
 }
 
 fn get_maxfiles() -> Result<u32, Box<dyn Error>> {
-    let output = Command::new("sysctl").args(&["-n", "kern.maxfiles"]).output()?;
+    let output = Command::new("sysctl")
+        .args(&["-n", "kern.maxfiles"])
+        .output()?;
     let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
     Ok(s.parse().unwrap_or(0))
 }
@@ -219,7 +252,8 @@ fn get_socket_info() -> Result<SocketInfo, Box<dyn Error>> {
                 let clean_state = state.trim().to_uppercase();
                 *info.state_counts.entry(clean_state.clone()).or_insert(0) += 1;
 
-                if clean_state == "ESTABLISHED" && port >= RELAY_PORT_MIN && port <= RELAY_PORT_MAX {
+                if clean_state == "ESTABLISHED" && port >= RELAY_PORT_MIN && port <= RELAY_PORT_MAX
+                {
                     *info.port_conn_counts.entry(port).or_insert(0) += 1;
                 }
             }
@@ -239,9 +273,7 @@ fn get_interface_stats() -> Result<HashMap<String, InterfaceStats>, Box<dyn Erro
     let mut stats = HashMap::new();
 
     if cfg!(target_os = "freebsd") {
-        let output = Command::new("netstat")
-            .args(&["-i", "-b", "-n"])
-            .output()?;
+        let output = Command::new("netstat").args(&["-i", "-b", "-n"]).output()?;
         let output_str = String::from_utf8_lossy(&output.stdout);
 
         for line in output_str.lines() {
@@ -254,13 +286,7 @@ fn get_interface_stats() -> Result<HashMap<String, InterfaceStats>, Box<dyn Erro
                 let rx_bytes = parts[7].parse().unwrap_or(0);
                 let tx_bytes = parts[10].parse().unwrap_or(0);
 
-                stats.insert(
-                    iface,
-                    InterfaceStats {
-                        rx_bytes,
-                        tx_bytes,
-                    },
-                );
+                stats.insert(iface, InterfaceStats { rx_bytes, tx_bytes });
             }
         }
     } else {
@@ -278,13 +304,7 @@ fn get_interface_stats() -> Result<HashMap<String, InterfaceStats>, Box<dyn Erro
                             let rx_bytes = parts[0].parse().unwrap_or(0);
                             let tx_bytes = parts[8].parse().unwrap_or(0);
 
-                            stats.insert(
-                                iface,
-                                InterfaceStats {
-                                    rx_bytes,
-                                    tx_bytes,
-                                },
-                            );
+                            stats.insert(iface, InterfaceStats { rx_bytes, tx_bytes });
                         }
                     }
                 }

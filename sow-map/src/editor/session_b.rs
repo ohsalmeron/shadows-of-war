@@ -1,3 +1,13 @@
+/// Parts pulled back out of the session so the caller can rebuild a client after teardown.
+pub struct ReclaimedSession {
+    pub window: Option<Box<dyn Window>>,
+    pub surface: Option<gpu::Surface>,
+    pub render_ctx: RenderContext,
+    pub gui_painter: Option<GuiPainter>,
+    pub client_app: ClientApp,
+    pub egui_ctx: Context,
+}
+
 impl MapEditorSession {
 
     pub(crate) fn gameplay_map_globals(
@@ -386,17 +396,7 @@ impl MapEditorSession {
         self.render_ctx.reset_command_encoder();
     }
 
-    #[allow(clippy::type_complexity)]
-    pub fn destroy_and_reclaim(
-        self,
-    ) -> (
-        Option<Box<dyn Window>>,
-        Option<gpu::Surface>,
-        RenderContext,
-        Option<GuiPainter>,
-        ClientApp,
-        Context,
-    ) {
+    pub fn destroy_and_reclaim(self) -> ReclaimedSession {
         let mut this = std::mem::ManuallyDrop::new(self);
 
         this.teardown_gpu();
@@ -414,14 +414,14 @@ impl MapEditorSession {
             std::ptr::drop_in_place(&mut this.editor_ui);
             #[cfg(feature = "osm")]
             std::ptr::drop_in_place(&mut this.osm_picker);
-            (
+            ReclaimedSession {
                 window,
                 surface,
                 render_ctx,
                 gui_painter,
                 client_app,
                 egui_ctx,
-            )
+            }
         }
     }
 }

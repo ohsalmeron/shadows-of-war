@@ -1,17 +1,27 @@
 use crate::app::SowApp;
 
+pub(crate) struct SimInitOpts {
+    pub config: Box<sow_core::game_config::GameConfig>,
+    pub seed: u64,
+    pub map_bytes: Vec<u8>,
+    pub players: Vec<sow_core::protocol::PlayerInfo>,
+    pub map_spawns: Vec<sow_core::map_file::MapSpawn>,
+    pub geo_bounds: Option<sow_core::map_file::GeoBounds>,
+    pub num_land_tiles: u32,
+}
+
 impl SowApp {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn handle_sim_init(
         &mut self,
-        config: Box<sow_core::game_config::GameConfig>,
-        seed: u64,
-        map_bytes: Vec<u8>,
-        players: Vec<sow_core::protocol::PlayerInfo>,
-        map_spawns: Vec<sow_core::map_file::MapSpawn>,
-        geo_bounds: Option<sow_core::map_file::GeoBounds>,
-        num_land_tiles: u32,
+        opts: SimInitOpts,
     ) {
+        let config = opts.config;
+        let seed = opts.seed;
+        let map_bytes = opts.map_bytes;
+        let players = opts.players;
+        let map_spawns = opts.map_spawns;
+        let geo_bounds = opts.geo_bounds;
+        let num_land_tiles = opts.num_land_tiles;
         self.reset_progress_session();
         self.sim.config = (*config).clone();
         let map_w = config.map_width;

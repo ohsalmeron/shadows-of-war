@@ -1,5 +1,5 @@
-use sow_data::{crazygames, db};
 use sow_data::db::{LinkOutcome, PlayerDb, PlayerProfile};
+use sow_data::{crazygames, db};
 
 use axum::{
     Json, Router,
@@ -18,7 +18,6 @@ struct AppState {
     db: PlayerDb,
     secret_token: String,
     redb_path: String,
-    redb_db: Arc<redb::Database>,
 }
 
 #[derive(Deserialize)]
@@ -133,14 +132,16 @@ async fn main() {
     );
 
     // Open REDB persistent database
-    let redb_path = std::env::var("SOW_REDB_PATH").unwrap_or_else(|_| "sow_metadata.redb".to_string());
+    let redb_path =
+        std::env::var("SOW_REDB_PATH").unwrap_or_else(|_| "sow_metadata.redb".to_string());
     info!("Opening persistent REDB database at {}", redb_path);
     if let Some(dir) = std::path::Path::new(&redb_path).parent() {
         if !dir.as_os_str().is_empty() {
             std::fs::create_dir_all(dir).expect("Failed to create REDB data directory");
         }
     }
-    let redb_db = sow_data::init_database(&redb_path).expect("Failed to initialize REDB metadata database");
+    let redb_db =
+        sow_data::init_database(&redb_path).expect("Failed to initialize REDB metadata database");
     let redb_db_arc = Arc::new(redb_db);
 
     // Seed Valkey RAM from REDB on boot
@@ -150,13 +151,16 @@ async fn main() {
     }
 
     // Initialize database connector
-    let player_db = PlayerDb::new(&valkey_url, crazygames_api_key, Some(Arc::clone(&redb_db_arc)));
+    let player_db = PlayerDb::new(
+        &valkey_url,
+        crazygames_api_key,
+        Some(Arc::clone(&redb_db_arc)),
+    );
 
     let state = Arc::new(AppState {
         db: player_db,
         secret_token,
         redb_path: redb_path.clone(),
-        redb_db: Arc::clone(&redb_db_arc),
     });
 
     // Configure CORS for web portal compatibility
@@ -335,18 +339,25 @@ async fn handle_match_finalize(
     // ponytail: High-performance streaming of raw replay bytes directly to ZFS disk storage
     if let Some(ref replay_bytes) = payload.replay_data {
         let replay_dir = std::env::var("SOW_REPLAY_DIR").unwrap_or_else(|_| "replays".to_string());
-        let file_path = std::path::Path::new(&replay_dir).join(format!("{}.replay", payload.match_id));
-        
+        let file_path =
+            std::path::Path::new(&replay_dir).join(format!("{}.replay", payload.match_id));
+
         if let Some(parent) = file_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        
+
         match std::fs::write(&file_path, replay_bytes) {
             Ok(()) => {
-                info!("Successfully wrote raw replay for match {} directly to ZFS disk storage: {:?}", payload.match_id, file_path);
+                info!(
+                    "Successfully wrote raw replay for match {} directly to ZFS disk storage: {:?}",
+                    payload.match_id, file_path
+                );
             }
             Err(e) => {
-                error!("Failed to write raw replay file for match {} to disk: {}", payload.match_id, e);
+                error!(
+                    "Failed to write raw replay file for match {} to disk: {}",
+                    payload.match_id, e
+                );
             }
         }
     }
@@ -354,14 +365,18 @@ async fn handle_match_finalize(
     // ponytail: Write lobby metadata JSON if provided alongside the replay
     if let Some(ref lobby_json) = payload.lobby_json {
         let replay_dir = std::env::var("SOW_REPLAY_DIR").unwrap_or_else(|_| "replays".to_string());
-        let meta_path = std::path::Path::new(&replay_dir).join(format!("{}.json", payload.match_id));
-        
+        let meta_path =
+            std::path::Path::new(&replay_dir).join(format!("{}.json", payload.match_id));
+
         if let Some(parent) = meta_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        
+
         if let Err(e) = std::fs::write(&meta_path, lobby_json) {
-            error!("Failed to write metadata JSON file for match {} to disk: {}", payload.match_id, e);
+            error!(
+                "Failed to write metadata JSON file for match {} to disk: {}",
+                payload.match_id, e
+            );
         }
     }
 
@@ -572,9 +587,7 @@ async fn handle_link_identity(
     }
 }
 
-async fn handle_internal_stats(
-    State(state): State<Arc<AppState>>,
-) -> Json<serde_json::Value> {
+async fn handle_internal_stats(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let db_path = std::path::Path::new(&state.redb_path);
     let file_size = std::fs::metadata(db_path).map(|m| m.len()).unwrap_or(0);
 

@@ -3,5 +3,5 @@
 mod astar;
 mod flow_field;
 
-pub use astar::{bresenham_line, WaterAStar, WaterPathfinderScratch};
+pub use astar::{WaterAStar, WaterPathfinderScratch, bresenham_line};
 pub use flow_field::{FlowField, FlowFieldCache};

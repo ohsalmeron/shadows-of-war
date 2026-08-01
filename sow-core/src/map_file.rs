@@ -68,7 +68,10 @@ impl GeoBounds {
 
     pub fn contains(&self, lat: f64, lon: f64) -> bool {
         let lon = self.normalize_lon(lon);
-        lat >= self.min_lat() && lat <= self.max_lat() && lon >= self.min_lon() && lon <= self.max_lon()
+        lat >= self.min_lat()
+            && lat <= self.max_lat()
+            && lon >= self.min_lon()
+            && lon <= self.max_lon()
     }
 
     /// lat/lon → tile coordinate. Equirectangular (linear lon→x, lat→y),
@@ -84,7 +87,10 @@ impl GeoBounds {
         let lon = self.normalize_lon(lon);
         let x = ((lon - self.min_lon()) / lon_span * width as f64) as u32;
         let y = ((self.max_lat() - lat) / lat_span * height as f64) as u32;
-        Some((x.min(width.saturating_sub(1)), y.min(height.saturating_sub(1))))
+        Some((
+            x.min(width.saturating_sub(1)),
+            y.min(height.saturating_sub(1)),
+        ))
     }
 }
 
@@ -496,7 +502,10 @@ mod tests {
         // byte-identical to the unstamped encoding's prefix.
         let unstamped = encode(&sample_map(None));
         let header = parse_header(&unstamped).unwrap();
-        assert_eq!(bytes[..header.header_bytes], unstamped[..header.header_bytes]);
+        assert_eq!(
+            bytes[..header.header_bytes],
+            unstamped[..header.header_bytes]
+        );
         // Old parse: exact-length terrain slice succeeds.
         let terrain = bytes
             .get(header.header_bytes..header.header_bytes + map.terrain.len())

@@ -1,5 +1,5 @@
 use super::core::Building;
-use super::placement::{idx_xy, manhattan, STRUCTURE_MIN_DIST};
+use super::placement::{STRUCTURE_MIN_DIST, idx_xy, manhattan};
 use crate::game::BuildingKind;
 use crate::map::GameMap;
 /// Closest structure of `kind` within Manhattan

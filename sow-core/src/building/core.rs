@@ -109,11 +109,7 @@ impl Building {
                 break;
             }
         }
-        if lvl == 1 && ticks > 0 {
-            0
-        } else {
-            lvl
-        }
+        if lvl == 1 && ticks > 0 { 0 } else { lvl }
     }
 
     #[inline]

@@ -277,7 +277,10 @@ impl SowApp {
                 c.send(json);
             }
         } else {
-            log::info!("No active connection, spawning lazy connection to {}", self.net.ws_url);
+            log::info!(
+                "No active connection, spawning lazy connection to {}",
+                self.net.ws_url
+            );
             self.ui.app.main_menu_state.is_connecting = true;
             let url = self.net.ws_url.clone();
             #[cfg(target_arch = "wasm32")]

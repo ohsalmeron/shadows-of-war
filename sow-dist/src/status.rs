@@ -190,8 +190,16 @@ fn b64_encode(data: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         let b0 = bytes[i] as u32;
-        let b1 = if i + 1 < bytes.len() { bytes[i + 1] as u32 } else { 0 };
-        let b2 = if i + 2 < bytes.len() { bytes[i + 2] as u32 } else { 0 };
+        let b1 = if i + 1 < bytes.len() {
+            bytes[i + 1] as u32
+        } else {
+            0
+        };
+        let b2 = if i + 2 < bytes.len() {
+            bytes[i + 2] as u32
+        } else {
+            0
+        };
         let triple = (b0 << 16) | (b1 << 8) | b2;
 
         res.push(CHARS[((triple >> 18) & 63) as usize] as char);
@@ -213,9 +221,17 @@ fn b64_encode(data: &str) -> String {
 
 fn run_b64_py(host: &str, code: &str) -> Option<String> {
     let b64 = b64_encode(code);
-    let remote_cmd = format!("python3 -c \"import base64; exec(base64.b64decode('{b64}').decode())\"");
+    let remote_cmd =
+        format!("python3 -c \"import base64; exec(base64.b64decode('{b64}').decode())\"");
     let output = Command::new("ssh")
-        .args(["-o", "ConnectTimeout=5", "-o", "BatchMode=yes", host, &remote_cmd])
+        .args([
+            "-o",
+            "ConnectTimeout=5",
+            "-o",
+            "BatchMode=yes",
+            host,
+            &remote_cmd,
+        ])
         .output();
 
     match output {

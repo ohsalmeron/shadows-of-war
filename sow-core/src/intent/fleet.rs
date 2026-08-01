@@ -1,6 +1,6 @@
 use crate::engine::SowEngine;
 use crate::warp_fleet::WarpFleet;
-use crate::warp_fleet::{resolve_fleet_route, FleetRoute};
+use crate::warp_fleet::{FleetRoute, resolve_fleet_route};
 
 impl SowEngine {
     pub(super) fn apply_launch_fleet_intent(
@@ -69,8 +69,7 @@ impl SowEngine {
             &self.water,
             &mut self.path_scratch,
             player_id,
-            target_owner,
-            target_tile,
+            (target_owner, target_tile),
             border_tiles,
             target_border,
         ) {
@@ -114,8 +113,7 @@ impl SowEngine {
             target_owner,
             crate::game::UnitType::TransportShip,
             launch,
-            src,
-            landing,
+            (src, landing),
             path,
         ));
     }

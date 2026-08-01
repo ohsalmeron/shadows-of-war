@@ -13,6 +13,6 @@ pub enum ClientPhase {
 }
 
 pub use assets::{
-    atlas_texture, atlas_uv, register_emoji_atlas, register_game_assets, texture_options,
-    EMOJI_ATLAS_BYTES,
+    EMOJI_ATLAS_BYTES, atlas_texture, atlas_uv, register_emoji_atlas, register_game_assets,
+    texture_options,
 };

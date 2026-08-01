@@ -1,12 +1,13 @@
 use super::state::*;
 #[cfg(feature = "osm")]
-use crate::heightmap::{terrain_stats_from_packed, WorldHeightmap};
+use crate::heightmap::{WorldHeightmap, terrain_stats_from_packed};
 #[cfg(feature = "osm")]
 use crate::image_pipeline::generate_from_rgba;
 #[cfg(feature = "osm")]
 use crate::osm_tiles::{
-    classify_osm_to_rgba_with_heightmap, fetch_region_blocking, lonlat_to_world_px,
-    pick_fetch_zoom, tiles_covering_rect, world_px_to_lonlat, CachedTile, MAX_TILE_ZOOM, TILE_SIZE,
+    CachedTile, MAX_TILE_ZOOM, TILE_SIZE, classify_osm_to_rgba_with_heightmap,
+    fetch_region_blocking, lonlat_to_world_px, pick_fetch_zoom, tiles_covering_rect,
+    world_px_to_lonlat,
 };
 
 impl MapEditorSession {

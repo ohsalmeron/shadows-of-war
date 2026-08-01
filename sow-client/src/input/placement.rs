@@ -32,38 +32,46 @@ pub fn find_stack_target_tile(
     best.map(|(_, _, tile)| tile)
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn resolve_build_target_tile(
-    kind: sow_core::game::BuildingKind,
-    click_x: i32,
-    click_y: i32,
-    map_w: u32,
-    map_h: u32,
-    owners: &[u16],
-    terrain: &[u8],
-    my_id: u16,
-    buildings: &[sow_core::protocol::BuildingSnapshot],
-) -> Result<u32, &'static str> {
-    if let Some(tile) = find_stack_target_tile(kind, click_x, click_y, map_w, my_id, buildings) {
-        return Ok(tile);
-    }
-    resolve_building_placement_tile(
-        kind, click_x, click_y, map_w, map_h, owners, terrain, my_id, buildings,
-    )
+pub struct PlacementQuery<'a> {
+    pub kind: sow_core::game::BuildingKind,
+    pub click_x: i32,
+    pub click_y: i32,
+    pub map_w: u32,
+    pub map_h: u32,
+    pub owners: &'a [u16],
+    pub terrain: &'a [u8],
+    pub my_id: u16,
+    pub buildings: &'a [sow_core::protocol::BuildingSnapshot],
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn resolve_building_placement_tile(
-    kind: sow_core::game::BuildingKind,
-    click_x: i32,
-    click_y: i32,
-    map_w: u32,
-    map_h: u32,
-    owners: &[u16],
-    terrain: &[u8],
-    my_id: u16,
-    buildings: &[sow_core::protocol::BuildingSnapshot],
+pub fn resolve_build_target_tile(
+    query: &PlacementQuery,
 ) -> Result<u32, &'static str> {
+    if let Some(tile) = find_stack_target_tile(
+        query.kind,
+        query.click_x,
+        query.click_y,
+        query.map_w,
+        query.my_id,
+        query.buildings,
+    ) {
+        return Ok(tile);
+    }
+    resolve_building_placement_tile(query)
+}
+
+pub fn resolve_building_placement_tile(
+    query: &PlacementQuery,
+) -> Result<u32, &'static str> {
+    let kind = query.kind;
+    let click_x = query.click_x;
+    let click_y = query.click_y;
+    let map_w = query.map_w;
+    let map_h = query.map_h;
+    let owners = query.owners;
+    let terrain = query.terrain;
+    let my_id = query.my_id;
+    let buildings = query.buildings;
     let pokayoke_dist = 25;
     let pokayoke_dist_sq = pokayoke_dist * pokayoke_dist;
 
@@ -172,7 +180,9 @@ pub fn resolve_building_placement_tile(
             if kind == sow_core::game::BuildingKind::City {
                 return Err("Too close to another City! Minimum spacing is 6 tiles.");
             } else {
-                return Err("Too close to another structure! Spacing rules: City requires 6, other structures require 4.");
+                return Err(
+                    "Too close to another structure! Spacing rules: City requires 6, other structures require 4.",
+                );
             }
         }
         return Err("No space nearby!");

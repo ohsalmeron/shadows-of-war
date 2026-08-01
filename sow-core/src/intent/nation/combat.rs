@@ -8,18 +8,17 @@ use wyrand::WyRand;
 use super::profile::{AiSlot, BotDecision, BotDecisionKind};
 
 impl SowEngine {
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn nation_run_combat_for_slot(
         &mut self,
         slot: &AiSlot,
-        bot_id: u16,
-        bot_iq: u32,
-        attack_cost: f64,
-        alliance_cost: f64,
+        bot: (u16, u32),
+        costs: (f64, f64),
         neighbor_players: &[u16],
         has_neutral: bool,
         decisions: &mut Vec<BotDecision>,
     ) {
+        let (bot_id, bot_iq) = bot;
+        let (attack_cost, alliance_cost) = costs;
         // ── Attack logic (both Bots and Nations) ────────────────────
         if slot.do_attack {
             let current_points = self.state.player(bot_id).unwrap().iq_points;
@@ -162,8 +161,7 @@ impl SowEngine {
                                         &self.water,
                                         &mut self.path_scratch,
                                         bot_id,
-                                        target_p_id,
-                                        t_tile,
+                                        (target_p_id, t_tile),
                                         border_tiles,
                                         Some(&target_p.border_tiles),
                                     ) {

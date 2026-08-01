@@ -5,10 +5,10 @@ use rand::Rng;
 use sow_core::engine::SowEngine;
 use sow_core::protocol::{AttackIntent, ClientMessage, GameplayIntent, ServerMessage};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::RwLock;
-use tokio::time::{sleep, Duration, Instant};
+use tokio::time::{Duration, Instant, sleep};
 use tokio_tungstenite::tungstenite::protocol::Message;
 
 #[derive(Default)]
@@ -180,7 +180,8 @@ async fn run_bot(
 
     let (leader, civilization) = {
         let mut rng = rand::thread_rng();
-        let l = sow_core::player::Leader::ALL[rng.gen_range(0..sow_core::player::Leader::ALL.len())];
+        let l =
+            sow_core::player::Leader::ALL[rng.gen_range(0..sow_core::player::Leader::ALL.len())];
         (l, l.civilization())
     };
 
@@ -245,7 +246,11 @@ async fn run_bot(
             .strip_prefix("wss://")
             .or_else(|| url.strip_prefix("ws://"))
             .unwrap_or(&url);
-        let host = rest.split('/').next().and_then(|s| s.split(':').next()).unwrap_or("shadowsofwar.io");
+        let host = rest
+            .split('/')
+            .next()
+            .and_then(|s| s.split(':').next())
+            .unwrap_or("shadowsofwar.io");
         let maps_base = if host == "127.0.0.1" || host == "localhost" {
             format!("http://{host}:25566/maps")
         } else {
@@ -326,8 +331,7 @@ async fn run_bot(
                 if eng.is_none() {
                     println!("[Bot {}] Initializing shared engine...", bot_index);
                     let map_bytes = shared.map_bytes.read().await.clone().unwrap();
-                    let parsed_map =
-                        sow_core::maps::load_map_from_payload(&map_bytes).ok();
+                    let parsed_map = sow_core::maps::load_map_from_payload(&map_bytes).ok();
 
                     let (w, h) = if let Some(ref m) = parsed_map {
                         (m.width, m.height)
@@ -335,12 +339,8 @@ async fn run_bot(
                         (start.config.map_width, start.config.map_height)
                     };
 
-                    let mut state = sow_core::game::GameState::new(
-                        start.seed,
-                        w,
-                        h,
-                        start.config.clone(),
-                    );
+                    let mut state =
+                        sow_core::game::GameState::new(start.seed, w, h, start.config.clone());
 
                     if let Some(ref map_file) = parsed_map {
                         state.total_land_tiles = map_file.num_land_tiles;
@@ -364,7 +364,10 @@ async fn run_bot(
                             );
                         }
                     } else {
-                        eprintln!("[Bot {}] Warning: map parse failed, using blank terrain", bot_index);
+                        eprintln!(
+                            "[Bot {}] Warning: map parse failed, using blank terrain",
+                            bot_index
+                        );
                     }
 
                     for p in &start.players {
@@ -446,7 +449,9 @@ async fn run_bot(
                 turn_gaps.push(gap);
             }
             last_turn_at = Some(now);
-            metrics.turn_timestamps.push((turn.turn.turn_number, relay_start.elapsed().as_secs_f64()));
+            metrics
+                .turn_timestamps
+                .push((turn.turn.turn_number, relay_start.elapsed().as_secs_f64()));
 
             if metrics.turn_timestamps.len() % 100 == 0 {
                 let mut min_gap = f64::MAX;
@@ -460,7 +465,11 @@ async fn run_bot(
                 let avg = total / turn_gaps[turn_gaps.len().saturating_sub(100)..].len() as f64;
                 println!(
                     "[Bot {}] turn#{} gap_window(100) min={:.1}ms avg={:.1}ms max={:.1}ms total_turns={}",
-                    bot_index, turn.turn.turn_number, min_gap * 1000.0, avg * 1000.0, max_gap * 1000.0,
+                    bot_index,
+                    turn.turn.turn_number,
+                    min_gap * 1000.0,
+                    avg * 1000.0,
+                    max_gap * 1000.0,
                     metrics.turn_timestamps.len()
                 );
             }
@@ -567,7 +576,12 @@ async fn run_bot(
         let p99 = sorted[(sorted.len() as f64 * 0.99) as usize];
         println!(
             "[Bot {}] RELAY STATS: {} turns, gaps(ms) avg={:.1} p50={:.1} p95={:.1} p99={:.1}",
-            bot_index, turn_gaps.len(), avg * 1000.0, p50 * 1000.0, p95 * 1000.0, p99 * 1000.0
+            bot_index,
+            turn_gaps.len(),
+            avg * 1000.0,
+            p50 * 1000.0,
+            p95 * 1000.0,
+            p99 * 1000.0
         );
     }
 

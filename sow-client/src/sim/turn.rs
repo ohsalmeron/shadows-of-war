@@ -65,10 +65,26 @@ impl SowApp {
 
         // Recompute Fog of War visibility
         if let Some(ref snap_ref) = self.sim.current_snapshot {
-            let owners = self.gfx.map_renderer.as_ref().map(|mr| mr.owners.as_slice()).unwrap_or(&[]);
-            let terrain = self.gfx.map_renderer.as_ref().map(|mr| mr.terrain.as_slice()).unwrap_or(&[]);
-            self.sim.fog_explored.blocks.resize((self.sim.map_w * self.sim.map_h + 63) as usize / 64, 0);
-            self.sim.fog_visible.blocks.resize((self.sim.map_w * self.sim.map_h + 63) as usize / 64, 0);
+            let owners = self
+                .gfx
+                .map_renderer
+                .as_ref()
+                .map(|mr| mr.owners.as_slice())
+                .unwrap_or(&[]);
+            let terrain = self
+                .gfx
+                .map_renderer
+                .as_ref()
+                .map(|mr| mr.terrain.as_slice())
+                .unwrap_or(&[]);
+            self.sim
+                .fog_explored
+                .blocks
+                .resize((self.sim.map_w * self.sim.map_h + 63) as usize / 64, 0);
+            self.sim
+                .fog_visible
+                .blocks
+                .resize((self.sim.map_w * self.sim.map_h + 63) as usize / 64, 0);
             let dev = sow_ui_kit::theme::dev_config::DevConfig::get();
             crate::sim::visibility::compute_visibility(
                 self.sim.map_w,

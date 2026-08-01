@@ -1,4 +1,4 @@
-use egui::{vec2, Color32, Context, RichText};
+use egui::{Color32, Context, RichText, vec2};
 use sow_i18n::Language;
 
 use super::super::state::HudState;

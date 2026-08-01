@@ -1,6 +1,6 @@
+use crate::MapDownloadEvent;
 use crate::app::SowApp;
 use crate::net::lobby::{apply_lobbies_broadcast, seed_joined_lobby_entry};
-use crate::MapDownloadEvent;
 use sow_ui_kit::ClientPhase;
 use web_time::Instant;
 
@@ -464,10 +464,18 @@ impl SowApp {
                                                         progress.min(99),
                                                     ));
                                                     if downloaded % 524288 < chunk.len() {
-                                                        log::info!("Downloading map... {} / {} bytes ({}%)", downloaded, total, progress.min(99));
+                                                        log::info!(
+                                                            "Downloading map... {} / {} bytes ({}%)",
+                                                            downloaded,
+                                                            total,
+                                                            progress.min(99)
+                                                        );
                                                     }
                                                 } else if downloaded % 524288 < chunk.len() {
-                                                    log::info!("Downloading map... {} bytes (unknown total)", downloaded);
+                                                    log::info!(
+                                                        "Downloading map... {} bytes (unknown total)",
+                                                        downloaded
+                                                    );
                                                 }
                                                 std::ops::ControlFlow::Continue(())
                                             }

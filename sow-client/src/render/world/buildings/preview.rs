@@ -3,21 +3,30 @@ use super::plates::*;
 use crate::render::world::movers::world_to_tile;
 use crate::render::world::utils::*;
 
-#[allow(clippy::too_many_arguments)]
+pub(super) struct PlacementPreviewOpts<'a> {
+    pub painter: &'a egui::Painter,
+    pub snap: &'a sow_core::protocol::SimSnapshot,
+    pub hovered_tile_idx: Option<u32>,
+    pub zoom_scaled: f32,
+    pub final_scale: f32,
+    pub sf: f32,
+    pub config: &'a sow_core::game_config::GameConfig,
+}
+
 pub(super) fn paint_building_placement_preview(
     ui: &mut crate::app::UiState,
     sim: &crate::app::SimState,
     input: &crate::app::InputState,
-    _time: &crate::app::TimeState,
     gfx: &mut crate::app::GraphicsState,
-    painter: &egui::Painter,
-    snap: &sow_core::protocol::SimSnapshot,
-    hovered_tile_idx: Option<u32>,
-    zoom_scaled: f32,
-    final_scale: f32,
-    sf: f32,
-    config: &sow_core::game_config::GameConfig,
+    opts: &PlacementPreviewOpts,
 ) {
+    let painter = opts.painter;
+    let snap = opts.snap;
+    let hovered_tile_idx = opts.hovered_tile_idx;
+    let zoom_scaled = opts.zoom_scaled;
+    let final_scale = opts.final_scale;
+    let sf = opts.sf;
+    let config = opts.config;
     if !sow_ui_kit::theme::dev_config::DevConfig::get().vfx_placement_preview {
         return;
     }
@@ -38,17 +47,17 @@ pub(super) fn paint_building_placement_preview(
                 .map(|mr| mr.terrain.as_slice())
                 .unwrap_or(&[]);
 
-            let target_res = crate::input::resolve_build_target_tile(
+            let target_res = crate::input::resolve_build_target_tile(&crate::input::placement::PlacementQuery {
                 kind,
-                h_col,
-                h_row,
-                sim.map_w,
-                sim.map_h,
+                click_x: h_col,
+                click_y: h_row,
+                map_w: sim.map_w,
+                map_h: sim.map_h,
                 owners,
                 terrain,
                 my_id,
-                &snap.buildings,
-            );
+                buildings: &snap.buildings,
+            });
 
             let stack_target = crate::input::find_stack_target_tile(
                 kind,

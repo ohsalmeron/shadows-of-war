@@ -536,9 +536,23 @@ impl SowApp {
                     }
 
                     self.draw_context_menu_popovers(
-                        ui, ctx, tile_idx, col, row, center, scale, compact, screen,
-                        outer_r, is_own_territory, radial_build_active,
-                        radial_missile_active, build_active_id, missile_active_id,
+                        ui,
+                        ctx,
+                        &popovers::ContextMenuTileOpts {
+                            tile_idx,
+                            col,
+                            row,
+                            center,
+                            scale,
+                            compact,
+                            screen,
+                            outer_r,
+                            is_own_territory,
+                            radial_build_active,
+                            radial_missile_active,
+                            build_active_id,
+                            missile_active_id,
+                        },
                     );
                 });
 

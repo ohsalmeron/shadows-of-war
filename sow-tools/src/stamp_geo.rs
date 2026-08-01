@@ -150,14 +150,17 @@ pub fn run(args: StampGeoArgs) -> Result<(), Box<dyn Error>> {
         // Files in the transitional inline-geo layout (version 2) must be
         // rewritten even when the bounds match: the current trailing-record
         // layout keeps version 1 so pre-geo parsers accept stamped maps.
-        let outdated_layout =
-            u16::from_le_bytes([payload[4], payload[5]]) != map_file::MAP_VERSION;
+        let outdated_layout = u16::from_le_bytes([payload[4], payload[5]]) != map_file::MAP_VERSION;
         if map.geo_bounds == Some(bounds) && !outdated_layout {
             println!("{key}: already stamped with identical bounds, up to date");
         } else {
             println!(
                 "{key}: {} -> bbox ({:.2}, {:.2}, {:.2}, {:.2})",
-                if map.geo_bounds.is_some() { "restamp" } else { "stamp v2" },
+                if map.geo_bounds.is_some() {
+                    "restamp"
+                } else {
+                    "stamp v2"
+                },
                 bounds.min_lon(),
                 bounds.min_lat(),
                 bounds.max_lon(),
@@ -200,7 +203,9 @@ fn parse_bbox_arg(s: &str) -> Option<GeoBounds> {
     if parts.len() != 4 {
         return None;
     }
-    Some(GeoBounds::from_degrees(parts[0], parts[1], parts[2], parts[3]))
+    Some(GeoBounds::from_degrees(
+        parts[0], parts[1], parts[2], parts[3],
+    ))
 }
 
 fn reference_latlon(name: &str) -> Option<(f64, f64)> {
@@ -250,11 +255,24 @@ fn fit_from_anchors(map: &MapFile) -> Option<Fit> {
     let attempt = |shift: bool| -> Option<Fit> {
         let mut pts: Vec<(f64, f64, f64, f64)> = matched
             .iter()
-            .map(|&(x, y, lat, lon)| (x, y, lat, if shift && lon < 0.0 { lon + 360.0 } else { lon }))
+            .map(|&(x, y, lat, lon)| {
+                (
+                    x,
+                    y,
+                    lat,
+                    if shift && lon < 0.0 { lon + 360.0 } else { lon },
+                )
+            })
             .collect();
         for pass in 0..2 {
-            let (a, b) = lsq(&pts.iter().map(|&(x, _, _, lon)| (x, lon)).collect::<Vec<_>>())?;
-            let (c, d) = lsq(&pts.iter().map(|&(_, y, lat, _)| (y, lat)).collect::<Vec<_>>())?;
+            let (a, b) = lsq(&pts
+                .iter()
+                .map(|&(x, _, _, lon)| (x, lon))
+                .collect::<Vec<_>>())?;
+            let (c, d) = lsq(&pts
+                .iter()
+                .map(|&(_, y, lat, _)| (y, lat))
+                .collect::<Vec<_>>())?;
             let residuals: Vec<f64> = pts
                 .iter()
                 .map(|&(x, y, lat, lon)| (a * x + b - lon).abs() + (c * y + d - lat).abs())
@@ -276,7 +294,12 @@ fn fit_from_anchors(map: &MapFile) -> Option<Fit> {
             }
             let mean = residuals.iter().sum::<f64>() / residuals.len() as f64;
             return Some(Fit {
-                bounds: GeoBounds::from_degrees(b, c * map.height as f64 + d, a * map.width as f64 + b, d),
+                bounds: GeoBounds::from_degrees(
+                    b,
+                    c * map.height as f64 + d,
+                    a * map.width as f64 + b,
+                    d,
+                ),
                 matches: pts.len(),
                 mean_residual: mean,
             });
@@ -286,7 +309,11 @@ fn fit_from_anchors(map: &MapFile) -> Option<Fit> {
     let plain = attempt(false);
     let shifted = attempt(true);
     match (plain, shifted) {
-        (Some(p), Some(s)) => Some(if s.mean_residual < p.mean_residual { s } else { p }),
+        (Some(p), Some(s)) => Some(if s.mean_residual < p.mean_residual {
+            s
+        } else {
+            p
+        }),
         (p, s) => p.or(s),
     }
 }

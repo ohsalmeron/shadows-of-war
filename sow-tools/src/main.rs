@@ -6,6 +6,7 @@ mod emoji_atlas;
 mod exporter;
 mod image_map;
 mod openfront_import;
+use exporter::ExportMapCtx;
 use sow_map::osm_overpass as overpass;
 mod poi_extractor;
 mod rasterizer;
@@ -271,21 +272,19 @@ async fn run_generate(
         "Generating map '{name}' for bbox [{min_lon}, {min_lat}, {max_lon}, {max_lat}] at scale {scale:.2}"
     );
 
-    println!("Fetching coastlines from OpenStreetMap (Overpass API)...");
-    let (map_width, map_height) =
-        rasterizer::map_dimensions(min_lon, min_lat, max_lon, max_lat, scale);
-
-    let coastlines = overpass::fetch_coastlines_tiled(
+    let bbox = sow_map::osm_coast::MapBBox {
         min_lon,
         min_lat,
         max_lon,
         max_lat,
-        scale,
-        map_width,
-        map_height,
-        Some(name),
-    )
-    .await?;
+    };
+
+    println!("Fetching coastlines from OpenStreetMap (Overpass API)...");
+    let (map_width, map_height) =
+        rasterizer::map_dimensions(min_lon, min_lat, max_lon, max_lat, scale);
+
+    let coastlines =
+        overpass::fetch_coastlines_tiled(bbox, scale, map_width, map_height, Some(name)).await?;
 
     println!("Rasterizing landmass...");
     let (map_width, map_height, mut terrain_grid) = rasterizer::build_landmass_from_coastlines(
@@ -300,10 +299,7 @@ async fn run_generate(
     println!("Stamping inland water (optional, tile-by-tile)...");
     if let Err(e) = overpass::stamp_water_tiled(
         &mut terrain_grid,
-        min_lon,
-        min_lat,
-        max_lon,
-        max_lat,
+        bbox,
         scale,
         map_width,
         map_height,
@@ -327,16 +323,8 @@ async fn run_generate(
 
     println!("Extracting place spawns...");
     let places_data = overpass::fetch_places(min_lon, min_lat, max_lon, max_lat).await?;
-    let mut spawns = poi_extractor::extract_bots(
-        &places_data,
-        min_lon,
-        min_lat,
-        max_lon,
-        max_lat,
-        scale,
-        map_width,
-        map_height,
-    );
+    let mut spawns =
+        poi_extractor::extract_bots(&places_data, bbox, scale, map_width, map_height);
     if spawns.is_empty() {
         eprintln!("Warning: no OSM place nodes; using land-grid fallback spawns");
         spawns = poi_extractor::fallback_spawns_on_land(&terrain_grid, map_width, map_height, 16);
@@ -344,19 +332,19 @@ async fn run_generate(
     println!("Found {} spawn points", spawns.len());
 
     println!("Exporting...");
-    exporter::export_map(
-        name,
-        display_name,
-        map_width,
-        map_height,
-        terrain_grid,
+    exporter::export_map(ExportMapCtx {
+        map_name: name.to_string(),
+        display_name: display_name.to_string(),
+        width: map_width,
+        height: map_height,
+        terrain: terrain_grid,
         spawns,
-        Some(sow_core::map_file::GeoBounds::from_degrees(
+        geo_bounds: Some(sow_core::map_file::GeoBounds::from_degrees(
             min_lon, min_lat, max_lon, max_lat,
         )),
         single_player_config,
         force,
-    )?;
+    })?;
 
     println!("Generation complete! Saved to assets/maps/{name}");
     println!(
@@ -396,17 +384,17 @@ fn run_image_map(args: ImageMapArgs) -> Result<(), Box<dyn Error>> {
     println!("Found {} spawn points", spawns.len());
 
     println!("Exporting...");
-    exporter::export_map(
-        &args.name,
-        &display_name,
-        map.width,
-        map.height,
-        map.terrain,
+    exporter::export_map(ExportMapCtx {
+        map_name: args.name.clone(),
+        display_name: display_name.clone(),
+        width: map.width,
+        height: map.height,
+        terrain: map.terrain,
         spawns,
-        None,
-        args.single_player_config,
-        args.force,
-    )?;
+        geo_bounds: None,
+        single_player_config: args.single_player_config,
+        force: args.force,
+    })?;
 
     println!("Generation complete! Saved to assets/maps/{}", args.name);
     Ok(())

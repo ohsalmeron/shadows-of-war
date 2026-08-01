@@ -1,22 +1,28 @@
 use crate::app::SowApp;
 use sow_core::protocol::SimSnapshot;
 
+pub(crate) struct EliminationEventInfo<'a> {
+    pub player_id: u16,
+    pub conqueror_id: u16,
+    pub gold_bounty: u32,
+    pub pos: (u32, u32),
+    pub assists: &'a [(u16, u32)],
+}
+
 impl SowApp {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn handle_player_eliminated(
         &mut self,
         snap: &SimSnapshot,
         my_id: u16,
         now_instant: web_time::Instant,
         turn_defeats: &mut crate::player_progress::SessionDefeats,
-        player_id: u16,
-        conqueror_id: u16,
-        gold_bounty: u32,
-        elimination_x: u32,
-        elimination_y: u32,
-        assists: &[(u16, u32)],
-        _by_nuke: bool,
+        info: &EliminationEventInfo,
     ) {
+        let player_id = info.player_id;
+        let conqueror_id = info.conqueror_id;
+        let gold_bounty = info.gold_bounty;
+        let (elimination_x, elimination_y) = info.pos;
+        let assists = info.assists;
         let mut wx = 0.5;
         let mut wy = 0.5;
 

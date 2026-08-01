@@ -76,8 +76,8 @@ fn spawn_sow_client_connect(
 
     #[cfg(target_arch = "wasm32")]
     {
-        use std::sync::atomic::{AtomicBool, Ordering};
         use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
         use wasm_bindgen::JsCast;
 
         let tx_for_timeout = connect_tx.clone();
@@ -184,6 +184,7 @@ pub mod render;
 pub mod store_portals;
 pub mod ui_scene;
 mod viewport;
+#[cfg(target_arch = "wasm32")]
 mod web_canvas;
 
 pub(crate) fn player_sound_type(value: sow_core::player::PlayerType) -> sow_audio::PlayerSoundType {
@@ -326,4 +327,3 @@ pub fn wasm_main() {
     run_game(event_loop);
 }
 pub mod sim;
-

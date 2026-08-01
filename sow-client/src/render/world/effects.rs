@@ -1,12 +1,8 @@
 use super::*;
 
-#[allow(unused_variables)]
 pub(crate) fn render(
     ui: &mut crate::app::UiState,
-    sim: &crate::app::SimState,
     input: &crate::app::InputState,
-    time: &crate::app::TimeState,
-    gfx: &crate::app::GraphicsState,
     ctx: &RenderContext,
 ) {
     let sf = ctx.sf;

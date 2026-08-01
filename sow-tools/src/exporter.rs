@@ -6,19 +6,31 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 
-#[allow(clippy::too_many_arguments)]
-pub fn export_map(
-    map_name: &str,
-    display_name: &str,
-    width: u32,
-    height: u32,
-    terrain: Vec<MapTile>,
-    spawns: Vec<POISpawn>,
-    geo_bounds: Option<GeoBounds>,
-    single_player_config: bool,
-    force: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let output_dir = maps_root().join(map_name);
+pub struct ExportMapCtx {
+    pub map_name: String,
+    pub display_name: String,
+    pub width: u32,
+    pub height: u32,
+    pub terrain: Vec<MapTile>,
+    pub spawns: Vec<POISpawn>,
+    pub geo_bounds: Option<GeoBounds>,
+    pub single_player_config: bool,
+    pub force: bool,
+}
+
+pub fn export_map(ctx: ExportMapCtx) -> Result<(), Box<dyn std::error::Error>> {
+    let ExportMapCtx {
+        map_name,
+        display_name,
+        width,
+        height,
+        terrain,
+        spawns,
+        geo_bounds,
+        single_player_config,
+        force,
+    } = ctx;
+    let output_dir = maps_root().join(&map_name);
     let map_bin = output_dir.join("map.bin");
     if map_bin.exists() && !force {
         return Err(format!(

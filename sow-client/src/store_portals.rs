@@ -410,4 +410,3 @@ pub fn submit_leaderboard_score(score: u32) {
     }
     call_window_hook_u32("SOW_portalSubmitLeaderboardScore", score);
 }
-

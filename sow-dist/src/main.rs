@@ -731,13 +731,7 @@ fn main() -> Result<()> {
     match cmd.as_str() {
         "l" | "local" | "localsite" | "ls" => local::execute(&paths, port, build_only),
         "p" | "prod" | "play" => prod::execute(&paths, bump),
-        "b" | "backfill" | "bf" => backfill::execute(
-            &paths,
-            build_only,
-            min_fill,
-            max_fill,
-            &url,
-        ),
+        "b" | "backfill" | "bf" => backfill::execute(&paths, build_only, min_fill, max_fill, &url),
         "native" | "n" | "" => cmd_native(&paths),
         "status" | "st" => status::execute(),
         _ => {

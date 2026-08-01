@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use egui::{
-    style::{Selection, WidgetVisuals, Widgets},
     Align2, Color32, Context, CornerRadius, FontId, Galley, Image, Margin, Pos2, Rangef, Rect,
     Response, Sense, Stroke, StrokeKind, Style, TextStyle, TextureHandle, Ui, Vec2, Visuals,
+    style::{Selection, WidgetVisuals, Widgets},
 };
 
 /// Phone/narrow layout: stacked main menu + mobile leader art.
@@ -65,11 +65,7 @@ pub fn menu_rail_panel_width(available_w: f32, compact: bool, ctx: &Context) -> 
 /// Standard UI animation duration; near-instant when reduced motion is enabled.
 #[inline]
 pub fn anim_duration(reduced_motion: bool) -> f32 {
-    if reduced_motion {
-        0.01
-    } else {
-        0.22
-    }
+    if reduced_motion { 0.01 } else { 0.22 }
 }
 
 /// Reads `sow_reduced_motion` temp data set at frame start from [`SettingsState`].
@@ -161,7 +157,7 @@ mod typography;
 
 pub use panels::*;
 pub use tabs::*;
-pub use text_glow::{TextGlowStyle, HUD_PREMIUM, HUD_PREMIUM_REGULAR, NAMEPLATE};
+pub use text_glow::{HUD_PREMIUM, HUD_PREMIUM_REGULAR, NAMEPLATE, TextGlowStyle};
 pub use typography::*;
 
 pub fn menu_backdrop() -> Color32 {

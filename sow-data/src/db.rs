@@ -1,8 +1,8 @@
+use crate::metadata_db::PLAYERS_TABLE;
 use log::{error, info, warn};
 use redis::{AsyncCommands, Client};
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
-use crate::metadata_db::PLAYERS_TABLE;
 
 const ANALYTICS_UNIQUE: &str = "sow:analytics:unique_users";
 const ANALYTICS_ACTIVE_PREFIX: &str = "sow:analytics:active:";
@@ -521,7 +521,8 @@ impl PlayerDb {
         external_id: String,
     ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
         let mut con = self.get_connection().await?;
-        let account = Self::link_identity_inner(&mut con, account_id, provider, external_id).await?;
+        let account =
+            Self::link_identity_inner(&mut con, account_id, provider, external_id).await?;
         self.save_player_account_to_redb(&account);
         Ok(account)
     }

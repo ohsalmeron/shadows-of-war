@@ -24,20 +24,20 @@ impl SowApp {
                     elimination_x,
                     elimination_y,
                     assists,
-                    by_nuke,
+                    by_nuke: _,
                 } => {
                     self.handle_player_eliminated(
                         snap,
                         my_id,
                         now_instant,
                         &mut turn_defeats,
-                        player_id,
-                        conqueror_id,
-                        gold_bounty,
-                        elimination_x,
-                        elimination_y,
-                        &assists,
-                        by_nuke,
+                        &elimination::EliminationEventInfo {
+                            player_id,
+                            conqueror_id,
+                            gold_bounty,
+                            pos: (elimination_x, elimination_y),
+                            assists: &assists,
+                        },
                     );
                     if conqueror_id == my_id && my_id != 0 {
                         self.ui
@@ -55,11 +55,12 @@ impl SowApp {
                         snap,
                         my_id,
                         &mut played_combat_this_tick,
-                        x,
-                        y,
-                        new_owner,
-                        previous_owner,
-                        troops,
+                        &combat::CaptureEventInfo {
+                            pos: (x, y),
+                            new_owner,
+                            previous_owner,
+                            troops,
+                        },
                     );
                 }
                 sow_core::game::GameEvent::StructureSpawned {

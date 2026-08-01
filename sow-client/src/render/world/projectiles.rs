@@ -144,12 +144,9 @@ pub(crate) fn render(
                             "[X]",
                             [center.x * sf, (center.y + 5.0) * sf],
                             20.0 * font_size_scale * sf,
-                            color_arr,
-                            outline_color_arr,
+                            (color_arr, outline_color_arr),
                             settings,
-                            0.5,
-                            char_spacing,
-                            emoji_scale,
+                            (0.5, char_spacing, emoji_scale),
                         );
                     }
                     if !gpu_rendered {
@@ -282,9 +279,7 @@ pub(crate) fn render(
                             ],
                             icon_half * sf,
                             color_arr,
-                            outline_color_arr,
-                            outline_thickness,
-                            shadow_y,
+                            (outline_color_arr, outline_thickness, shadow_y),
                         );
 
                         // Number text left-aligned after sword
@@ -294,12 +289,9 @@ pub(crate) fn render(
                             &entry.1,
                             [text_left, troops_baseline_y],
                             font_size * font_size_scale * sf,
-                            color_arr,
-                            outline_color_arr,
+                            (color_arr, outline_color_arr),
                             settings,
-                            0.0,
-                            char_spacing,
-                            emoji_scale,
+                            (0.0, char_spacing, emoji_scale),
                         );
                     }
                     if !gpu_rendered {

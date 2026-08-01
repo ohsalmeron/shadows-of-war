@@ -1,7 +1,7 @@
 use crate::leaders::Leader;
-use redb::{Database, TableDefinition, ReadableTable};
-use serde::{Deserialize, Serialize};
+use redb::{Database, ReadableTable, TableDefinition};
 use redis::Commands;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 pub const LEADERS_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("leaders");
@@ -41,7 +41,7 @@ pub fn init_database<P: AsRef<Path>>(path: P) -> Result<Database, Box<dyn std::e
     if !exists {
         log::info!("Initializing new Redb metadata database from static game data...");
         let write_txn = db.begin_write()?;
-        
+
         {
             let mut leaders_table = write_txn.open_table(LEADERS_TABLE)?;
             for leader in &Leader::ALL {
@@ -100,11 +100,14 @@ pub fn get_geo_entity_by_name(db: &Database, name: &str) -> Option<GeoEntityReco
 }
 
 /// Seed Valkey's RAM database on startup from the persistent Redb file
-pub fn seed_valkey_from_redb(db: &Database, valkey_url: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn seed_valkey_from_redb(
+    db: &Database,
+    valkey_url: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let client = redis::Client::open(valkey_url)?;
     let mut con = client.get_connection()?;
     let read_txn = db.begin_read()?;
-    
+
     let mut seeded_count = 0;
 
     // 1. Seed Leaders
@@ -134,7 +137,7 @@ pub fn seed_valkey_from_redb(db: &Database, valkey_url: &str) -> Result<(), Box<
         for item in table.iter()? {
             let (key, val) = item?;
             let account_id = key.value();
-            
+
             // Write player account record to Valkey
             let valkey_key = format!("sow:player:account:{}", account_id);
             let val_str = std::str::from_utf8(val.value())?;
@@ -144,7 +147,10 @@ pub fn seed_valkey_from_redb(db: &Database, valkey_url: &str) -> Result<(), Box<
             // Map each linked identity back to the account ID in Valkey
             if let Ok(account) = serde_json::from_slice::<crate::db::PlayerAccount>(val.value()) {
                 for identity in &account.linked_identities {
-                    let identity_key = format!("sow:player:identity:{}:{}", identity.provider, identity.external_id);
+                    let identity_key = format!(
+                        "sow:player:identity:{}:{}",
+                        identity.provider, identity.external_id
+                    );
                     let _: () = con.set(&identity_key, account_id)?;
                     seeded_count += 1;
                 }
@@ -152,6 +158,9 @@ pub fn seed_valkey_from_redb(db: &Database, valkey_url: &str) -> Result<(), Box<
         }
     }
 
-    log::info!("Successfully seeded Valkey with {} records from REDB!", seeded_count);
+    log::info!(
+        "Successfully seeded Valkey with {} records from REDB!",
+        seeded_count
+    );
     Ok(())
 }

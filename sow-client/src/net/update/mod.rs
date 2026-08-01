@@ -38,7 +38,9 @@ impl SowApp {
         while let Ok(res) = self.net.connect_rx.try_recv() {
             match res {
                 Ok(client) => {
-                    log::info!("[CLIENT NET] ✅ Received successfully connected WebSocket client from channel!");
+                    log::info!(
+                        "[CLIENT NET] ✅ Received successfully connected WebSocket client from channel!"
+                    );
                     self.ui.app.main_menu_state.is_connected = true;
                     self.ui.app.main_menu_state.is_connecting = false;
                     self.net.ws_connect_fail_backoff_ms = 400;
@@ -191,7 +193,9 @@ impl SowApp {
 
                 // Clear stale connections
                 while self.net.connect_rx.try_recv().is_ok() {
-                    log::info!("[CLIENT NET] 🗑️  Purged stale connection from channel during handoff to relay!");
+                    log::info!(
+                        "[CLIENT NET] 🗑️  Purged stale connection from channel during handoff to relay!"
+                    );
                 }
 
                 self.net.relay_connect_start = Some(now);

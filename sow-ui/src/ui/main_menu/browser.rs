@@ -1,6 +1,6 @@
 use super::MainMenuState;
-use crate::widgets::LobbyCard;
 use crate::UiAction;
+use crate::widgets::LobbyCard;
 use egui::Ui;
 
 fn find_primary_lobby<'a>(
@@ -27,7 +27,6 @@ fn find_primary_lobby<'a>(
     None
 }
 
-#[allow(clippy::too_many_arguments)]
 fn draw_lobby_list(
     ui: &mut Ui,
     state: &mut MainMenuState,
@@ -112,12 +111,9 @@ fn draw_lobby_list(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn draw_left_column(
     ui: &mut Ui,
     state: &mut MainMenuState,
-    _section_gap: f32,
-    _action_min_h: f32,
     compact: bool,
     max_height: f32,
     action: &mut Option<UiAction>,

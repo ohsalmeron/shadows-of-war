@@ -1,29 +1,45 @@
 use crate::UiAction;
-use egui::{vec2, Align2};
+use egui::{Align2, vec2};
 use sow_i18n::Language;
 
 use super::super::state::{BottomHudTab, HudState};
 use super::super::tabs::controls;
 use crate::ui::asset_loader::AssetLoader;
 
-#[allow(clippy::too_many_arguments)]
+pub(in crate::ui::hud) struct BottomPanelOpts<'a> {
+    pub cancel_intents: &'a mut Vec<sow_core::protocol::GameplayIntent>,
+    pub lang: Language,
+    pub asset_loader: &'a mut AssetLoader,
+    pub action: &'a mut Option<UiAction>,
+    pub portrait_dock: bool,
+    pub compact: bool,
+    pub panel_w: f32,
+    pub log_tabs_enabled: bool,
+    pub dispatch_total: usize,
+    pub event_unread: usize,
+    pub bottom_anchor: Align2,
+    pub bottom_offset: egui::Vec2,
+    pub panel_radius: egui::CornerRadius,
+}
+
 pub(in crate::ui::hud) fn draw_bottom_panel(
     ui: &mut egui::Ui,
     state: &mut HudState,
-    cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>,
-    lang: Language,
-    asset_loader: &mut AssetLoader,
-    action: &mut Option<UiAction>,
-    portrait_dock: bool,
-    compact: bool,
-    panel_w: f32,
-    log_tabs_enabled: bool,
-    dispatch_total: usize,
-    event_unread: usize,
-    bottom_anchor: Align2,
-    bottom_offset: egui::Vec2,
-    panel_radius: egui::CornerRadius,
+    opts: BottomPanelOpts<'_>,
 ) {
+    let cancel_intents = opts.cancel_intents;
+    let lang = opts.lang;
+    let asset_loader = opts.asset_loader;
+    let action = opts.action;
+    let portrait_dock = opts.portrait_dock;
+    let compact = opts.compact;
+    let panel_w = opts.panel_w;
+    let log_tabs_enabled = opts.log_tabs_enabled;
+    let dispatch_total = opts.dispatch_total;
+    let event_unread = opts.event_unread;
+    let bottom_anchor = opts.bottom_anchor;
+    let bottom_offset = opts.bottom_offset;
+    let panel_radius = opts.panel_radius;
     let bottom_hud_area = egui::Area::new(egui::Id::new("hud_bottom_area_v9"))
         .anchor(bottom_anchor, bottom_offset)
         .order(egui::Order::Foreground)
@@ -89,38 +105,45 @@ pub(in crate::ui::hud) fn draw_bottom_panel(
                                         controls::draw_controls_row(
                                             ui,
                                             state,
-                                            content_w,
-                                            compact,
-                                            cancel_intents,
-                                            lang,
-                                            action,
-                                            asset_loader,
+                                            controls::HudSidebarOpts {
+                                                content_w,
+                                                compact,
+                                                action,
+                                                lang,
+                                                cancel_intents,
+                                                main: controls::HudSidebarMain::Controls,
+                                                asset_loader,
+                                            },
                                         );
                                     }
                                     BottomHudTab::BattleLog => {
                                         controls::draw_hud_sidebar_row(
                                             ui,
                                             state,
-                                            content_w,
-                                            compact,
-                                            action,
-                                            lang,
-                                            cancel_intents,
-                                            controls::HudSidebarMain::BattleLog,
-                                            asset_loader,
+                                            controls::HudSidebarOpts {
+                                                content_w,
+                                                compact,
+                                                action,
+                                                lang,
+                                                cancel_intents,
+                                                main: controls::HudSidebarMain::BattleLog,
+                                                asset_loader,
+                                            },
                                         );
                                     }
                                     BottomHudTab::EventLog => {
                                         controls::draw_hud_sidebar_row(
                                             ui,
                                             state,
-                                            content_w,
-                                            compact,
-                                            action,
-                                            lang,
-                                            cancel_intents,
-                                            controls::HudSidebarMain::EventLog,
-                                            asset_loader,
+                                            controls::HudSidebarOpts {
+                                                content_w,
+                                                compact,
+                                                action,
+                                                lang,
+                                                cancel_intents,
+                                                main: controls::HudSidebarMain::EventLog,
+                                                asset_loader,
+                                            },
                                         );
                                     }
                                 }
@@ -128,12 +151,15 @@ pub(in crate::ui::hud) fn draw_bottom_panel(
                                 controls::draw_controls_row(
                                     ui,
                                     state,
-                                    content_w,
-                                    compact,
-                                    cancel_intents,
-                                    lang,
-                                    action,
-                                    asset_loader,
+                                    controls::HudSidebarOpts {
+                                        content_w,
+                                        compact,
+                                        action,
+                                        lang,
+                                        cancel_intents,
+                                        main: controls::HudSidebarMain::Controls,
+                                        asset_loader,
+                                    },
                                 );
                             }
                         },

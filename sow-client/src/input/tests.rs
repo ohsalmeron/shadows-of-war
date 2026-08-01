@@ -1,6 +1,5 @@
 #[cfg(test)]
-#[allow(clippy::module_inception)]
-mod tests {
+mod placement_tests {
     use crate::input::placement::*;
     use sow_core::game::BuildingKind;
     use sow_core::protocol::BuildingSnapshot;
@@ -35,17 +34,17 @@ mod tests {
         let owners = owned_map(map_w, map_h, my_id);
         let terrain = land_terrain();
 
-        let resolved = resolve_build_target_tile(
-            BuildingKind::City,
-            10,
-            10,
+        let resolved = resolve_build_target_tile(&PlacementQuery {
+            kind: BuildingKind::City,
+            click_x: 10,
+            click_y: 10,
             map_w,
             map_h,
-            &owners,
-            &terrain,
+            owners: &owners,
+            terrain: &terrain,
             my_id,
-            &buildings,
-        )
+            buildings: &buildings,
+        })
         .expect("click on city should stack");
 
         assert_eq!(resolved, city_tile);
@@ -61,17 +60,17 @@ mod tests {
         let owners = owned_map(map_w, map_h, my_id);
         let terrain = land_terrain();
 
-        let resolved = resolve_build_target_tile(
-            BuildingKind::City,
-            20,
-            20,
+        let resolved = resolve_build_target_tile(&PlacementQuery {
+            kind: BuildingKind::City,
+            click_x: 20,
+            click_y: 20,
             map_w,
             map_h,
-            &owners,
-            &terrain,
+            owners: &owners,
+            terrain: &terrain,
             my_id,
-            &buildings,
-        )
+            buildings: &buildings,
+        })
         .expect("click far from city should find spawn tile");
 
         assert_ne!(resolved, city_tile);

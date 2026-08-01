@@ -67,17 +67,16 @@ impl fmt::Display for FleetLaunchError {
 ///
 /// `target_border`: required when `target_owner != 0` (enemy player's `border_tiles`);
 /// ignored for neutral (`target_owner == 0`).
-#[allow(clippy::too_many_arguments)]
 pub fn resolve_fleet_route(
     map: &GameMap,
     water_components: &WaterComponents,
     path_scratch: &mut WaterPathfinderScratch,
     player_id: u16,
-    target_owner: u16,
-    target_tile: u32,
+    target: (u16, u32),
     border_tiles: &crate::bitset::DenseBitSet,
     target_border: Option<&crate::bitset::DenseBitSet>,
 ) -> Result<FleetRoute, FleetLaunchError> {
+    let (target_owner, target_tile) = target;
     let map_area = map.width.saturating_mul(map.height);
     if map_area == 0 || target_tile >= map_area {
         return Err(FleetLaunchError::InvalidTile);
@@ -106,8 +105,7 @@ pub fn resolve_fleet_route(
             map,
             water_components,
             &my_comps,
-            target_tile,
-            200,
+            (target_tile, 200),
             &mut path_scratch.bfs_queue,
             &mut path_scratch.bfs_visited,
             &mut path_scratch.bfs_stamp,
@@ -240,17 +238,16 @@ pub fn closest_target_shore_for_player(
 /// `max_dist` Manhattan, accepting any neutral shoreline whose water component matches ours.
 ///
 /// `max_dist = 200` is the Manhattan cap for neutral targets; scratch buffers are reused.
-#[allow(clippy::too_many_arguments)]
 pub fn closest_neutral_shore_on_components(
     map: &GameMap,
     components: &WaterComponents,
     my_water_comps: &[u32],
-    click_tile: u32,
-    max_dist: u32,
+    target_params: (u32, u32),
     queue: &mut VecDeque<u32>,
     visited: &mut Vec<u32>,
     visit_stamp: &mut u32,
 ) -> Option<u32> {
+    let (click_tile, max_dist) = target_params;
     if my_water_comps.is_empty() {
         return None;
     }
@@ -425,17 +422,16 @@ pub struct WarpFleet {
 }
 
 impl WarpFleet {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: u64,
         owner_id: u16,
         target_owner: u16,
         unit_type: crate::game::UnitType,
         troops: f64,
-        src_tile: u32,
-        dst_tile: u32,
+        endpoints: (u32, u32),
         path: Vec<u32>,
     ) -> Self {
+        let (src_tile, dst_tile) = endpoints;
         let current_tile = path.first().copied().unwrap_or(src_tile);
         let path_cursor = 0;
         Self {

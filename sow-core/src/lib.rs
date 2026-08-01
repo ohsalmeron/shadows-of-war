@@ -42,4 +42,4 @@ macro_rules! repo_asset_bytes {
         ))
     };
 }
-pub use sow_data::{leader_for_civilization, Civilization, Leader, NamedColor, PREMIUM_COLORS};
+pub use sow_data::{Civilization, Leader, NamedColor, PREMIUM_COLORS, leader_for_civilization};

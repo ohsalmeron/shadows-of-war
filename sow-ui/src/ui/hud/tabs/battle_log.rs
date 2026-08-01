@@ -1,7 +1,7 @@
-use egui::{vec2, Color32, RichText, Stroke};
+use egui::{Color32, RichText, Stroke, vec2};
 use sow_i18n::Language;
 
-use super::super::state::{get_player_display_name, HudState};
+use super::super::state::{HudState, get_player_display_name};
 
 pub(in crate::ui::hud) enum DispatchKind {
     Incoming,
@@ -9,7 +9,15 @@ pub(in crate::ui::hud) enum DispatchKind {
     Navy,
 }
 
-#[allow(clippy::type_complexity)]
+pub(in crate::ui::hud) struct BattleLogRow {
+    pub kind: DispatchKind,
+    pub troops: f64,
+    pub text: String,
+    pub attack_id: Option<u64>,
+    pub fleet_id: Option<u64>,
+    pub retreating: bool,
+}
+
 pub(in crate::ui::hud) fn draw_battle_log_tab(
     ui: &mut egui::Ui,
     state: &HudState,
@@ -26,7 +34,7 @@ pub(in crate::ui::hud) fn draw_battle_log_tab(
     let strings = &sow_i18n::get(lang).hud;
     let log_h = if compact { 120.0 } else { 140.0 };
 
-    let mut rows: Vec<(DispatchKind, f64, String, Option<u64>, Option<u64>, bool)> = Vec::new();
+    let mut rows: Vec<BattleLogRow> = Vec::new();
 
     for attack in state.attacks.iter().filter(|a| a.target_owner == my_pid) {
         let name: String = get_player_display_name(
@@ -37,14 +45,14 @@ pub(in crate::ui::hud) fn draw_battle_log_tab(
         .chars()
         .take(12)
         .collect();
-        rows.push((
-            DispatchKind::Incoming,
-            attack.troops,
-            format!("{name} → You"),
-            Some(attack.id),
-            None,
-            attack.retreating,
-        ));
+        rows.push(BattleLogRow {
+            kind: DispatchKind::Incoming,
+            troops: attack.troops,
+            text: format!("{name} → You"),
+            attack_id: Some(attack.id),
+            fleet_id: None,
+            retreating: attack.retreating,
+        });
     }
     for attack in state.attacks.iter().filter(|a| a.owner_id == my_pid) {
         let name: String = get_player_display_name(
@@ -55,24 +63,24 @@ pub(in crate::ui::hud) fn draw_battle_log_tab(
         .chars()
         .take(12)
         .collect();
-        rows.push((
-            DispatchKind::Outgoing,
-            attack.troops,
-            format!("You → {name}"),
-            Some(attack.id),
-            None,
-            attack.retreating,
-        ));
+        rows.push(BattleLogRow {
+            kind: DispatchKind::Outgoing,
+            troops: attack.troops,
+            text: format!("You → {name}"),
+            attack_id: Some(attack.id),
+            fleet_id: None,
+            retreating: attack.retreating,
+        });
     }
     for fleet in state.fleets.iter().filter(|f| f.owner_id == my_pid) {
-        rows.push((
-            DispatchKind::Navy,
-            fleet.troops,
-            strings.naval_fleet_label.clone(),
-            None,
-            Some(fleet.id),
-            fleet.retreating,
-        ));
+        rows.push(BattleLogRow {
+            kind: DispatchKind::Navy,
+            troops: fleet.troops,
+            text: strings.naval_fleet_label.clone(),
+            attack_id: None,
+            fleet_id: Some(fleet.id),
+            retreating: fleet.retreating,
+        });
     }
 
     if rows.is_empty() {
@@ -97,7 +105,7 @@ pub(in crate::ui::hud) fn draw_battle_log_tab(
             ui.set_width(width);
             ui.spacing_mut().item_spacing.y = sow_ui_kit::theme::margin::TIGHT as f32;
 
-            for (kind, troops, label, attack_id, fleet_id, retreating) in rows {
+            for BattleLogRow { kind, troops, text: label, attack_id, fleet_id, retreating } in rows {
                 let (icon, accent) = match kind {
                     DispatchKind::Incoming => ("⚔", sow_ui_kit::theme::palette::danger()),
                     DispatchKind::Outgoing => ("🛡", sow_ui_kit::theme::palette::neon_cyan()),

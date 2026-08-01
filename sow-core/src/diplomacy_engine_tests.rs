@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod alliance_lifecycle_tests {
-    use crate::diplomacy::{AllianceProposal, ALLIANCE_REQUEST_TTL_TICKS};
+    use crate::diplomacy::{ALLIANCE_REQUEST_TTL_TICKS, AllianceProposal};
     use crate::engine::SowEngine;
     use crate::game::{GamePhase, GameState};
     use crate::protocol::{GameplayIntent, StampedIntent};

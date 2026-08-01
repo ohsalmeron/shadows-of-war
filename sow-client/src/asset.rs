@@ -1,5 +1,5 @@
-use crate::app::SowApp;
 use crate::MapDownloadEvent;
+use crate::app::SowApp;
 use sow_ui_kit::ClientPhase;
 
 impl SowApp {
@@ -15,7 +15,10 @@ impl SowApp {
             match res {
                 MapDownloadEvent::CatalogReady(entries) => {
                     self.ui.app.asset_loader.catalog_in_flight = false;
-                    self.ui.app.main_menu_state.apply_map_catalog_custom(&entries);
+                    self.ui
+                        .app
+                        .main_menu_state
+                        .apply_map_catalog_custom(&entries);
                     self.ui.app.asset_loader.map_catalog = Some(entries);
                 }
                 MapDownloadEvent::Progress(downloaded_map_name, progress) => {

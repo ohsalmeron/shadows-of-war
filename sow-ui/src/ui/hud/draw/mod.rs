@@ -3,7 +3,7 @@ use sow_i18n::Language;
 
 use super::overlays::{betrayal, exit, sync};
 use super::panels::transfer;
-use super::state::{dispatch_count, incoming_dispatch_count, BottomHudTab, HudState};
+use super::state::{BottomHudTab, HudState, dispatch_count, incoming_dispatch_count};
 use crate::ui::asset_loader::AssetLoader;
 
 mod attack_ratio;
@@ -102,19 +102,21 @@ pub fn draw(
     draw_bottom_panel(
         ui,
         state,
-        cancel_intents,
-        lang,
-        asset_loader,
-        &mut action,
-        portrait_dock,
-        compact && portrait_dock,
-        panel_w,
-        log_tabs_enabled,
-        dispatch_total,
-        event_unread,
-        bottom_anchor,
-        bottom_offset,
-        panel_radius,
+        bottom::BottomPanelOpts {
+            cancel_intents,
+            lang,
+            asset_loader,
+            action: &mut action,
+            portrait_dock,
+            compact: compact && portrait_dock,
+            panel_w,
+            log_tabs_enabled,
+            dispatch_total,
+            event_unread,
+            bottom_anchor,
+            bottom_offset,
+            panel_radius,
+        },
     );
     draw_top_icons(ui, state, lang, &mut action, asset_loader);
     draw_alliance_inbox(ui, state, cancel_intents, lang, anim, asset_loader);

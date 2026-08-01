@@ -4,7 +4,6 @@
 //! (mobile browser chrome, dynamic toolbars). `winit` emits `SurfaceResized` after
 //! `request_surface_size`; [`crate::input`] reconfigures the GPU surface from that event.
 
-#![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 
 #[cfg(target_arch = "wasm32")]
 fn parse_css_px(s: &str) -> f32 {
@@ -160,8 +159,8 @@ pub fn set_canvas_backing_store_size(_width: u32, _height: u32) {}
 /// Request a winit resize when the browser visible viewport changes (URL bar, rotation).
 #[cfg(target_arch = "wasm32")]
 pub fn install_viewport_listeners() {
-    use wasm_bindgen::closure::Closure;
     use wasm_bindgen::JsCast;
+    use wasm_bindgen::closure::Closure;
 
     let Some(window) = web_sys::window() else {
         return;

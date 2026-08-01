@@ -11,7 +11,7 @@ impl SowApp {
                 map_spawns,
                 geo_bounds,
                 num_land_tiles,
-            } => self.handle_sim_init(
+            } => self.handle_sim_init(super::init::SimInitOpts {
                 config,
                 seed,
                 map_bytes,
@@ -19,7 +19,7 @@ impl SowApp {
                 map_spawns,
                 geo_bounds,
                 num_land_tiles,
-            ),
+            }),
             sow_core::protocol::SimCommand::Turn(turn) => self.handle_sim_turn(turn),
             sow_core::protocol::SimCommand::Shutdown => self.handle_sim_shutdown(),
         }

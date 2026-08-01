@@ -28,11 +28,11 @@ pub mod wasm_export;
 pub use editor::MapEditorSession;
 
 #[cfg(feature = "generator")]
-pub use generator::{generate_map, GeneratorArgs, MapResult};
+pub use generator::{GeneratorArgs, MapResult, generate_map};
 #[cfg(feature = "generator")]
-pub use image_pipeline::{generate_from_rgba, mobile_safe_dims, ImagePipelineResult};
+pub use image_pipeline::{ImagePipelineResult, generate_from_rgba, mobile_safe_dims};
 #[cfg(feature = "generator")]
 pub use thumbnail::{
-    encode_square_thumbnail_webp, terrain_preview_image, write_square_thumbnail,
-    write_square_thumbnail_from_pixels, THUMBNAIL_SIZE,
+    THUMBNAIL_SIZE, encode_square_thumbnail_webp, terrain_preview_image, write_square_thumbnail,
+    write_square_thumbnail_from_pixels,
 };

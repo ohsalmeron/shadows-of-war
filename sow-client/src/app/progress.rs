@@ -69,7 +69,9 @@ impl SowApp {
 
         // Online ranked matches: relay + sow-database own the outcome; client only reads profile later.
         if self.progress_account_id.is_some() && !self.net.is_offline {
-            log::info!("Online match ended (winner={winner_id}); stats will sync from sow-database on menu return");
+            log::info!(
+                "Online match ended (winner={winner_id}); stats will sync from sow-database on menu return"
+            );
             return;
         }
 

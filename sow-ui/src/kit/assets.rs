@@ -1,5 +1,5 @@
 use egui::{Context, Rect, TextureHandle, TextureOptions};
-use sow_data::emoji::{lookup, ATLAS_HEIGHT, ATLAS_WIDTH};
+use sow_data::emoji::{ATLAS_HEIGHT, ATLAS_WIDTH, lookup};
 
 #[macro_export]
 macro_rules! repo_asset_bytes {

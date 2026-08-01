@@ -96,17 +96,16 @@ fn walk_axis_water(
 }
 
 /// Check if an L-shaped path crosses water.
-#[allow(clippy::too_many_arguments)]
 fn l_crosses_water(
-    ax: i32,
-    ay: i32,
-    bx: i32,
-    by: i32,
+    a: (i32, i32),
+    b: (i32, i32),
     h_first: bool,
     terrain: &[u8],
     map_w: u32,
     map_h: u32,
 ) -> bool {
+    let (ax, ay) = a;
+    let (bx, by) = b;
     let (mx, my) = if h_first { (bx, ay) } else { (ax, by) };
     walk_axis_water(ax, ay, mx, my, terrain, map_w, map_h)
         || walk_axis_water(mx, my, bx, by, terrain, map_w, map_h)
@@ -126,17 +125,16 @@ fn closest_point_on_segment(p: (f32, f32), s0: (f32, f32), s1: (f32, f32)) -> (f
     (x0 + t * dx, y0 + t * dy)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn find_snap_point(
     state: &RailState,
-    p_tx: f32,
-    p_ty: f32,
-    p_wx: f32,
-    p_wy: f32,
+    pt: (f32, f32),
+    pw: (f32, f32),
     terrain: &[u8],
     map_w: u32,
     map_h: u32,
 ) -> Option<(f32, f32, bool, usize)> {
+    let (p_tx, p_ty) = pt;
+    let (p_wx, p_wy) = pw;
     let mut best: Option<(f32, f32, bool, usize, f32)> = None;
 
     for (seg_idx, seg) in state.segments.iter().enumerate() {
@@ -159,10 +157,8 @@ fn find_snap_point(
             }
 
             let h_first = if !l_crosses_water(
-                p_tx as i32,
-                p_ty as i32,
-                q_tx as i32,
-                q_ty as i32,
+                (p_tx as i32, p_ty as i32),
+                (q_tx as i32, q_ty as i32),
                 true,
                 terrain,
                 map_w,
@@ -170,10 +166,8 @@ fn find_snap_point(
             ) {
                 Some(true)
             } else if !l_crosses_water(
-                p_tx as i32,
-                p_ty as i32,
-                q_tx as i32,
-                q_ty as i32,
+                (p_tx as i32, p_ty as i32),
+                (q_tx as i32, q_ty as i32),
                 false,
                 terrain,
                 map_w,
@@ -215,10 +209,8 @@ fn try_connect(
     };
 
     let h_first = if !l_crosses_water(
-        a_tx as i32,
-        a_ty as i32,
-        b_tx as i32,
-        b_ty as i32,
+        (a_tx as i32, a_ty as i32),
+        (b_tx as i32, b_ty as i32),
         true,
         terrain,
         map_w,
@@ -226,10 +218,8 @@ fn try_connect(
     ) {
         true
     } else if !l_crosses_water(
-        a_tx as i32,
-        a_ty as i32,
-        b_tx as i32,
-        b_ty as i32,
+        (a_tx as i32, a_ty as i32),
+        (b_tx as i32, b_ty as i32),
         false,
         terrain,
         map_w,
@@ -295,7 +285,7 @@ fn add_building(
 
     // Priority 1: Connect to nearest existing active railway segment (snapping)
     if let Some((qx, qy, h_first, parent_idx)) =
-        find_snap_point(state, tx, ty, wx, wy, terrain, map_w, map_h)
+        find_snap_point(state, (tx, ty), (wx, wy), terrain, map_w, map_h)
     {
         let (cx, cy) = if h_first { (qx, wy) } else { (wx, qy) };
         let parent_b1 = state.segments[parent_idx].b1;
@@ -348,19 +338,15 @@ fn add_building(
                         }
 
                         let has_path = !l_crosses_water(
-                            tx as i32,
-                            ty as i32,
-                            other.tile_x as i32,
-                            other.tile_y as i32,
+                            (tx as i32, ty as i32),
+                            (other.tile_x as i32, other.tile_y as i32),
                             true,
                             terrain,
                             map_w,
                             map_h,
                         ) || !l_crosses_water(
-                            tx as i32,
-                            ty as i32,
-                            other.tile_x as i32,
-                            other.tile_y as i32,
+                            (tx as i32, ty as i32),
+                            (other.tile_x as i32, other.tile_y as i32),
                             false,
                             terrain,
                             map_w,

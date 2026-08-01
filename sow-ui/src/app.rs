@@ -1,6 +1,6 @@
 use crate::{
-    ui::{asset_loader, hud, loading_screen, main_menu},
     UiAction,
+    ui::{asset_loader, hud, loading_screen, main_menu},
 };
 pub use sow_ui_kit::ClientPhase;
 

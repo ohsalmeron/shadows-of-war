@@ -44,9 +44,10 @@ pub fn pack(args: PackEmojiAtlasArgs) -> Result<(), Box<dyn std::error::Error + 
     }
 
     entries.sort_by(|a, b| a.0.cmp(&b.0));
-    let (atlas, rects) = pack_grid(&entries, CELL_PX)?;
-    write_webp(&atlas, &args.out_atlas)?;
-    write_manifest_rs(&rects, atlas.width(), atlas.height(), &args.out_manifest)?;
+    let packed = pack_grid(&entries, CELL_PX)?;
+    let atlas = &packed.atlas;
+    write_webp(atlas, &args.out_atlas)?;
+    write_manifest_rs(&packed.rects, atlas.width(), atlas.height(), &args.out_manifest)?;
     println!(
         "Packed {} glyphs → {} ({}x{})",
         entries.len(),
@@ -216,12 +217,23 @@ fn moji_filenames(emoji: &str) -> Vec<String> {
     names
 }
 
-#[allow(clippy::type_complexity)]
+struct PackedGlyph {
+    emoji: String,
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+}
+
+struct PackAtlasResult {
+    atlas: RgbaImage,
+    rects: Vec<PackedGlyph>,
+}
+
 fn pack_grid(
     entries: &[(String, RgbaImage)],
     cell: u32,
-) -> Result<(RgbaImage, Vec<(String, u32, u32, u32, u32)>), Box<dyn std::error::Error + Send + Sync>>
-{
+) -> Result<PackAtlasResult, Box<dyn std::error::Error + Send + Sync>> {
     let n = entries.len() as u32;
     let cols = (n as f32).sqrt().ceil() as u32;
     let rows = n.div_ceil(cols);
@@ -235,9 +247,15 @@ fn pack_grid(
         let x = col * cell;
         let y = row * cell;
         image::imageops::overlay(&mut atlas, img, x.into(), y.into());
-        rects.push((emoji.clone(), x, y, cell, cell));
+        rects.push(PackedGlyph {
+            emoji: emoji.clone(),
+            x,
+            y,
+            w: cell,
+            h: cell,
+        });
     }
-    Ok((atlas, rects))
+    Ok(PackAtlasResult { atlas, rects })
 }
 
 fn write_webp(
@@ -258,7 +276,7 @@ fn write_webp(
 }
 
 fn write_manifest_rs(
-    rects: &[(String, u32, u32, u32, u32)],
+    rects: &[PackedGlyph],
     atlas_w: u32,
     atlas_h: u32,
     path: &Path,
@@ -271,10 +289,11 @@ fn write_manifest_rs(
     out.push_str(&format!("pub const ATLAS_HEIGHT: u32 = {atlas_h};\n\n"));
     out.push_str("pub struct AtlasRect {\n    pub x: u32,\n    pub y: u32,\n    pub w: u32,\n    pub h: u32,\n}\n\n");
     out.push_str("pub fn lookup(emoji: &str) -> Option<AtlasRect> {\n    match emoji {\n");
-    for (emoji, x, y, w, h) in rects {
-        let escaped = emoji.replace('\\', "\\\\").replace('"', "\\\"");
+    for rect in rects {
+        let escaped = rect.emoji.replace('\\', "\\\\").replace('"', "\\\"");
         out.push_str(&format!(
-            "        \"{escaped}\" => Some(AtlasRect {{ x: {x}, y: {y}, w: {w}, h: {h} }}),\n"
+            "        \"{escaped}\" => Some(AtlasRect {{ x: {}, y: {}, w: {}, h: {} }}),\n",
+            rect.x, rect.y, rect.w, rect.h
         ));
     }
     out.push_str("        _ => None,\n    }\n}\n");

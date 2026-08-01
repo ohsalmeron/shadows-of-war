@@ -20,12 +20,10 @@ pub(crate) fn nameplate_font_px(
     }
 }
 
-#[allow(unused_variables)]
 pub(crate) fn render(
     ui: &mut crate::app::UiState,
     sim: &crate::app::SimState,
     input: &crate::app::InputState,
-    time: &crate::app::TimeState,
     gfx: &mut crate::app::GraphicsState,
     ctx: &RenderContext,
 ) {
@@ -35,9 +33,7 @@ pub(crate) fn render(
     ));
     let painter = &painter;
     let sf = ctx.sf;
-    let player_colors = ctx.player_colors;
     let dot_r = ctx.dot_r;
-    let current_tick = ctx.current_tick;
     let wall_secs = ctx.wall_secs;
     let visible_players = ctx.visible_players;
 
@@ -72,7 +68,6 @@ pub(crate) fn render(
         let player = vp.player;
         let center = vp.center;
         let pc = vp.pc;
-        let lod_presence = vp.lod_presence;
 
         let is_me = player.id == my_id;
         let is_human = player.player_type == sow_core::player::PlayerType::Human;
@@ -87,13 +82,15 @@ pub(crate) fn render(
             if let Some(tr) = gfx.text_renderer.as_mut() {
                 crate::hud::avatar::draw_player_avatar_gpu(
                     tr,
-                    [center.x * sf, center.y * sf],
-                    20.0_f32 * sf,
-                    player.id,
-                    &player.name,
-                    player.player_type,
-                    player.color,
-                    player.leader,
+                    &crate::hud::avatar::GpuAvatarOpts {
+                        center: [center.x * sf, center.y * sf],
+                        radius: 20.0_f32 * sf,
+                        player_id: player.id,
+                        player_name: &player.name,
+                        player_type: player.player_type,
+                        player_color: player.color,
+                        leader: player.leader,
+                    },
                 );
             }
             continue;
@@ -111,9 +108,12 @@ pub(crate) fn render(
             continue;
         }
 
-        let scaled_size =
-            nameplate_font_px(vp.nameplate_size, zoom_scaled_local, is_human, &visual_config)
-                * ui_text_scale;
+        let scaled_size = nameplate_font_px(
+            vp.nameplate_size,
+            zoom_scaled_local,
+            is_human,
+            &visual_config,
+        ) * ui_text_scale;
 
         // A non-human plate whose NATURAL size is sub-readable dots out instead of being
         // floored up to 7px: flooring turns hundreds of tiny tribes/nations into full plates
@@ -199,10 +199,19 @@ pub(crate) fn render(
             let troops_galley =
                 painter.layout_no_wrap(troops_str.clone(), troops_font_id.clone(), vibrant_color);
 
-            let name_w = if show_names { name_size.x * text_scale } else { 0.0 };
-            let name_h = if show_names { name_size.y * text_scale } else { 0.0 };
+            let name_w = if show_names {
+                name_size.x * text_scale
+            } else {
+                0.0
+            };
+            let name_h = if show_names {
+                name_size.y * text_scale
+            } else {
+                0.0
+            };
             let troops_w = if show_troops {
-                crate::hud::nameplate::troops_row_width(&troops_galley, &troops_font_id) * text_scale
+                crate::hud::nameplate::troops_row_width(&troops_galley, &troops_font_id)
+                    * text_scale
             } else {
                 0.0
             };
@@ -211,7 +220,6 @@ pub(crate) fn render(
             } else {
                 0.0
             };
-            let right_w = name_w.max(troops_w);
             let item_spacing_y = if show_names && show_troops {
                 render_size * 0.111
             } else {
@@ -225,7 +233,6 @@ pub(crate) fn render(
             } else {
                 0.0
             };
-            let total_w = right_w.max(avatar_size);
             let total_h = avatar_size + spacing_y + right_h;
 
             let content_top = center.y - total_h / 2.0;
@@ -239,15 +246,17 @@ pub(crate) fn render(
             // Status badges (left: request, right: allied / betrayal stacked).
             draw_side_status_badge(
                 painter,
-                egui::pos2(left_x, avatar_cy),
-                badge_size,
-                player.id,
-                is_me,
-                has_req,
-                "request_anim_progress",
-                "📨",
-                Some(egui::Color32::from_rgb(34, 211, 238)),
-                1.0,
+                &SideBadgeOpts {
+                    pos: egui::pos2(left_x, avatar_cy),
+                    size: badge_size,
+                    player_id: player.id,
+                    is_me,
+                    active: has_req,
+                    anim_id_str: "request_anim_progress",
+                    emoji: "📨",
+                    color_glow: Some(egui::Color32::from_rgb(34, 211, 238)),
+                    flash_alpha: 1.0,
+                },
             );
 
             let flash_alpha = if is_heart_flashing {
@@ -259,30 +268,34 @@ pub(crate) fn render(
             if is_allied {
                 draw_side_status_badge(
                     painter,
-                    egui::pos2(right_x, right_slot_y),
-                    badge_size,
-                    player.id,
-                    is_me,
-                    true,
-                    "allied_anim_progress",
-                    "🤝",
-                    Some(egui::Color32::from_rgb(255, 200, 60)),
-                    flash_alpha,
+                    &SideBadgeOpts {
+                        pos: egui::pos2(right_x, right_slot_y),
+                        size: badge_size,
+                        player_id: player.id,
+                        is_me,
+                        active: true,
+                        anim_id_str: "allied_anim_progress",
+                        emoji: "🤝",
+                        color_glow: Some(egui::Color32::from_rgb(255, 200, 60)),
+                        flash_alpha,
+                    },
                 );
                 right_slot_y -= badge_size + 2.0;
             }
             if betrayal_flash {
                 draw_side_status_badge(
                     painter,
-                    egui::pos2(right_x, right_slot_y),
-                    badge_size,
-                    player.id,
-                    is_me,
-                    true,
-                    "betrayal_anim_progress",
-                    "🗡️",
-                    Some(egui::Color32::from_rgb(220, 38, 38)),
-                    1.0,
+                    &SideBadgeOpts {
+                        pos: egui::pos2(right_x, right_slot_y),
+                        size: badge_size,
+                        player_id: player.id,
+                        is_me,
+                        active: true,
+                        anim_id_str: "betrayal_anim_progress",
+                        emoji: "🗡️",
+                        color_glow: Some(egui::Color32::from_rgb(220, 38, 38)),
+                        flash_alpha: 1.0,
+                    },
                 );
                 right_slot_y -= badge_size + 2.0;
             }
@@ -302,13 +315,15 @@ pub(crate) fn render(
                 if let Some(tr) = gfx.text_renderer.as_mut() {
                     crate::hud::avatar::draw_player_avatar_gpu(
                         tr,
-                        [center.x * sf, avatar_cy * sf],
-                        avatar_r * sf,
-                        player.id,
-                        &player.name,
-                        player.player_type,
-                        player.color,
-                        player.leader,
+                        &crate::hud::avatar::GpuAvatarOpts {
+                            center: [center.x * sf, avatar_cy * sf],
+                            radius: avatar_r * sf,
+                            player_id: player.id,
+                            player_name: &player.name,
+                            player_type: player.player_type,
+                            player_color: player.color,
+                            leader: player.leader,
+                        },
                     );
                 }
             }
@@ -328,9 +343,7 @@ pub(crate) fn render(
                         [star_rect.center().x * sf, star_rect.center().y * sf],
                         star_rect.height() * 0.5 * sf,
                         [1.0; 4],
-                        [0.0, 0.0, 0.0, 1.0],
-                        0.0,
-                        0.0,
+                        ([0.0, 0.0, 0.0, 1.0], 0.0, 0.0),
                     )
                 });
                 if !star_gpu
@@ -366,9 +379,7 @@ pub(crate) fn render(
                         [disc_rect.center().x * sf, disc_rect.center().y * sf],
                         disc_rect.height() * 0.5 * sf,
                         [1.0; 4],
-                        [0.0, 0.0, 0.0, 1.0],
-                        0.0,
-                        0.0,
+                        ([0.0, 0.0, 0.0, 1.0], 0.0, 0.0),
                     )
                 });
                 if !disc_gpu
@@ -420,12 +431,9 @@ pub(crate) fn render(
                         &display_name,
                         [center.x * sf, (text_top + name_h * 0.85) * sf],
                         render_size * font_size_scale * sf,
-                        color_arr,
-                        outline_color_arr,
+                        (color_arr, outline_color_arr),
                         settings,
-                        0.5,
-                        char_spacing,
-                        emoji_scale,
+                        (0.5, char_spacing, emoji_scale),
                     );
                 }
 
@@ -446,9 +454,7 @@ pub(crate) fn render(
                         ],
                         icon_half * sf,
                         color_arr,
-                        outline_color_arr,
-                        outline_thickness,
-                        shadow_y,
+                        (outline_color_arr, outline_thickness, shadow_y),
                     );
                     tr.push_string(
                         &troops_str,
@@ -457,12 +463,9 @@ pub(crate) fn render(
                             (troops_row_y + troops_h * 0.85) * sf,
                         ],
                         troops_render_size * font_size_scale * sf,
-                        color_arr,
-                        outline_color_arr,
+                        (color_arr, outline_color_arr),
                         settings,
-                        0.0,
-                        char_spacing,
-                        emoji_scale,
+                        (0.0, char_spacing, emoji_scale),
                     );
                 }
             }
@@ -525,7 +528,10 @@ mod tests {
         let far = nameplate_font_px(mid_territory, 8.0, true, &cfg);
         let mid = nameplate_font_px(mid_territory, 10.0, true, &cfg);
         let near = nameplate_font_px(mid_territory, 12.0, true, &cfg);
-        assert!(far < mid && mid < near, "not zoom-responsive: {far} {mid} {near}");
+        assert!(
+            far < mid && mid < near,
+            "not zoom-responsive: {far} {mid} {near}"
+        );
 
         // Bigger territory must render bigger at the same zoom (both inside the band).
         let small = nameplate_font_px(400.0_f32.sqrt(), 10.0, true, &cfg);
@@ -545,8 +551,10 @@ mod tests {
             cfg.nameplate_hide_zoom
         );
         let just_inside = cfg.nameplate_hide_zoom + 0.5;
-        let tiny_bot_font =
-            nameplate_font_px(10.0, just_inside, false, &cfg).max(7.0); // render_size floor
-        assert!(tiny_bot_font >= 7.0, "should stay readable, not hide: {tiny_bot_font}");
+        let tiny_bot_font = nameplate_font_px(10.0, just_inside, false, &cfg).max(7.0); // render_size floor
+        assert!(
+            tiny_bot_font >= 7.0,
+            "should stay readable, not hide: {tiny_bot_font}"
+        );
     }
 }
