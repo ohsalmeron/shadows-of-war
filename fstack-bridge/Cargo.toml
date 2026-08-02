@@ -1,0 +1,56 @@
+[package]
+name = "fstack-bridge"
+version = "0.1.0"
+edition = "2021"
+description = "Direct-FFI, zero-copy Rust bridge over F-Stack (DPDK FreeBSD userspace stack)."
+
+[lib]
+name = "fstack_bridge"
+path = "src/lib.rs"
+
+[build-dependencies]
+pkg-config = "0.3"
+
+[dependencies]
+libc = "0.2"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "io-util", "macros", "time"] }
+bytes = "1"
+crossbeam-queue = "0.3"
+tokio-tungstenite = { workspace = true, features = ["connect"] }
+futures-util = "0.3"
+sow-core = { path = "../sow-core" }
+bincode = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rand = { workspace = true }
+redis = { workspace = true }
+reqwest = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+
+[[example]]
+name = "echo"
+path = "examples/echo.rs"
+
+[[example]]
+name = "echo_m1b"
+path = "examples/echo_m1b.rs"
+
+[[example]]
+name = "echo_ws"
+path = "examples/echo_ws.rs"
+
+[[example]]
+name = "relay_bincode"
+path = "examples/relay_bincode.rs"
+
+[[example]]
+name = "relay_client"
+path = "examples/relay_client.rs"
+
+[[example]]
+name = "relay_full"
+path = "examples/relay_full.rs"
+
+# Static link of libfstack.a + DPDK is configured in build.rs.
+# Build only on a host with libfstack.a + libdpdk installed (the Azure VM).

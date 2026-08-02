@@ -11,7 +11,6 @@ use redis::Commands;
 use sow_core::protocol::{
     ServerJoinAckMessage, ServerJoinFailedMessage, ServerLobbiesBroadcastMessage,
 };
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
@@ -19,189 +18,97 @@ use tokio::sync::{Mutex, broadcast, mpsc};
 use tokio_tungstenite::tungstenite::protocol::Message;
 
 const REDIS_PORTS_KEY: &str = "sow:ports";
-const DEFAULT_RELAY_LOG_DIR: &str = "/var/log/sow";
 
-fn relay_bin() -> PathBuf {
-    if let Ok(path) = std::env::var("SOW_RELAY_BIN") {
-        if !path.is_empty() {
-            let p = PathBuf::from(path);
-            if p.exists() {
-                return p;
-            }
-        }
-    }
-    if let Ok(mut exe) = std::env::current_exe() {
-        exe.set_file_name("sow-relay");
-        if exe.exists() {
-            return exe;
-        }
-    }
-    let default_prod = PathBuf::from("/srv/sow/current/bin/sow-relay");
-    if default_prod.exists() {
-        return default_prod;
-    }
-    PathBuf::from("./sow-relay")
-}
-
-fn relay_log_path(port: u16) -> PathBuf {
-    let log_dir = std::env::var_os("SOW_RELAY_LOG_DIR")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(DEFAULT_RELAY_LOG_DIR));
-    log_dir.join(format!("relay_{port}.log"))
-}
-
-const RELAY_PORT_MIN: u16 = 25590;
-const RELAY_PORT_MAX: u16 = 26500;
-
-fn ensure_redis_ok(client: &redis::Client, con: &mut redis::Connection) -> bool {
-    if redis::cmd("PING").query::<String>(con).is_ok() {
-        return true;
-    }
-    log::warn!("[REDIS] PING failed, reconnecting...");
-    match client.get_connection() {
-        Ok(c) => {
-            *con = c;
-            log::info!("[REDIS] Reconnected");
-            true
-        }
-        Err(e) => {
-            log::error!("[REDIS] Reconnect failed: {e}");
-            false
-        }
-    }
-}
-
-// =============================================================================
-// RELAY PORT ALLOCATION — read this before touching find_free_port / os_port_free
-// =============================================================================
-//
-// CONTEXT (what this code is for)
-// Each match gets its own `sow-relay` process on a dynamic TCP port in
-// RELAY_PORT_MIN..=RELAY_PORT_MAX. The server picks a free port, tells the relay
-// to bind it, and tells the clients (via ServerStartMessage.relay_port) to connect
-// there. nginx reverse-proxies `/relay/{port}/ws/` to 127.0.0.1:{port}.
-//
-// HOW IT WAS BROKEN (the bug this probe-bind gate fixed — do NOT reintroduce it)
-// The OLD `find_free_port` trusted two Redis signals as the source of truth for
-// whether a port was free:
-//   1. the `sow:ports` SET (membership = "claimed"), and
-//   2. the `sow:relay:{port}` KEY with a TTL (heartbeat refreshed by the live relay).
-// A "lazy-cleanup" branch reclaimed any port whose `sow:relay:{port}` key had
-// EXPIRED, handing that port to a new lobby.
-//
-// That TTL is NOT liveness. Two races punched through it:
-//   (a) On spawn, the port is marked "pending" with a 10s TTL. Under load the relay
-//       can take >10s to start + bind + take over the heartbeat → the pending key
-//       expires → lazy-cleanup steals the port for ANOTHER lobby while the first
-//       relay is still coming up.
-//   (b) Any Redis hiccup lets a LIVE relay's heartbeat key lapse (60s TTL with no
-//       refresh) → lazy-cleanup steals a port whose relay is still alive and bound.
-//
-// In both cases the new relay tries `TcpListener::bind` on a port that is still
-// held → "Address already in use (os error 48)" → it exits(1). BUT the server had
-// ALREADY broadcast ServerStartMessage{relay_port} to the lobby's clients (we
-// broadcast right after spawn, before bind-confirm — see the spawn task below).
-// So those clients connect to the port and hit the OLD, still-live relay that
-// belongs to a DIFFERENT lobby. The relay validates `Ready{lobby_id}` against its
-// own lobby_id, rejects every one ("Invalid Ready request for lobby X player Y"),
-// the player is never registered, receives zero ticks, and the match stalls.
-//
-// Evidence seen in prod (relay_25623.log, 2026-08-01): "Failed to bind ... Address
-// already in use", STATUS showing lobby 142 owning port 25623, while clients from
-// lobbies 193/202/207 were routed there — 105 "Invalid Ready", 0 "reconnected".
-//
-// THE FIX
-// `os_port_free` makes the OS the source of truth. `find_free_port` probe-binds
-// every candidate port before returning it (both the normal and the lazy-cleanup
-// paths). A port is handed out ONLY if we can actually bind it right now. That
-// collapses both races: a still-held port fails the probe and is skipped, so no
-// relay is ever told to bind a taken port, and no client is ever routed to a
-// relay owned by another lobby.
-//
-// WARNING TO FUTURE AGENTS
-//   * Do NOT remove `os_port_free` "for performance" or "to simplify". It is the
-//     ONLY thing preventing wrong-relay routing. The Redis set/TTL is advisory
-//     bookkeeping, NOT liveness.
-//   * If you need port reclamation (lazy-cleanup), NEVER trust the `sow:relay:{p}`
-//     TTL alone — a relay can be alive with an expired key. Always probe the OS.
-//   * The probe bind+drop has a microscopic race window, but allocation is
-//     serialized through a single consumer of `relay_rx`, so no two allocations
-//     compete for the same port between probe and relay-bind. Do not parallelize
-//     allocation without re-validating this.
-//   * DEEPER (not done here): the server still broadcasts Start BEFORE the relay
-//     confirms its bind. Probe-bind makes that safe today. The truly robust fix is
-//     to wait for the relay's bind-confirmation (it sets `sow:relay:{port}` =
-//     lobby_id with a 60s TTL AFTER a successful bind — see sow-relay/src/main.rs)
-//     before broadcasting Start, and re-allocate on timeout. If you restructure the
-//     spawn task, prefer adding that handshake over relying on probe-bind alone.
-// =============================================================================
-
-/// The host relays bind on (must match `relay_listen_host()` in sow-relay).
-fn relay_listen_host() -> String {
-    std::env::var("SOW_RELAY_LISTEN_HOST")
+/// The monolithic DPDK relay's fixed game port (SOW_RELAY_PORT, default 80).
+fn relay_port() -> u16 {
+    std::env::var("SOW_RELAY_PORT")
         .ok()
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "127.0.0.1".to_string())
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(80)
 }
 
-/// Source of truth for "is this port free": try to bind it at the OS level.
-/// See the port-allocation note above for why this MUST gate every port handout.
-fn os_port_free(host: &str, port: u16) -> bool {
-    std::net::TcpListener::bind((host, port)).is_ok()
+/// Host the clients should reach the relay at (data PIP on Azure). None means
+/// "use the orchestrator host" (legacy client behavior).
+fn relay_host() -> Option<String> {
+    std::env::var("SOW_RELAY_HOST")
+        .ok()
+        .filter(|host| !host.trim().is_empty())
+        .map(|host| host.trim().to_string())
 }
 
-fn find_free_port(redis_client: &redis::Client, con: &mut redis::Connection) -> Option<u16> {
-    if !ensure_redis_ok(redis_client, con) {
-        log::error!("[REDIS] Cannot query {REDIS_PORTS_KEY} — connection down");
-        return None;
-    }
-    let occupied: std::collections::HashSet<u16> = match con.smembers(REDIS_PORTS_KEY) {
-        Ok(s) => s,
-        Err(e) => {
-            log::error!("[REDIS] SMEMBERS {REDIS_PORTS_KEY} FAILED: {e}");
-            return None;
-        }
-    };
-    let listen_host = relay_listen_host();
-    for port in RELAY_PORT_MIN..=RELAY_PORT_MAX {
-        if !occupied.contains(&port) {
-            if !os_port_free(&listen_host, port) {
-                // Tracked as free in Redis but bound at the OS level (orphan/leaked relay).
-                // Skip it: never hand out a port we cannot actually bind.
-                log::warn!("[PORT] {port} marked free in Redis but OS-bound; skipping");
-                continue;
-            }
-            let _: () = con
-                .set_ex(format!("sow:relay:{port}"), "pending", 10)
-                .unwrap_or(());
-            return Some(port);
-        }
-        // Lazy cleanup: if port is in Valkey set but key `sow:relay:{port}` has expired, reclaim it!
-        let relay_key = format!("sow:relay:{port}");
-        let exists: bool = con.exists(&relay_key).unwrap_or(true);
-        if !exists {
-            if !os_port_free(&listen_host, port) {
-                // Key expired but the relay process still HOLDS the port — do NOT steal it.
-                // This is the race that caused "Address already in use" + wrong-relay routing.
-                log::warn!(
-                    "[PORT] {port} relay key expired but OS-bound (live relay); not reclaiming"
+/// Register a lobby with the monolithic relay over mgmt HTTP. The relay
+/// confirms with 200 OK before the server broadcasts Start to the clients.
+/// Retries with exponential backoff (same resilience as the old spawn path).
+async fn register_relay(rc: &RelayCandidate) -> Result<(), String> {
+    let mgmt_url = std::env::var("SOW_RELAY_MGMT_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
+    let url = format!("{}/internal/lobby/register", mgmt_url.trim_end_matches('/'));
+
+    let relay_config = serde_json::json!({
+        "lobby_id": rc.lobby_id,
+        "tick_number": 0,
+        "active_empty_secs": rc.active_empty_secs,
+        "players": rc.players_json,
+        "tick_rate_ms": rc.tick_rate_ms,
+    });
+
+    let client = reqwest::Client::new();
+    for attempt in 1..=5 {
+        match client.post(&url).json(&relay_config).send().await {
+            Ok(res) if res.status().is_success() => {
+                log::info!(
+                    "[RELAY] Lobby {} accepted by relay ({} OK)",
+                    rc.lobby_id,
+                    url
                 );
-                continue;
+                return Ok(());
             }
-            log::info!(
-                "[LAZY-CLEANUP] Reclaiming stale port {} (relay key expired)",
-                port
-            );
-            let _ = con.srem::<_, _, ()>(REDIS_PORTS_KEY, port);
-            let _: () = con
-                .set_ex(format!("sow:relay:{port}"), "pending", 10)
-                .unwrap_or(());
-            return Some(port);
+            Ok(res) => {
+                log::warn!(
+                    "[RELAY] register lobby {}: relay returned HTTP {} (attempt {}/5)",
+                    rc.lobby_id,
+                    res.status(),
+                    attempt
+                );
+            }
+            Err(e) => {
+                log::warn!(
+                    "[RELAY] register lobby {}: relay unreachable: {e} (attempt {}/5)",
+                    rc.lobby_id,
+                    attempt
+                );
+            }
+        }
+        if attempt < 5 {
+            tokio::time::sleep(Duration::from_secs(2u64.pow(attempt as u32))).await;
         }
     }
-    None
+    Err(format!("relay registration failed for lobby {}", rc.lobby_id))
 }
+
+// =============================================================================
+// RELAY INTEGRATION — monolithic DPDK relay (no per-lobby processes)
+// =============================================================================
+//
+// The relay is a single process (sow-relay + fstack-bridge) listening on a
+// fixed game port (SOW_RELAY_PORT, default 80) on the data NIC. There is no
+// dynamic port allocation, no per-lobby spawn, no nginx /relay/{port}/ws/
+// reverse proxy, and no port-claiming race: the server registers each lobby
+// with the relay over mgmt HTTP (SOW_RELAY_MGMT_URL, default
+// http://127.0.0.1:8080) and ONLY broadcasts Start{relay_port, relay_host}
+// after the relay answers 200 OK — the relay accepts the lobby before any
+// client is told where to connect.
+//
+// History (why the old code is gone): the previous design gave each match its
+// own `sow-relay` process on a dynamic port. Port liveness was tracked via
+// Redis (`sow:ports` set + `sow:relay:{port}` TTL), and a race between relay
+// startup, TTL expiry and lazy-cleanup could hand a still-bound port to a new
+// lobby → "Address already in use" → clients routed to the OLD relay of a
+// DIFFERENT lobby → "Invalid Ready request" spam and stalled matches
+// (relay_25623.log, 2026-08-01). The probe-bind gate fixed the symptom; the
+// monolithic relay removes the failure mode entirely.
+
+
 
 /// All server events, comming from client
 enum ServerEvent {
@@ -306,141 +213,74 @@ async fn main() {
     let games_clone = Arc::clone(&games_state);
     let next_id_clone = Arc::clone(&next_id_state);
     let global_tx_clone = global_tx.clone();
-    let redis_clone = Arc::clone(&redis_con);
     let relay_tx_clone = relay_tx.clone();
 
     // ── DEDICATED ASYNC RELAY WORKER TASK ──
-    let redis_client_worker = redis_client.clone();
-    let redis_con_worker = Arc::clone(&redis_con);
-    let redis_clone_inner = redis_clone.clone();
+    // The relay is a monolithic DPDK process (fstack-bridge) listening on a
+    // fixed game port. There is no per-lobby process and no dynamic port: the
+    // worker registers the lobby over mgmt HTTP and only broadcasts
+    // Start{relay_port, relay_host} AFTER the relay confirms with 200 OK.
+    // This closes the old spawn/bind race ("Failed to bind... Address already
+    // in use", wrong-relay routing) for good: the relay accepts the lobby
+    // before any client is told where to connect.
     tokio::spawn(async move {
         while let Some(rc) = relay_rx.recv().await {
-            let relay_port = {
-                let mut rcon = redis_con_worker.lock().unwrap();
-                match find_free_port(&redis_client_worker, &mut rcon) {
-                    Some(p) => match rcon.sadd::<_, _, ()>(REDIS_PORTS_KEY, p) {
-                        Ok(_) => Some(p),
-                        Err(e) => {
-                            log::error!("[REDIS] SADD {REDIS_PORTS_KEY} {p} FAILED: {e}");
-                            None
-                        }
-                    },
-                    None => None,
-                }
-            };
+            let relay_port = relay_port();
 
-            if let Some(port) = relay_port {
-                // DB match registration
-                if !rc.player_ids.is_empty() {
-                    let match_id = rc.lobby_id.to_string();
-                    let pids = rc.player_ids.clone();
-                    tokio::spawn(async move {
-                        let db_base_url = std::env::var("SOW_DB_URL")
-                            .unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
-                        let secret_token = std::env::var("SOW_DB_SECRET").unwrap_or_else(|_| {
-                            "sow_db_dev_secret_123_change_me_in_prod".to_string()
-                        });
-                        let url = format!("{}/match/start", db_base_url.trim_end_matches('/'));
-                        let _ = reqwest::Client::new()
-                            .post(&url)
-                            .header("Authorization", format!("Bearer {}", secret_token))
-                            .json(&serde_json::json!({ "match_id": match_id, "player_ids": pids }))
-                            .send()
-                            .await;
-                    });
-                }
-
-                let relay_config = serde_json::json!({
-                    "lobby_id": rc.lobby_id,
-                    "tick_number": 0,
-                    "active_empty_secs": rc.active_empty_secs,
-                    "players": rc.players_json,
-                    "tick_rate_ms": rc.tick_rate_ms,
-                });
-
-                let log_path = relay_log_path(port);
-                let log_file = match std::fs::File::create(&log_path) {
-                    Ok(f) => f,
-                    Err(e) => {
-                        log::error!(
-                            "[RELAY] Cannot create log file {}: {}",
-                            log_path.display(),
-                            e
-                        );
-                        continue;
-                    }
-                };
-
-                let relay_bin = relay_bin();
-                log::info!(
-                    "[RELAY] Handing off lobby {} to relay port {}",
-                    rc.lobby_id,
-                    port
-                );
-                let mut child = match tokio::process::Command::new(&relay_bin)
-                    .arg("--port")
-                    .arg(port.to_string())
-                    .arg("--lobby-json")
-                    .arg(relay_config.to_string())
-                    .stdout(
-                        log_file
-                            .try_clone()
-                            .unwrap_or_else(|_| std::fs::File::create("/dev/null").unwrap()),
-                    )
-                    .stderr(log_file)
-                    .spawn()
-                {
-                    Ok(c) => c,
-                    Err(e) => {
-                        log::error!(
-                            "[RELAY] Failed to spawn relay binary '{}': {}",
-                            relay_bin.display(),
-                            e
-                        );
-                        continue;
-                    }
-                };
-
-                log::info!(
-                    "[RELAY] Spawned sow-relay for lobby {} on port {}",
-                    rc.lobby_id,
-                    port
-                );
-
-                // Broadcast Start message to all players in the lobby with relay_port
-                let start_msg = sow_core::protocol::ServerStartMessage {
-                    config: sow_core::game_config::GameConfig::default(),
-                    my_player_id: None,
-                    lobby_id: Some(rc.lobby_id),
-                    seed: 0,
-                    players: vec![],
-                    missed_turns: vec![],
-                    map_data: None,
-                    relay_port: Some(port),
-                };
-                if let Ok(start_json) = bincode::serialize(
-                    &sow_core::protocol::ServerMessage::Start(Box::new(start_msg)),
-                ) {
-                    for (_, tx) in &rc.players_tx {
-                        let _ = tx.try_send(start_json.clone());
-                    }
-                }
-
-                let pid = child.id();
-                let rcon_arc = redis_clone_inner.clone();
+            // DB match registration
+            if !rc.player_ids.is_empty() {
+                let match_id = rc.lobby_id.to_string();
+                let pids = rc.player_ids.clone();
                 tokio::spawn(async move {
-                    let status = child.wait().await;
-                    log::info!(
-                        "[RELAY] Relay for lobby {} (PID {:?}, port {}) exited: {:?}",
-                        rc.lobby_id,
-                        pid,
-                        port,
-                        status
-                    );
-                    let mut rcon = rcon_arc.lock().unwrap();
-                    let _ = rcon.srem::<_, _, ()>(REDIS_PORTS_KEY, port);
-                    let _ = rcon.del::<_, ()>(format!("sow:relay:{port}"));
+                    let db_base_url = std::env::var("SOW_DB_URL")
+                        .unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
+                    let secret_token = std::env::var("SOW_DB_SECRET").unwrap_or_else(|_| {
+                        "sow_db_dev_secret_123_change_me_in_prod".to_string()
+                    });
+                    let url = format!("{}/match/start", db_base_url.trim_end_matches('/'));
+                    let _ = reqwest::Client::new()
+                        .post(&url)
+                        .header("Authorization", format!("Bearer {}", secret_token))
+                        .json(&serde_json::json!({ "match_id": match_id, "player_ids": pids }))
+                        .send()
+                        .await;
                 });
+            }
+
+            // Register the lobby with the monolithic relay (mgmt HTTP, kernel
+            // 127.0.0.1). Retries with backoff; the relay confirms before any
+            // client is told the port.
+            match register_relay(&rc).await {
+                Ok(()) => {
+                    log::info!(
+                        "[RELAY] Lobby {} registered with relay on port {}",
+                        rc.lobby_id,
+                        relay_port
+                    );
+
+                    // Broadcast Start message to all players in the lobby with relay_port
+                    let start_msg = sow_core::protocol::ServerStartMessage {
+                        config: sow_core::game_config::GameConfig::default(),
+                        my_player_id: None,
+                        lobby_id: Some(rc.lobby_id),
+                        seed: 0,
+                        players: vec![],
+                        missed_turns: vec![],
+                        map_data: None,
+                        relay_port: Some(relay_port),
+                        relay_host: relay_host(),
+                    };
+                    if let Ok(start_json) = bincode::serialize(
+                        &sow_core::protocol::ServerMessage::Start(Box::new(start_msg)),
+                    ) {
+                        for (_, tx) in &rc.players_tx {
+                            let _ = tx.try_send(start_json.clone());
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::error!("[RELAY] {e}; lobby {} lost this tick", rc.lobby_id);
+                }
             }
         }
     });

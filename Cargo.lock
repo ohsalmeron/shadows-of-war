@@ -946,6 +946,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "crossbeam-queue"
+version = "0.3.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "803d13fb3b09d88be9f4dbc29062c66b19bf7170867ceb746d2a8689bf6c7a26"
+dependencies = [
+ "crossbeam-utils",
+]
+
+[[package]]
 name = "crossbeam-utils"
 version = "0.8.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1381,6 +1390,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
 dependencies = [
  "percent-encoding",
+]
+
+[[package]]
+name = "fstack-bridge"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "bytes",
+ "crossbeam-queue",
+ "env_logger",
+ "futures-util",
+ "libc",
+ "log",
+ "pkg-config",
+ "rand",
+ "redis",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sow-core",
+ "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]
@@ -3958,7 +3989,9 @@ version = "0.2.0"
 dependencies = [
  "bincode",
  "env_logger",
+ "fstack-bridge",
  "futures-util",
+ "libc",
  "log",
  "rand",
  "redis",

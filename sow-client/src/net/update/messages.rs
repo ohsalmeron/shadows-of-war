@@ -8,7 +8,7 @@ impl SowApp {
     pub(super) fn process_ws_messages(
         &mut self,
         _now: Instant,
-    ) -> (bool, Option<u16>, bool, Option<u64>) {
+    ) -> (bool, Option<(u16, Option<String>)>, bool, Option<u64>) {
         let mut ws_disconnected = false;
         #[cfg(target_arch = "wasm32")]
         if let Some(c) = self.net.client.as_ref() {
@@ -17,7 +17,7 @@ impl SowApp {
             }
         }
 
-        let mut switch_to_relay = None;
+        let mut switch_to_relay: Option<(u16, Option<String>)> = None;
         let mut exit_to_menu_after_net = false;
         let mut pending_rematch: Option<u64> = None;
 
@@ -74,7 +74,7 @@ impl SowApp {
                             self.sim.my_lobby_id = start_msg.lobby_id;
 
                             if let Some(relay_port) = start_msg.relay_port {
-                                switch_to_relay = Some(relay_port);
+                                switch_to_relay = Some((relay_port, start_msg.relay_host.clone()));
                             }
 
                             self.tasks.engine_init_queued_msg = Some(*start_msg);

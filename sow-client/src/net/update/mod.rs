@@ -173,12 +173,18 @@ impl SowApp {
             self.begin_exit_to_main_menu(true);
         }
 
-        if let Some(relay_port) = switch_to_relay {
+        if let Some((relay_port, relay_host)) = switch_to_relay {
             log::info!(
-                "[CLIENT NET] Handoff from Master Orchestrator -> Game Relay on port {}",
-                relay_port
+                "[CLIENT NET] Handoff from Master Orchestrator -> Game Relay on port {} (host {:?})",
+                relay_port,
+                relay_host
             );
-            if let Ok(mut url) = url::Url::parse(&self.net.ws_url) {
+            // The monolithic DPDK relay is reachable directly at
+            // ws://{relay_host}:{relay_port}/ws/ — no nginx, no TLS path.
+            if let Some(host) = relay_host {
+                self.net.ws_url = format!("ws://{}:{}/ws/", host, relay_port);
+            } else if let Ok(mut url) = url::Url::parse(&self.net.ws_url) {
+                // Legacy: derive from the orchestrator URL.
                 if url.scheme() == "wss" || self.net.ws_url.contains("shadowsofwar.io") {
                     let new_path = format!("/relay/{}/ws/", relay_port);
                     url.set_path(&new_path);
@@ -186,22 +192,22 @@ impl SowApp {
                     let _ = url.set_port(Some(relay_port));
                 }
                 self.net.ws_url = url.to_string();
-                self.net.client = None; // Drop orchestrator connection
-                self.ui.app.main_menu_state.is_connected = false; // Reset connection status during handoff
-                self.ui.app.main_menu_state.server_address = self.net.ws_url.clone();
-                ws_disconnected = false;
-
-                // Clear stale connections
-                while self.net.connect_rx.try_recv().is_ok() {
-                    log::info!(
-                        "[CLIENT NET] 🗑️  Purged stale connection from channel during handoff to relay!"
-                    );
-                }
-
-                self.net.relay_connect_start = Some(now);
-                self.net.relay_retry_count = 0;
-                self.net.ws_connect_not_before = now; // Ensure no backoff delays are active for retries
             }
+            self.net.client = None; // Drop orchestrator connection
+            self.ui.app.main_menu_state.is_connected = false; // Reset connection status during handoff
+            self.ui.app.main_menu_state.server_address = self.net.ws_url.clone();
+            ws_disconnected = false;
+
+            // Clear stale connections
+            while self.net.connect_rx.try_recv().is_ok() {
+                log::info!(
+                    "[CLIENT NET] 🗑️  Purged stale connection from channel during handoff to relay!"
+                );
+            }
+
+            self.net.relay_connect_start = Some(now);
+            self.net.relay_retry_count = 0;
+            self.net.ws_connect_not_before = now; // Ensure no backoff delays are active for retries
         }
 
         if ws_disconnected {

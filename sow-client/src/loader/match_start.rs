@@ -170,6 +170,7 @@ impl SowApp {
             missed_turns: vec![],
             map_data: None,
             relay_port: None,
+            relay_host: None,
         };
         self.tasks.engine_init_queued_msg = Some(start_msg);
 
