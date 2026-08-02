@@ -38,9 +38,9 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::Notify;
 
 pub const MAX_EVENTS: usize = 512;
-pub const RX_CAP: usize = 1024;
-pub const TX_CAP: usize = 1024;
-pub const POOL_CAP: usize = 512;
+pub const RX_CAP: usize = 65536;
+pub const TX_CAP: usize = 65536;
+pub const POOL_CAP: usize = 16384;
 pub const POOL_BUF_SIZE: usize = 65536;
 /// kevent timeout (ns): bounds how long a TX ring command waits without traffic.
 const POLL_TIMEOUT_NS: i64 = 10_000_000;
