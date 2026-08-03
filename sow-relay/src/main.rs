@@ -785,7 +785,14 @@ async fn tick_task(
                 total_ticks += 1;
                 total_intents += turn.intents.len() as u64;
 
-                state.match_history.lock().await.push(turn.clone());
+                {
+                    let mut history = state.match_history.lock().await;
+                    history.push(turn.clone());
+                    if history.len() > 1000 {
+                        let drain_amount = history.len() - 500;
+                        history.drain(0..drain_amount);
+                    }
+                }
 
                 let msg = ServerTurnMessage { turn };
                 let json = bincode::serialize(&ServerMessage::Turn(msg))
