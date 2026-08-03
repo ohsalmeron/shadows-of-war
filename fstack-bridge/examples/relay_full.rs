@@ -881,13 +881,13 @@ async fn tick_task(
 async fn bridge_worker(registry: Registry, stub: Option<Arc<StubState>>) {
     let rx = bridge::rx_ring();
     let notify = bridge::notify();
-    let mut conns: HashMap<c_int, mpsc::UnboundedSender<bridge::ZcRxGuard>> = HashMap::new();
+    let mut conns: HashMap<c_int, mpsc::Sender<bridge::ZcRxGuard>> = HashMap::new();
 
     loop {
         while let Some(ev) = rx.pop() {
             match ev {
                 Ev::Accept { fd, generation } => {
-                    let (tx, rx_conn) = mpsc::unbounded_channel();
+                    let (tx, rx_conn) = mpsc::channel(bridge::RX_CAP);
                     conns.insert(fd, tx);
                     tokio::spawn(ws_task(
                         fd,
@@ -899,7 +899,7 @@ async fn bridge_worker(registry: Registry, stub: Option<Arc<StubState>>) {
                 }
                 Ev::Data { fd, guard } => match conns.get(&fd) {
                     Some(tx) => {
-                        let _ = tx.send(guard);
+                        let _ = tx.try_send(guard);
                     }
                     None => drop(guard),
                 },
@@ -931,7 +931,7 @@ enum Role {
 async fn ws_task(
     fd: c_int,
     generation: u64,
-    rx: mpsc::UnboundedReceiver<bridge::ZcRxGuard>,
+    rx: mpsc::Receiver<bridge::ZcRxGuard>,
     registry: Registry,
     stub: Option<Arc<StubState>>,
 ) {

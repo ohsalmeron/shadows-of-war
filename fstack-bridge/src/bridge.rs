@@ -31,17 +31,25 @@ use std::io;
 use std::mem;
 use std::pin::Pin;
 use std::ptr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::Receiver;
 use tokio::sync::Notify;
 
 pub const MAX_EVENTS: usize = 512;
-pub const RX_CAP: usize = 65536;
-pub const TX_CAP: usize = 65536;
-pub const POOL_CAP: usize = 16384;
-pub const POOL_BUF_SIZE: usize = 65536;
+/// Slot ceilings are intentionally small. The byte ceilings below are the
+/// actual memory budget; a burst must not reserve multiple GiB of buffers.
+pub const RX_CAP: usize = 4096;
+pub const TX_CAP: usize = 1024;
+pub const RECYCLE_CAP: usize = RX_CAP;
+pub const POOL_CAP: usize = 1024;
+pub const MAX_TX_BYTES: usize = 64 * 1024 * 1024;
+pub const MAX_POOL_BYTES: usize = 32 * 1024 * 1024;
+pub const MAX_PENDING_SEND_BYTES: usize = 64 * 1024 * 1024;
+pub const MAX_BUFFER_CAP: usize = 64 * 1024;
+pub const DEFAULT_BUFFER_CAP: usize = 4096;
 /// kevent timeout (ns): bounds how long a TX ring command waits without traffic.
 const POLL_TIMEOUT_NS: i64 = 10_000_000;
 
@@ -71,9 +79,101 @@ pub enum Cmd {
 // ring only moves ownership between threads.
 unsafe impl Send for Cmd {}
 
+struct BufferPool {
+    queue: ArrayQueue<BytesMut>,
+    bytes: AtomicUsize,
+}
+
+impl BufferPool {
+    fn new() -> Self {
+        Self {
+            queue: ArrayQueue::new(POOL_CAP),
+            bytes: AtomicUsize::new(0),
+        }
+    }
+
+    fn reserve(&self, amount: usize) -> bool {
+        let mut current = self.bytes.load(Ordering::Acquire);
+        loop {
+            if amount > MAX_POOL_BYTES.saturating_sub(current) {
+                return false;
+            }
+            match self.bytes.compare_exchange_weak(
+                current,
+                current + amount,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => return true,
+                Err(next) => current = next,
+            }
+        }
+    }
+
+    fn take(&self, minimum_capacity: usize) -> Option<BytesMut> {
+        while let Some(buf) = self.queue.pop() {
+            let capacity = buf.capacity();
+            self.bytes.fetch_sub(capacity, Ordering::AcqRel);
+            if capacity >= minimum_capacity {
+                return Some(buf);
+            }
+        }
+        None
+    }
+
+    fn put(&self, buf: BytesMut) {
+        let capacity = buf.capacity();
+        if capacity == 0 || capacity > MAX_BUFFER_CAP || !self.reserve(capacity) {
+            return;
+        }
+        if self.queue.push(buf).is_err() {
+            self.bytes.fetch_sub(capacity, Ordering::AcqRel);
+        }
+    }
+}
+
+struct PendingSend {
+    generation: u64,
+    queue: VecDeque<BytesMut>,
+    bytes: usize,
+}
+
+impl PendingSend {
+    fn new(generation: u64, buf: BytesMut) -> Self {
+        let bytes = buf.len();
+        let mut queue = VecDeque::new();
+        queue.push_back(buf);
+        Self {
+            generation,
+            queue,
+            bytes,
+        }
+    }
+
+    fn push(&mut self, buf: BytesMut) {
+        self.bytes = self.bytes.saturating_add(buf.len());
+        self.queue.push_back(buf);
+    }
+
+    fn pop(&mut self) -> Option<BytesMut> {
+        let buf = self.queue.pop_front()?;
+        self.bytes = self.bytes.saturating_sub(buf.len());
+        Some(buf)
+    }
+}
+
+struct RecycleItem {
+    zm: ff_zc_mbuf,
+}
+
+// The mbuf is never dereferenced by the producer. It is only moved to the
+// ff_run thread, which calls ff_zc_recv_free there.
+unsafe impl Send for RecycleItem {}
+
 /// RAII owner of a zero-copy receive mbuf. `segments()` borrows the DPDK buffer
 /// directly (0 copies); the worker must copy/process before dropping the guard.
-/// Dropping pushes `Cmd::Recycle` — actual freeing happens on ff_run.
+/// Dropping pushes the dedicated recycle ring — actual freeing happens on
+/// ff_run before normal TX commands are drained.
 pub struct ZcRxGuard {
     zm: ff_zc_mbuf,
 }
@@ -108,11 +208,20 @@ impl Drop for ZcRxGuard {
     fn drop(&mut self) {
         let zm = mem::replace(&mut self.zm, unsafe { mem::zeroed() });
         if !zm.bsd_mbuf.is_null() {
-            if let Some(tx) = TX.get() {
-                if tx.push(Cmd::Recycle { zm }).is_err() {
-                    eprintln!("[bridge] TX ring full: DPDK mbuf leaked");
+            if let Some(recycle) = RECYCLE.get() {
+                match recycle.push(RecycleItem { zm }) {
+                    Ok(()) => return,
+                    Err(RecycleItem { zm }) => {
+                        if let Some(tx) = TX.get() {
+                            if tx.push(Cmd::Recycle { zm }).is_ok() {
+                                return;
+                            }
+                        }
+                    }
                 }
             }
+            unsafe { RECYCLE_DROPS += 1 };
+            eprintln!("[bridge] recycle queues full: DPDK mbuf leaked");
         }
     }
 }
@@ -125,7 +234,8 @@ pub static mut LISTEN_FD: c_int = -1;
 
 static RX: OnceLock<Arc<ArrayQueue<Ev>>> = OnceLock::new();
 static TX: OnceLock<Arc<ArrayQueue<Cmd>>> = OnceLock::new();
-static POOL: OnceLock<Arc<ArrayQueue<BytesMut>>> = OnceLock::new();
+static RECYCLE: OnceLock<Arc<ArrayQueue<RecycleItem>>> = OnceLock::new();
+static POOL: OnceLock<Arc<BufferPool>> = OnceLock::new();
 static NOTIFY: OnceLock<Arc<Notify>> = OnceLock::new();
 /// Woken by the driver after every TX drain; async writers park here when the
 /// TX ring is full (backpressure for the AsyncWrite side).
@@ -133,9 +243,11 @@ static TX_SPACE: AtomicWaker = AtomicWaker::new();
 
 /// RX deliveries that could not be pushed (ring full) — retried next iteration.
 static mut PENDING_RX: VecDeque<Ev> = VecDeque::new();
-/// Payloads parked on EAGAIN, retried on EVFILT_WRITE. Value carries the
-/// connection generation so a stale send can never hit a reused fd.
-static mut PENDING_SEND: Option<HashMap<c_int, (u64, BytesMut)>> = None;
+/// Payloads parked on EAGAIN, retried on EVFILT_WRITE. Each fd owns an
+/// ordered queue so a later frame can never replace an earlier one.
+static mut PENDING_SEND: Option<HashMap<c_int, PendingSend>> = None;
+static mut PENDING_SEND_BYTES: usize = 0;
+static TX_RING_BYTES: AtomicUsize = AtomicUsize::new(0);
 /// fd -> generation of the connection currently owning that fd. The generation
 /// is the accept counter value at accept time: strictly unique per connection
 /// for the lifetime of the driver. A `Cmd::Close`/`Cmd::Send` is honored only
@@ -145,7 +257,7 @@ static mut PENDING_SEND: Option<HashMap<c_int, (u64, BytesMut)>> = None;
 static mut FD_GEN: Option<HashMap<c_int, u64>> = None;
 
 /// Accessor for the single-threaded driver state (only ff_run touches it).
-unsafe fn pending_send() -> &'static mut HashMap<c_int, (u64, BytesMut)> {
+unsafe fn pending_send() -> &'static mut HashMap<c_int, PendingSend> {
     PENDING_SEND.get_or_insert_with(HashMap::new)
 }
 
@@ -154,20 +266,92 @@ unsafe fn fd_gen() -> &'static mut HashMap<c_int, u64> {
     FD_GEN.get_or_insert_with(HashMap::new)
 }
 
+/// Park one payload without replacing an earlier payload for the same fd.
+/// The driver is the only caller, so the byte accounting and map mutation are
+/// single-threaded even though producers may be concurrent on the TX ring.
+unsafe fn park_send(fd: c_int, generation: u64, buf: BytesMut) -> bool {
+    let len = buf.len();
+    if PENDING_SEND_BYTES.saturating_add(len) > MAX_PENDING_SEND_BYTES {
+        TX_BUDGET_CLOSURES += 1;
+        return false;
+    }
+
+    let pending = pending_send();
+    match pending.get_mut(&fd) {
+        Some(entry) if entry.generation == generation => {
+            entry.push(buf);
+        }
+        Some(_) => {
+            // The fd was reused between attempts. The caller's generation
+            // check already guards this path; drop defensively if it changes.
+            put_buf(buf);
+            return true;
+        }
+        None => {
+            pending.insert(fd, PendingSend::new(generation, buf));
+        }
+    }
+    PENDING_SEND_BYTES += len;
+    PENDING_SEND_PEAK = PENDING_SEND_PEAK.max(PENDING_SEND_BYTES);
+    ensure_write_event(fd);
+    true
+}
+
+unsafe fn pop_pending_send(fd: c_int) -> Option<(u64, BytesMut)> {
+    let mut remove = false;
+    let item = if let Some(entry) = pending_send().get_mut(&fd) {
+        let item = entry.pop();
+        if let Some(ref buf) = item {
+            let len = buf.len();
+            PENDING_SEND_BYTES = PENDING_SEND_BYTES.saturating_sub(len);
+        }
+        remove = entry.queue.is_empty();
+        item.map(|buf| (entry.generation, buf))
+    } else {
+        None
+    };
+    if remove {
+        pending_send().remove(&fd);
+    }
+    item
+}
+
+unsafe fn has_pending_send(fd: c_int) -> bool {
+    pending_send().contains_key(&fd)
+}
+
+unsafe fn clear_pending_send(fd: c_int) {
+    if let Some(entry) = pending_send().remove(&fd) {
+        PENDING_SEND_BYTES = PENDING_SEND_BYTES.saturating_sub(entry.bytes);
+        for buf in entry.queue {
+            put_buf(buf);
+        }
+        remove_write_event(fd);
+    }
+}
+
 static mut ACCEPTS: u64 = 0;
 static mut ECHOES: u64 = 0;
 static mut RECV_BYTES: u64 = 0;
+static mut RECYCLE_DROPS: u64 = 0;
+static mut RX_DROPS: u64 = 0;
+static mut TX_BUDGET_CLOSURES: u64 = 0;
+static mut PENDING_SEND_PEAK: usize = 0;
 static mut LAST_STATS_AT: u64 = 0;
 
 /// Create rings + pool + notify. Call once before spawning any worker.
 pub fn setup() {
     RX.set(Arc::new(ArrayQueue::new(RX_CAP))).ok();
     TX.set(Arc::new(ArrayQueue::new(TX_CAP))).ok();
-    POOL.set(Arc::new(ArrayQueue::new(POOL_CAP))).ok();
+    RECYCLE.set(Arc::new(ArrayQueue::new(RECYCLE_CAP))).ok();
+    POOL.set(Arc::new(BufferPool::new())).ok();
     NOTIFY.set(Arc::new(Notify::new())).ok();
     unsafe {
+        TX_RING_BYTES.store(0, Ordering::Release);
         PENDING_RX = VecDeque::new();
         PENDING_SEND = None;
+        PENDING_SEND_BYTES = 0;
+        PENDING_SEND_PEAK = 0;
         FD_GEN = None;
     }
 }
@@ -182,22 +366,87 @@ pub fn notify() -> Arc<Notify> {
     NOTIFY.get().expect("bridge::setup()").clone()
 }
 
-/// Take a clean writable buffer from the pool (or allocate one if empty).
+/// Take a clean writable buffer using the normal small-frame size.
 pub fn take_buf() -> BytesMut {
+    take_buf_with_capacity(DEFAULT_BUFFER_CAP)
+}
+
+/// Take a clean writable buffer with at least `capacity` bytes. Small frames
+/// must not reserve the old 64 KiB buffer unconditionally.
+pub fn take_buf_with_capacity(capacity: usize) -> BytesMut {
+    let capacity = capacity.max(1);
+    let pool_capacity = capacity.min(MAX_BUFFER_CAP);
     let mut b = POOL
         .get()
         .expect("bridge::setup()")
-        .pop()
-        .unwrap_or_else(|| BytesMut::with_capacity(POOL_BUF_SIZE));
+        .take(pool_capacity)
+        .unwrap_or_else(|| BytesMut::with_capacity(capacity));
     b.clear();
     b
 }
 
 /// Return a buffer to the pool (dropped if oversized/overfull).
 pub fn put_buf(buf: BytesMut) {
-    if buf.capacity() <= POOL_BUF_SIZE {
-        let _ = POOL.get().expect("bridge::setup()").push(buf);
+    POOL.get().expect("bridge::setup()").put(buf);
+}
+
+fn release_tx_bytes(amount: usize) {
+    let mut current = TX_RING_BYTES.load(Ordering::Acquire);
+    loop {
+        let next = current.saturating_sub(amount);
+        match TX_RING_BYTES.compare_exchange_weak(
+            current,
+            next,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        ) {
+            Ok(_) => return,
+            Err(observed) => current = observed,
+        }
     }
+}
+
+fn try_enqueue_send(
+    fd: c_int,
+    generation: u64,
+    buf: BytesMut,
+) -> Result<(), BytesMut> {
+    let len = buf.len();
+    if !tx_budget_available(TX_RING_BYTES.load(Ordering::Acquire), len) {
+        return Err(buf);
+    }
+    let mut current = TX_RING_BYTES.load(Ordering::Acquire);
+    loop {
+        if !tx_budget_available(current, len) {
+            return Err(buf);
+        }
+        match TX_RING_BYTES.compare_exchange_weak(
+            current,
+            current + len,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        ) {
+            Ok(_) => break,
+            Err(observed) => current = observed,
+        }
+    }
+    let tx = TX.get().expect("bridge::setup()");
+    match tx.push(Cmd::Send {
+        fd,
+        generation,
+        buf,
+    }) {
+        Ok(()) => Ok(()),
+        Err(Cmd::Send { buf, .. }) => {
+            release_tx_bytes(len);
+            Err(buf)
+        }
+        Err(_) => unreachable!("only Cmd::Send is pushed by try_enqueue_send"),
+    }
+}
+
+fn tx_budget_available(current: usize, amount: usize) -> bool {
+    amount <= MAX_TX_BYTES && amount <= MAX_TX_BYTES.saturating_sub(current)
 }
 
 // ---- Conn: AsyncRead/AsyncWrite over the rings (M2, for tokio-tungstenite) --
@@ -217,13 +466,13 @@ pub fn put_buf(buf: BytesMut) {
 pub struct Conn {
     fd: c_int,
     generation: u64,
-    rx: UnboundedReceiver<ZcRxGuard>,
+    rx: Receiver<ZcRxGuard>,
     /// Leftover of a guard that was too large for the caller's read buffer.
     rx_buf: BytesMut,
 }
 
 impl Conn {
-    pub fn new(fd: c_int, generation: u64, rx: UnboundedReceiver<ZcRxGuard>) -> Self {
+    pub fn new(fd: c_int, generation: u64, rx: Receiver<ZcRxGuard>) -> Self {
         Conn {
             fd,
             generation,
@@ -271,7 +520,7 @@ impl AsyncRead for Conn {
                         buf.put_slice(s);
                     }
                 } else {
-                    let mut b = take_buf();
+                    let mut b = take_buf_with_capacity(total);
                     for s in &segs {
                         b.extend_from_slice(s);
                     }
@@ -291,43 +540,37 @@ impl AsyncRead for Conn {
 
 impl AsyncWrite for Conn {
     fn poll_write(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
         if buf.is_empty() {
             return Poll::Ready(Ok(0));
         }
-        let mut b = take_buf();
+        if buf.len() > MAX_TX_BYTES {
+            return Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "write exceeds bridge TX byte limit",
+            )));
+        }
+        let mut b = take_buf_with_capacity(buf.len());
         b.extend_from_slice(buf);
-        match TX
-            .get()
-            .expect("bridge::setup()")
-            .push(Cmd::Send {
-                fd: self.fd,
-                generation: self.generation,
-                buf: b,
-            }) {
+        match try_enqueue_send(self.fd, self.generation, b) {
             Ok(()) => Poll::Ready(Ok(buf.len())),
-            Err(Cmd::Send {
-                fd: _,
-                generation: _,
-                buf: b,
-            }) => {
+            Err(b) => {
                 put_buf(b);
                 TX_SPACE.register(cx.waker());
                 Poll::Pending
             }
-            Err(_) => Poll::Pending, // unreachable: we only ever push Cmd::Send here
         }
     }
 
-    fn poll_flush(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         // Fire-and-forget: once pushed, the payload is owned by the ff_run driver.
         Poll::Ready(Ok(()))
     }
 
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         if let Some(tx) = TX.get() {
             if tx
                 .push(Cmd::Close {
@@ -452,9 +695,7 @@ unsafe fn close_fd(fd: c_int) {
     // this generation will fail the FD_GEN check (or worse, hit a reused fd
     // with a DIFFERENT generation — also rejected).
     fd_gen().remove(&fd);
-    if pending_send().remove(&fd).is_some() {
-        remove_write_event(fd);
-    }
+    clear_pending_send(fd);
     push_rx(Ev::Closed { fd });
 }
 
@@ -466,12 +707,41 @@ unsafe fn push_rx(ev: Ev) {
                     n.notify_one();
                 }
             }
-            Err(ev) => PENDING_RX.push_back(ev),
+            Err(ev) => {
+                if PENDING_RX.len() >= RX_CAP {
+                    match ev {
+                        Ev::Data { fd, guard } => {
+                            RX_DROPS += 1;
+                            eprintln!(
+                                "[bridge] RX delivery budget exhausted; dropping data fd={fd}"
+                            );
+                            drop(guard);
+                        }
+                        Ev::Accept { fd, generation } => {
+                            eprintln!(
+                                "[bridge] RX delivery budget exhausted; closing accepted fd={fd} generation={generation}"
+                            );
+                            crate::ffi::ff_close(fd);
+                            fd_gen().remove(&fd);
+                        }
+                        Ev::Closed { fd } => {
+                            eprintln!("[bridge] RX delivery budget exhausted; dropping close fd={fd}");
+                        }
+                    }
+                } else {
+                    PENDING_RX.push_back(ev);
+                }
+            }
         }
     }
 }
 
 unsafe fn drain_tx() {
+    if let Some(recycle) = RECYCLE.get() {
+        while let Some(RecycleItem { mut zm }) = recycle.pop() {
+            crate::ffi::ff_zc_recv_free(&mut zm);
+        }
+    }
     let Some(tx) = TX.get() else {
         return;
     };
@@ -482,9 +752,19 @@ unsafe fn drain_tx() {
                 generation,
                 buf,
             } => {
+                release_tx_bytes(buf.len());
                 // Reject sends from a connection that no longer owns the fd.
                 if fd_gen().get(&fd) == Some(&generation) {
-                    try_send(fd, generation, buf);
+                    if has_pending_send(fd) {
+                        if !park_send(fd, generation, buf) {
+                            eprintln!(
+                                "[bridge] pending TX byte budget exhausted; closing fd={fd}"
+                            );
+                            close_fd(fd);
+                        }
+                    } else {
+                        try_send(fd, generation, buf);
+                    }
                 } else {
                     put_buf(buf);
                 }
@@ -519,8 +799,10 @@ unsafe fn try_send(fd: c_int, generation: u64, buf: BytesMut) {
             put_buf(buf);
         } else {
             // EAGAIN: park the payload, retry on EVFILT_WRITE.
-            pending_send().insert(fd, (generation, buf));
-            ensure_write_event(fd);
+            if !park_send(fd, generation, buf) {
+                eprintln!("[bridge] pending TX byte budget exhausted; closing fd={fd}");
+                close_fd(fd);
+            }
         }
     } else {
         put_buf(buf);
@@ -528,12 +810,14 @@ unsafe fn try_send(fd: c_int, generation: u64, buf: BytesMut) {
 }
 
 unsafe fn flush_write(fd: c_int) {
-    match pending_send().remove(&fd) {
-        Some((generation, buf)) => try_send(fd, generation, buf),
-        None => {
-            // Write event with nothing parked: deregister (auto-cleanup path).
+    if let Some((generation, buf)) = pop_pending_send(fd) {
+        try_send(fd, generation, buf);
+        if !has_pending_send(fd) {
             remove_write_event(fd);
         }
+    } else {
+        // Write event with nothing parked: deregister (auto-cleanup path).
+        remove_write_event(fd);
     }
 }
 
@@ -553,8 +837,59 @@ unsafe fn maybe_stats(idle: bool) {
     if ACCEPTS.saturating_sub(LAST_STATS_AT) >= 25 || (idle && ACCEPTS != LAST_STATS_AT) {
         LAST_STATS_AT = ACCEPTS;
         eprintln!(
-            "[stats] accepts={} echoes={} recv_bytes={}",
-            ACCEPTS, ECHOES, RECV_BYTES
+            "[stats] accepts={} echoes={} recv_bytes={} rx_drops={} recycle_drops={} tx_ring_bytes={} pending_tx_bytes={} pending_tx_peak={} tx_budget_closes={}",
+            ACCEPTS,
+            ECHOES,
+            RECV_BYTES,
+            RX_DROPS,
+            RECYCLE_DROPS,
+            TX_RING_BYTES.load(Ordering::Acquire),
+            PENDING_SEND_BYTES,
+            PENDING_SEND_PEAK,
+            TX_BUDGET_CLOSURES
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn buffer_pool_rejects_buffers_above_cap() {
+        let pool = BufferPool::new();
+        pool.put(BytesMut::with_capacity(MAX_BUFFER_CAP + 1));
+        assert_eq!(pool.bytes.load(Ordering::Acquire), 0);
+        assert!(pool.take(1).is_none());
+    }
+
+    #[test]
+    fn buffer_pool_byte_budget_is_hard_limit() {
+        let pool = BufferPool::new();
+        for _ in 0..POOL_CAP {
+            pool.put(BytesMut::with_capacity(MAX_BUFFER_CAP));
+        }
+        assert!(pool.bytes.load(Ordering::Acquire) <= MAX_POOL_BYTES);
+        assert_eq!(pool.bytes.load(Ordering::Acquire), MAX_POOL_BYTES);
+        assert!(pool.take(MAX_BUFFER_CAP).is_some());
+        assert!(pool.bytes.load(Ordering::Acquire) < MAX_POOL_BYTES);
+    }
+
+    #[test]
+    fn pending_send_queue_is_fifo_and_accounts_bytes() {
+        let mut pending = PendingSend::new(7, BytesMut::from(&b"first"[..]));
+        pending.push(BytesMut::from(&b"second"[..]));
+        assert_eq!(pending.bytes, 11);
+        assert_eq!(pending.pop().unwrap().as_ref(), b"first");
+        assert_eq!(pending.pop().unwrap().as_ref(), b"second");
+        assert_eq!(pending.bytes, 0);
+        assert!(pending.pop().is_none());
+    }
+
+    #[test]
+    fn tx_budget_rejects_oversized_frame_and_overflow() {
+        assert!(!tx_budget_available(0, MAX_TX_BYTES + 1));
+        assert!(!tx_budget_available(MAX_TX_BYTES - 1, 2));
+        assert!(tx_budget_available(MAX_TX_BYTES - 1, 1));
     }
 }

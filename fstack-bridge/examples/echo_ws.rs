@@ -106,19 +106,19 @@ fn main() {
 async fn bridge_worker() {
     let rx = bridge::rx_ring();
     let notify = bridge::notify();
-    let mut conns: HashMap<c_int, mpsc::UnboundedSender<bridge::ZcRxGuard>> = HashMap::new();
+    let mut conns: HashMap<c_int, mpsc::Sender<bridge::ZcRxGuard>> = HashMap::new();
 
     loop {
         while let Some(ev) = rx.pop() {
             match ev {
                 Ev::Accept { fd, generation } => {
-                    let (tx, rx_conn) = mpsc::unbounded_channel();
+                    let (tx, rx_conn) = mpsc::channel(bridge::RX_CAP);
                     conns.insert(fd, tx);
                     tokio::spawn(ws_task(fd, generation, rx_conn));
                 }
                 Ev::Data { fd, guard } => match conns.get(&fd) {
                     Some(tx) => {
-                        let _ = tx.send(guard); // Err => conn gone; guard dropped = recycled
+                        let _ = tx.try_send(guard); // Err => conn gone/full; guard dropped = recycled
                     }
                     None => drop(guard),
                 },
@@ -133,7 +133,7 @@ async fn bridge_worker() {
 
 /// One WebSocket connection: RFC 6455 handshake over the bridge Conn, then
 /// binary/text echo.
-async fn ws_task(fd: c_int, generation: u64, rx: mpsc::UnboundedReceiver<bridge::ZcRxGuard>) {
+async fn ws_task(fd: c_int, generation: u64, rx: mpsc::Receiver<bridge::ZcRxGuard>) {
     let conn = bridge::Conn::new(fd, generation, rx);
     let ws = match tokio_tungstenite::accept_async(conn).await {
         Ok(ws) => ws,

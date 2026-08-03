@@ -31,14 +31,17 @@ use sow_core::protocol::{
     ServerLobbiesBroadcastMessage, ServerLobbyClosedMessage, ServerMessage, ServerTurnMessage,
     StampedIntent, Turn,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::CString;
 use std::mem;
+use std::path::PathBuf;
 use std::ptr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::error::TrySendError;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{mpsc, oneshot, Mutex, RwLock, Semaphore};
+use tokio::io::AsyncWriteExt;
 use tokio::time::{interval, Duration};
 use tokio_tungstenite::tungstenite::Message;
 
@@ -71,14 +74,16 @@ const ORCHESTRATOR_GRACE_SECS: u64 = 3;
 /// megabytes of turns in its per-client channel and OOM the monolithic relay.
 const MAX_MISSED_TICKS: u32 = 40;
 
-/// Per-connection channel capacity: 256 messages bounds worst-case zombie
-/// memory to ~256 × turn_size (~1-4MB) instead of 4096 × turn_size (~40MB).
-const PER_CLIENT_CHANNEL: usize = 256;
+/// Per-connection outbound channel capacity. A smaller queue keeps the global
+/// slot budget finite at 100k connections; slow clients are counted as missed
+/// ticks and removed instead of accumulating an unbounded turn backlog.
+const PER_CLIENT_CHANNEL: usize = 32;
 
-/// Per-connection bridge RX capacity (inbound DPDK mbuf guards). Bounded so a
-/// stalled ws_task (peer socket saturated) drops guards instead of pinning
-/// unbounded mbuf memory; guards are recycled immediately on drop.
-const BRIDGE_RX_CAP: usize = 256;
+/// Per-connection bridge RX capacity (inbound DPDK mbuf guards). At 100k
+/// connections, a capacity of 256 would reserve up to 25.6M guard slots before
+/// any payload exists. Keep this small; a stalled peer drops frames and the
+/// guard is recycled immediately.
+const BRIDGE_RX_CAP: usize = 16;
 
 /// Event channel capacity.
 const EVENT_CHANNEL: usize = 1024;
@@ -92,6 +97,12 @@ const WS_PING_SECS: u64 = 15;
 /// was lost under DPDK load sends nothing, so it is reaped here instead of
 /// lingering in the lobby forever.
 const RX_DEADLINE_SECS: u64 = 45;
+
+/// Number of append commands allowed to wait behind the replay writer. The
+/// tick loop awaits when this queue is full, preserving every turn without
+/// allowing replay backlog to grow with the match duration.
+const REPLAY_QUEUE_CAP: usize = 256;
+const LIVE_HISTORY_CAP: usize = 512;
 
 // ---- relay event plumbing ---------------------------------------------------
 
@@ -110,7 +121,7 @@ enum RelayEvent {
 }
 
 struct ClientChannel {
-    sender: mpsc::Sender<Vec<u8>>,
+    sender: mpsc::Sender<Arc<Vec<u8>>>,
     missed_ticks: u32,
 }
 
@@ -171,20 +182,190 @@ fn log_player_stats(
         .and_then(|()| con.expire(&key, 3600));
 }
 
-fn trigger_match_finalize(match_id: u64, lobby_json: String, match_history: Arc<Mutex<Vec<Turn>>>) {
+enum ReplayCommand {
+    Append(Turn),
+    Finalize {
+        reply: oneshot::Sender<Result<Vec<u8>, String>>,
+    },
+}
+
+struct ReplayJournal {
+    live: Arc<Mutex<VecDeque<Turn>>>,
+    tx: mpsc::Sender<ReplayCommand>,
+    finalized: AtomicBool,
+    failed: Arc<AtomicBool>,
+}
+
+impl ReplayJournal {
+    fn new(match_id: u64) -> Arc<Self> {
+        let spool_dir = std::env::var("SOW_REPLAY_SPOOL_DIR")
+            .or_else(|_| std::env::var("SOW_REPLAY_DIR"))
+            .unwrap_or_else(|_| "replays".to_string());
+        let journal_path = PathBuf::from(spool_dir).join(format!("{match_id}.journal"));
+        let (tx, rx) = mpsc::channel(REPLAY_QUEUE_CAP);
+        let failed = Arc::new(AtomicBool::new(false));
+        let journal = Arc::new(Self {
+            live: Arc::new(Mutex::new(VecDeque::with_capacity(LIVE_HISTORY_CAP))),
+            tx,
+            finalized: AtomicBool::new(false),
+            failed: failed.clone(),
+        });
+        tokio::spawn(replay_writer(journal_path, rx, failed));
+        journal
+    }
+
+    async fn append(&self, turn: Turn) -> Result<(), String> {
+        if self.finalized.load(Ordering::Acquire) {
+            return Err("replay journal already finalized".to_string());
+        }
+        if self.failed.load(Ordering::Acquire) {
+            return Err("replay writer failed".to_string());
+        }
+        {
+            let mut live = self.live.lock().await;
+            live.push_back(turn.clone());
+            while live.len() > LIVE_HISTORY_CAP {
+                live.pop_front();
+            }
+        }
+        self.tx
+            .send(ReplayCommand::Append(turn))
+            .await
+            .map_err(|_| "replay writer stopped".to_string())
+    }
+
+    async fn snapshot(&self) -> Vec<Turn> {
+        self.live.lock().await.iter().cloned().collect()
+    }
+
+    async fn finalize(&self) -> Result<Vec<u8>, String> {
+        if self.finalized.swap(true, Ordering::AcqRel) {
+            return Err("replay journal already finalized".to_string());
+        }
+        let (reply, result) = oneshot::channel();
+        if self.tx.send(ReplayCommand::Finalize { reply }).await.is_err() {
+            return Err("replay writer stopped".to_string());
+        }
+        let replay = result
+            .await
+            .map_err(|_| "replay writer dropped finalize response".to_string())??;
+        self.live.lock().await.clear();
+        Ok(replay)
+    }
+}
+
+async fn replay_writer(
+    journal_path: PathBuf,
+    mut rx: mpsc::Receiver<ReplayCommand>,
+    failed: Arc<AtomicBool>,
+) {
+    if let Some(parent) = journal_path.parent() {
+        if let Err(e) = tokio::fs::create_dir_all(parent).await {
+            failed.store(true, Ordering::Release);
+            error!("[replay] create journal directory {:?} failed: {}", parent, e);
+            return;
+        }
+    }
+    let mut file = match tokio::fs::File::create(&journal_path).await {
+        Ok(file) => file,
+        Err(e) => {
+            failed.store(true, Ordering::Release);
+            error!("[replay] create journal {:?} failed: {}", journal_path, e);
+            return;
+        }
+    };
+
+    while let Some(command) = rx.recv().await {
+        match command {
+            ReplayCommand::Append(turn) => {
+                let encoded = match bincode::serialize(&turn) {
+                    Ok(bytes) => bytes,
+                    Err(e) => {
+                        failed.store(true, Ordering::Release);
+                        error!("[replay] serialize turn failed: {}", e);
+                        break;
+                    }
+                };
+                let len = encoded.len() as u32;
+                if file.write_all(&len.to_le_bytes()).await.is_err()
+                    || file.write_all(&encoded).await.is_err()
+                {
+                    failed.store(true, Ordering::Release);
+                    error!("[replay] append journal {:?} failed", journal_path);
+                    break;
+                }
+            }
+            ReplayCommand::Finalize { reply } => {
+                let result = async {
+                    file.flush().await.map_err(|e| e.to_string())?;
+                    file.sync_all().await.map_err(|e| e.to_string())?;
+                    let bytes = tokio::fs::read(&journal_path)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    let history = decode_replay_journal(&bytes)?;
+                    let canonical = bincode::serialize(&history).map_err(|e| e.to_string())?;
+                    let replay_path = journal_path.with_extension("replay");
+                    let temp_path = journal_path.with_extension("replay.tmp");
+                    tokio::fs::write(&temp_path, &canonical)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    tokio::fs::rename(&temp_path, &replay_path)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    let _ = tokio::fs::remove_file(&journal_path).await;
+                    Ok(canonical)
+                }
+                .await;
+                if result.is_err() {
+                    failed.store(true, Ordering::Release);
+                }
+                let _ = reply.send(result);
+                break;
+            }
+        }
+    }
+}
+
+fn decode_replay_journal(bytes: &[u8]) -> Result<Vec<Turn>, String> {
+    let mut offset = 0usize;
+    let mut history = Vec::new();
+    while offset < bytes.len() {
+        if bytes.len().saturating_sub(offset) < 4 {
+            return Err("truncated replay record length".to_string());
+        }
+        let len = u32::from_le_bytes(
+            bytes[offset..offset + 4]
+                .try_into()
+                .map_err(|_| "invalid replay record length".to_string())?,
+        ) as usize;
+        offset += 4;
+        if len > bytes.len().saturating_sub(offset) {
+            return Err("truncated replay record".to_string());
+        }
+        let turn = bincode::deserialize(&bytes[offset..offset + len])
+            .map_err(|e| format!("decode replay record: {e}"))?;
+        history.push(turn);
+        offset += len;
+    }
+    Ok(history)
+}
+
+fn finalize_gate() -> Arc<Semaphore> {
+    static GATE: OnceLock<Arc<Semaphore>> = OnceLock::new();
+    GATE.get_or_init(|| Arc::new(Semaphore::new(1))).clone()
+}
+
+fn trigger_match_finalize(match_id: u64, lobby_json: String, journal: Arc<ReplayJournal>) {
     tokio::spawn(async move {
-        let history = {
-            let mut guard = match_history.lock().await;
-            let hist = guard.clone();
-            guard.clear();
-            guard.shrink_to_fit();
-            hist
+        let _permit = match finalize_gate().acquire_owned().await {
+            Ok(permit) => permit,
+            Err(_) => return,
         };
-        let replay_bytes = match bincode::serialize(&history) {
+        let replay_bytes = match journal.finalize().await {
             Ok(bytes) => bytes,
             Err(e) => {
-                error!("Failed to serialize match history for {match_id}: {e}");
-                Vec::new()
+                error!("Failed to finalize replay journal for {match_id}: {e}");
+                return;
             }
         };
 
@@ -288,7 +469,6 @@ struct MatchTracker {
     tracked: bool,
     redis_con: Arc<std::sync::Mutex<Option<redis::Connection>>>,
     lobby_json: String,
-    match_history: Arc<Mutex<Vec<Turn>>>,
 }
 
 impl MatchTracker {
@@ -326,11 +506,6 @@ impl MatchTracker {
                 }
             }
             self.finalized = true;
-            trigger_match_finalize(
-                self.lobby_id,
-                self.lobby_json.clone(),
-                self.match_history.clone(),
-            );
         }
     }
 }
@@ -361,7 +536,7 @@ struct LobbyState {
     id: u64,
     valid_players: HashMap<u16, String>,
     clients: Arc<Mutex<HashMap<u16, ClientChannel>>>,
-    match_history: Arc<Mutex<Vec<Turn>>>,
+    journal: Arc<ReplayJournal>,
     tracker: Arc<std::sync::Mutex<MatchTracker>>,
     ev_tx: mpsc::Sender<RelayEvent>,
 }
@@ -627,7 +802,7 @@ async fn spawn_lobby(registry: &Registry, body: RegisterBody) -> Arc<LobbyState>
     }
 
     let clients = Arc::new(Mutex::new(HashMap::new()));
-    let match_history = Arc::new(Mutex::new(Vec::new()));
+    let journal = ReplayJournal::new(body.lobby_id);
     let (ev_tx, ev_rx) = mpsc::channel::<RelayEvent>(EVENT_CHANNEL);
     let redis_con = redis_shared();
     let tracked = !player_accounts.is_empty();
@@ -640,14 +815,13 @@ async fn spawn_lobby(registry: &Registry, body: RegisterBody) -> Arc<LobbyState>
         tracked,
         redis_con: redis_con.clone(),
         lobby_json: lobby_json.clone(),
-        match_history: match_history.clone(),
     }));
 
     let state = Arc::new(LobbyState {
         id: body.lobby_id,
         valid_players,
         clients,
-        match_history,
+        journal,
         tracker,
         ev_tx,
     });
@@ -711,10 +885,10 @@ async fn tick_task(
     let mut pending_intents = Vec::new();
     let mut total_ticks: u64 = 0;
     let mut total_intents: u64 = 0;
-    // Lifecycle: a lobby is removed from the registry and its match_history
+    // Lifecycle: a lobby is removed from the registry and its live replay
     // dropped when the match ends (GameOver / all clients leave) OR when it
     // outlives the maximum match duration. Backfill bots play indefinitely, so
-    // without this ceiling a filled lobby keeps pushing to match_history forever
+    // without this ceiling a filled lobby keeps pushing to live history forever
     // and the monolithic relay OOMs (5.5GB in ~4min under 50k bots).
     let match_started = std::time::Instant::now();
     let max_match_secs: u64 = std::env::var("SOW_RELAY_MATCH_MAX_SECS")
@@ -727,11 +901,15 @@ async fn tick_task(
             _ = ticker.tick() => {
                 let mut clients = state.clients.lock().await;
                 let humans = clients.len();
+                let already_finalized = state.tracker.lock().unwrap().finalized;
 
                 if humans == 0 {
                     active_empty_secs -= 0.05;
-                    if active_empty_secs <= 0.0 {
+                    if already_finalized || active_empty_secs <= 0.0 {
                         info!("[relay] lobby {} empty for too long, GC", state.id);
+                        drop(clients);
+                        let lobby_json = state.tracker.lock().unwrap().lobby_json.clone();
+                        trigger_match_finalize(state.id, lobby_json, state.journal.clone());
                         registry.write().await.remove(&state.id);
                         break;
                     }
@@ -743,10 +921,9 @@ async fn tick_task(
 
                 // Lifecycle: enforce the maximum match duration. Broadcast
                 // LobbyClosed so clients exit cleanly, finalize the replay to
-                // the database, then drop the lobby from the registry so its
-                // match_history Vec is freed (monolithic relay must not hold
-                // unbounded per-lobby history).
-                let is_finalized = state.tracker.lock().unwrap().finalized;
+                // the database, then drop the lobby from the registry. The
+                // complete replay is already on disk; only live history is RAM.
+                let is_finalized = already_finalized;
                 let is_timed_out = match_started.elapsed().as_secs() >= max_match_secs;
                 if is_finalized || is_timed_out {
                     let reason = if is_finalized {
@@ -762,22 +939,14 @@ async fn tick_task(
                             rematch_lobby_id: None,
                         }),
                     ) {
+                        let frame = Arc::new(json);
                         for (_, client) in clients.iter() {
-                            let _ = client.sender.try_send(json.clone());
+                            let _ = client.sender.try_send(frame.clone());
                         }
                     }
                     drop(clients);
-                    {
-                        let tracker = state.tracker.lock().unwrap();
-                        if tracker.tracked && !tracker.finalized {
-                            trigger_match_finalize(
-                                state.id,
-                                tracker.lobby_json.clone(),
-                                state.match_history.clone(),
-                            );
-                        }
-                    }
-                    state.match_history.lock().await.clear();
+                    let lobby_json = state.tracker.lock().unwrap().lobby_json.clone();
+                    trigger_match_finalize(state.id, lobby_json, state.journal.clone());
                     registry.write().await.remove(&state.id);
                     break;
                 }
@@ -791,18 +960,15 @@ async fn tick_task(
                 total_ticks += 1;
                 total_intents += turn.intents.len() as u64;
 
-                {
-                    let mut history = state.match_history.lock().await;
-                    history.push(turn.clone());
-                    if history.len() > 1000 {
-                        let drain_amount = history.len() - 500;
-                        history.drain(0..drain_amount);
-                    }
+                if let Err(e) = state.journal.append(turn.clone()).await {
+                    error!("[replay] lobby {} append failed: {}", state.id, e);
                 }
 
                 let msg = ServerTurnMessage { turn };
-                let json = bincode::serialize(&ServerMessage::Turn(msg))
-                    .expect("serialize ServerTurnMessage");
+                let json = Arc::new(
+                    bincode::serialize(&ServerMessage::Turn(msg))
+                        .expect("serialize ServerTurnMessage"),
+                );
 
                 let mut dropped_players = Vec::new();
                 clients.retain(|player_id, client| {
@@ -893,8 +1059,10 @@ async fn tick_task(
                             reason: "Rematch Requested".to_string(),
                             rematch_lobby_id: Some(rematch_id),
                         };
-                        let json = bincode::serialize(&ServerMessage::LobbyClosed(msg))
-                            .expect("serialize LobbyClosed");
+                        let json = Arc::new(
+                            bincode::serialize(&ServerMessage::LobbyClosed(msg))
+                                .expect("serialize LobbyClosed"),
+                        );
                         let mut clients = state.clients.lock().await;
                         clients.retain(|player_id, client| {
                             match client.sender.try_send(json.clone()) {
@@ -922,24 +1090,29 @@ async fn tick_task(
 async fn bridge_worker(registry: Registry) {
     let rx = bridge::rx_ring();
     let notify = bridge::notify();
-    let mut conns: HashMap<c_int, mpsc::UnboundedSender<bridge::ZcRxGuard>> = HashMap::new();
+    let mut conns: HashMap<c_int, mpsc::Sender<bridge::ZcRxGuard>> = HashMap::new();
 
     loop {
         while let Some(ev) = rx.pop() {
             match ev {
                 Ev::Accept { fd, generation } => {
-                    let (tx, rx_conn) = mpsc::unbounded_channel();
+                    let (tx, rx_conn) = mpsc::channel(BRIDGE_RX_CAP);
                     conns.insert(fd, tx);
                     tokio::spawn(ws_task(fd, generation, rx_conn, registry.clone()));
                 }
                 Ev::Data { fd, guard } => match conns.get(&fd) {
                     Some(tx) => {
-                        // Bounded per-connection RX: if the ws_task is stalled
-                        // writing to a saturated peer socket, drop the guard so
-                        // the DPDK mbuf is recycled immediately instead of
-                        // pinning unbounded per-connection memory (the zombie is
-                        // reaped by rx-silence shortly anyway).
-                        let _ = tx.send(guard);
+                        // If the ws_task is stalled writing to a saturated peer
+                        // socket, drop the guard so the DPDK mbuf is recycled
+                        // immediately instead of pinning per-connection memory.
+                        match tx.try_send(guard) {
+                            Ok(()) => {}
+                            Err(TrySendError::Full(guard)) => {
+                                warn!("[bridge] per-connection RX budget exhausted fd={fd}; dropping frame");
+                                drop(guard);
+                            }
+                            Err(TrySendError::Closed(guard)) => drop(guard),
+                        }
                     }
                     None => drop(guard),
                 },
@@ -965,7 +1138,7 @@ enum Role {
 async fn ws_task(
     fd: c_int,
     generation: u64,
-    rx: mpsc::UnboundedReceiver<bridge::ZcRxGuard>,
+    rx: mpsc::Receiver<bridge::ZcRxGuard>,
     registry: Registry,
 ) {
     let conn = bridge::Conn::new(fd, generation, rx);
@@ -978,7 +1151,7 @@ async fn ws_task(
     };
 
     let (mut write, mut read) = ws.split();
-    let (direct_tx, mut direct_rx) = mpsc::channel::<Vec<u8>>(PER_CLIENT_CHANNEL);
+    let (direct_tx, mut direct_rx) = mpsc::channel::<Arc<Vec<u8>>>(PER_CLIENT_CHANNEL);
 
     // First frame decides the role. The backfill daemon (orchestrator) sends
     // nothing: classify it after a short grace period.
@@ -1101,7 +1274,7 @@ async fn ws_task(
                                     ClientMessage::Ping { client_time } => {
                                         let pong = ServerMessage::Pong { client_time };
                                         if let Ok(json) = bincode::serialize(&pong) {
-                                            let _ = direct_tx.try_send(json);
+                                            let _ = direct_tx.try_send(Arc::new(json));
                                         }
                                     }
                                     ClientMessage::SubmitStats { kills, deaths, assists, players_defeated, empires_defeated, tribes_defeated } => {
@@ -1149,7 +1322,12 @@ async fn ws_task(
                     );
                     break;
                 }
-                match tokio::time::timeout(Duration::from_millis(200), write.send(Message::Binary(direct_data))).await {
+                match tokio::time::timeout(
+                    Duration::from_millis(200),
+                    write.send(Message::Binary((*direct_data).clone())),
+                )
+                .await
+                {
                     Ok(Ok(())) => {}
                     _ => break,
                 }
@@ -1158,8 +1336,8 @@ async fn ws_task(
                 // Idle path (no ticks): keepalive ping + reap check.
                 // Lifecycle: if the lobby was finalized/GC'd (removed from the
                 // registry) or this client was dropped by the tick task, end
-                // this connection so the Arc<LobbyState> (and its match_history)
-                // is released instead of being pinned alive forever.
+                // this connection so the Arc<LobbyState> (and its live replay
+                // window) is released instead of being pinned alive forever.
                 if let (Some(lobby), Some(pid)) = (&my_lobby, &my_player_id) {
                     let still_registered = registry.read().await.contains_key(&lobby.id);
                     if !still_registered {
@@ -1210,7 +1388,7 @@ async fn try_ready_register(
     registry: &Registry,
     lobby_id: u64,
     player_id: u16,
-    direct_tx: &mpsc::Sender<Vec<u8>>,
+    direct_tx: &mpsc::Sender<Arc<Vec<u8>>>,
 ) -> Option<Role> {
     let lobby = {
         let reg = registry.read().await;
@@ -1239,15 +1417,15 @@ async fn try_ready_register(
         intent: GameplayIntent::MarkDisconnected { is_disconnected: false },
     });
 
-    {
-        let hist = lobby.match_history.lock().await;
-        for past_turn in hist.iter() {
-            let msg = ServerTurnMessage {
-                turn: past_turn.clone(),
-            };
-            if let Ok(json) = bincode::serialize(&ServerMessage::Turn(msg)) {
-                let _ = tokio::time::timeout(Duration::from_millis(500), direct_tx.send(json)).await;
-            }
+    let history = lobby.journal.snapshot().await;
+    for past_turn in history {
+        let msg = ServerTurnMessage { turn: past_turn };
+        if let Ok(json) = bincode::serialize(&ServerMessage::Turn(msg)) {
+            let _ = tokio::time::timeout(
+                Duration::from_millis(500),
+                direct_tx.send(Arc::new(json)),
+            )
+            .await;
         }
     }
 
