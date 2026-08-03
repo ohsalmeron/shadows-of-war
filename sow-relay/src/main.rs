@@ -66,14 +66,32 @@ fn relay_addr() -> String {
 const ORCHESTRATOR_GRACE_SECS: u64 = 3;
 
 /// Max consecutive missed ticks before dropping a slow client.
-/// At 20 ticks/s, 120 = 6 seconds of silence.
-const MAX_MISSED_TICKS: u32 = 120;
+/// At 10 ticks/s, 40 = 4 seconds of silence — fast enough that a zombie
+/// connection (backfill saturated, not draining its socket) cannot pin
+/// megabytes of turns in its per-client channel and OOM the monolithic relay.
+const MAX_MISSED_TICKS: u32 = 40;
 
-/// Per-connection channel capacity: 4096 messages = ~200s buffer at 20 ticks/s.
-const PER_CLIENT_CHANNEL: usize = 4096;
+/// Per-connection channel capacity: 256 messages bounds worst-case zombie
+/// memory to ~256 × turn_size (~1-4MB) instead of 4096 × turn_size (~40MB).
+const PER_CLIENT_CHANNEL: usize = 256;
+
+/// Per-connection bridge RX capacity (inbound DPDK mbuf guards). Bounded so a
+/// stalled ws_task (peer socket saturated) drops guards instead of pinning
+/// unbounded mbuf memory; guards are recycled immediately on drop.
+const BRIDGE_RX_CAP: usize = 256;
 
 /// Event channel capacity.
 const EVENT_CHANNEL: usize = 1024;
+
+/// Liveness: relay-initiated WS ping period. Browsers auto-Pong at the WS
+/// layer; backfill/native clients Pong explicitly. A dead peer never does.
+const WS_PING_SECS: u64 = 15;
+
+/// Liveness: reap a player connection after this many seconds without a
+/// single received frame (data, Ping, or Pong). A SIGKILLed peer whose FIN
+/// was lost under DPDK load sends nothing, so it is reaped here instead of
+/// lingering in the lobby forever.
+const RX_DEADLINE_SECS: u64 = 45;
 
 // ---- relay event plumbing ---------------------------------------------------
 
@@ -155,7 +173,13 @@ fn log_player_stats(
 
 fn trigger_match_finalize(match_id: u64, lobby_json: String, match_history: Arc<Mutex<Vec<Turn>>>) {
     tokio::spawn(async move {
-        let history = match_history.lock().await.clone();
+        let history = {
+            let mut guard = match_history.lock().await;
+            let hist = guard.clone();
+            guard.clear();
+            guard.shrink_to_fit();
+            hist
+        };
         let replay_bytes = match bincode::serialize(&history) {
             Ok(bytes) => bytes,
             Err(e) => {
@@ -441,18 +465,27 @@ fn main() {
     }
 }
 
-// ---- mgmt HTTP (kernel, 127.0.0.1 — never touches the bridge) ----------------
+// ---- mgmt HTTP (kernel — never touches the bridge) ----------------
+//
+// Bind address is SOW_MGMT_LISTEN (default 127.0.0.1). Production sets it to
+// 0.0.0.0 so the orchestrator (other host) can register lobbies; access is
+// then locked down by the cloud NSG to the orchestrator's IP only.
+
+fn mgmt_listen() -> String {
+    std::env::var("SOW_MGMT_LISTEN").unwrap_or_else(|_| "127.0.0.1".to_string())
+}
 
 async fn mgmt_http(registry: Registry) {
     let mport = mgmt_port();
-    let listener = match TcpListener::bind(("127.0.0.1", mport)).await {
+    let listen = mgmt_listen();
+    let listener = match TcpListener::bind((listen.as_str(), mport)).await {
         Ok(l) => l,
         Err(e) => {
-            error!("[mgmt] bind 127.0.0.1:{} failed: {}", mport, e);
+            error!("[mgmt] bind {}:{} failed: {}", listen, mport, e);
             return;
         }
     };
-    info!("[mgmt] http listening on 127.0.0.1:{}", mport);
+    info!("[mgmt] http listening on {}:{}", listen, mport);
 
     loop {
         let (mut sock, _) = match listener.accept().await {
@@ -560,6 +593,24 @@ async fn handle_http(
                 .collect();
             ("200 OK", serde_json::json!({ "lobbies": lobbies }))
         }
+        ("POST", "/internal/lobby/close") => {
+            let lobby_id: u64 = serde_json::from_slice::<serde_json::Value>(body)
+                .ok()
+                .and_then(|v| v.get("lobby_id").and_then(|x| x.as_u64()))
+                .unwrap_or(0);
+            if lobby_id == 0 {
+                return (
+                    "400 Bad Request",
+                    serde_json::json!({ "error": "lobby_id required" }),
+                );
+            }
+            let removed = registry.write().await.remove(&lobby_id).is_some();
+            info!(
+                "[relay] lobby {} closed via mgmt API (removed={})",
+                lobby_id, removed
+            );
+            ("200 OK", serde_json::json!({ "ok": true, "removed": removed }))
+        }
         _ => ("404 Not Found", serde_json::json!({ "error": "not found" })),
     }
 }
@@ -654,6 +705,16 @@ async fn tick_task(
     let mut pending_intents = Vec::new();
     let mut total_ticks: u64 = 0;
     let mut total_intents: u64 = 0;
+    // Lifecycle: a lobby is removed from the registry and its match_history
+    // dropped when the match ends (GameOver / all clients leave) OR when it
+    // outlives the maximum match duration. Backfill bots play indefinitely, so
+    // without this ceiling a filled lobby keeps pushing to match_history forever
+    // and the monolithic relay OOMs (5.5GB in ~4min under 50k bots).
+    let match_started = std::time::Instant::now();
+    let max_match_secs: u64 = std::env::var("SOW_RELAY_MATCH_MAX_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1800);
 
     loop {
         tokio::select! {
@@ -668,8 +729,51 @@ async fn tick_task(
                         registry.write().await.remove(&state.id);
                         break;
                     }
+                    // No clients: skip turn serialization/broadcast entirely.
+                    continue;
                 } else {
                     active_empty_secs = 30.0;
+                }
+
+                // Lifecycle: enforce the maximum match duration. Broadcast
+                // LobbyClosed so clients exit cleanly, finalize the replay to
+                // the database, then drop the lobby from the registry so its
+                // match_history Vec is freed (monolithic relay must not hold
+                // unbounded per-lobby history).
+                let is_finalized = state.tracker.lock().unwrap().finalized;
+                let is_timed_out = match_started.elapsed().as_secs() >= max_match_secs;
+                if is_finalized || is_timed_out {
+                    let reason = if is_finalized {
+                        "Match finalized".to_string()
+                    } else {
+                        format!("Match duration limit reached ({}s)", max_match_secs)
+                    };
+                    info!("[relay] lobby {} ending: {}, finalizing & cleaning up", state.id, reason);
+                    if let Ok(json) = bincode::serialize(
+                        &ServerMessage::LobbyClosed(ServerLobbyClosedMessage {
+                            lobby_id: state.id,
+                            reason,
+                            rematch_lobby_id: None,
+                        }),
+                    ) {
+                        for (_, client) in clients.iter() {
+                            let _ = client.sender.try_send(json.clone());
+                        }
+                    }
+                    drop(clients);
+                    {
+                        let tracker = state.tracker.lock().unwrap();
+                        if tracker.tracked && !tracker.finalized {
+                            trigger_match_finalize(
+                                state.id,
+                                tracker.lobby_json.clone(),
+                                state.match_history.clone(),
+                            );
+                        }
+                    }
+                    state.match_history.lock().await.clear();
+                    registry.write().await.remove(&state.id);
+                    break;
                 }
 
                 let intents = std::mem::take(&mut pending_intents);
@@ -687,6 +791,7 @@ async fn tick_task(
                 let json = bincode::serialize(&ServerMessage::Turn(msg))
                     .expect("serialize ServerTurnMessage");
 
+                let mut dropped_players = Vec::new();
                 clients.retain(|player_id, client| {
                     match client.sender.try_send(json.clone()) {
                         Ok(()) => {
@@ -698,6 +803,7 @@ async fn tick_task(
                             if client.missed_ticks >= MAX_MISSED_TICKS {
                                 warn!("Player {player_id} dropped: {}/{} consecutive missed ticks",
                                     client.missed_ticks, MAX_MISSED_TICKS);
+                                dropped_players.push(*player_id);
                                 false
                             } else {
                                 if client.missed_ticks == 1 || client.missed_ticks % 10 == 0 {
@@ -709,10 +815,18 @@ async fn tick_task(
                         }
                         Err(TrySendError::Closed(_)) => {
                             info!("Player {player_id} channel closed, removing");
+                            dropped_players.push(*player_id);
                             false
                         }
                     }
                 });
+
+                if !dropped_players.is_empty() {
+                    let mut tracker = state.tracker.lock().unwrap();
+                    for pid in dropped_players {
+                        tracker.record_exit(pid);
+                    }
+                }
 
                 if last_status.elapsed().as_secs() >= 10 {
                     info!(
@@ -795,19 +909,24 @@ async fn tick_task(
 async fn bridge_worker(registry: Registry) {
     let rx = bridge::rx_ring();
     let notify = bridge::notify();
-    let mut conns: HashMap<c_int, mpsc::UnboundedSender<bridge::ZcRxGuard>> = HashMap::new();
+    let mut conns: HashMap<c_int, mpsc::Sender<bridge::ZcRxGuard>> = HashMap::new();
 
     loop {
         while let Some(ev) = rx.pop() {
             match ev {
                 Ev::Accept { fd, generation } => {
-                    let (tx, rx_conn) = mpsc::unbounded_channel();
+                    let (tx, rx_conn) = mpsc::channel(BRIDGE_RX_CAP);
                     conns.insert(fd, tx);
                     tokio::spawn(ws_task(fd, generation, rx_conn, registry.clone()));
                 }
                 Ev::Data { fd, guard } => match conns.get(&fd) {
                     Some(tx) => {
-                        let _ = tx.send(guard);
+                        // Bounded per-connection RX: if the ws_task is stalled
+                        // writing to a saturated peer socket, drop the guard so
+                        // the DPDK mbuf is recycled immediately instead of
+                        // pinning unbounded per-connection memory (the zombie is
+                        // reaped by rx-silence shortly anyway).
+                        let _ = tx.try_send(guard);
                     }
                     None => drop(guard),
                 },
@@ -833,7 +952,7 @@ enum Role {
 async fn ws_task(
     fd: c_int,
     generation: u64,
-    rx: mpsc::UnboundedReceiver<bridge::ZcRxGuard>,
+    rx: mpsc::Receiver<bridge::ZcRxGuard>,
     registry: Registry,
 ) {
     let conn = bridge::Conn::new(fd, generation, rx);
@@ -914,11 +1033,25 @@ async fn ws_task(
         info!("[relay] Ready lobby={} player={} registered fd={}", lobby.id, pid, fd);
     }
 
+    let mut last_rx = std::time::Instant::now();
+    let mut last_ping = std::time::Instant::now();
+    let mut ping_interval = interval(Duration::from_secs(WS_PING_SECS));
+    ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
     loop {
         tokio::select! {
             msg = read.next() => {
                 match msg {
                     Some(Ok(msg)) => {
+                        last_rx = std::time::Instant::now();
+                        if let Message::Ping(payload) = &msg {
+                            let _ = tokio::time::timeout(
+                                Duration::from_millis(200),
+                                write.send(Message::Pong(payload.clone())),
+                            )
+                            .await;
+                            continue;
+                        }
                         if msg.is_binary() {
                             if let Ok(cmsg) = bincode::deserialize::<ClientMessage>(&msg.into_data()) {
                                 match cmsg {
@@ -981,13 +1114,73 @@ async fn ws_task(
                 }
             }
             Some(direct_data) = direct_rx.recv() => {
-                match tokio::time::timeout(Duration::from_secs(1), write.send(Message::Binary(direct_data))).await {
+                // Hot path (ticks flowing). select! may starve the interval
+                // branch here, so ping + reap checks live on this branch too.
+                if last_ping.elapsed() >= Duration::from_secs(WS_PING_SECS) {
+                    last_ping = std::time::Instant::now();
+                    if tokio::time::timeout(
+                        Duration::from_millis(200),
+                        write.send(Message::Ping(Vec::new())),
+                    )
+                    .await
+                    .is_err()
+                    {
+                        break;
+                    }
+                }
+                if last_rx.elapsed() > Duration::from_secs(RX_DEADLINE_SECS) {
+                    warn!(
+                        "[ws] fd={} rx silence {}s (ticks flowing) — reaping stale connection",
+                        fd,
+                        last_rx.elapsed().as_secs()
+                    );
+                    break;
+                }
+                match tokio::time::timeout(Duration::from_millis(200), write.send(Message::Binary(direct_data))).await {
                     Ok(Ok(())) => {}
                     _ => break,
                 }
             }
+            _ = ping_interval.tick() => {
+                // Idle path (no ticks): keepalive ping + reap check.
+                // Lifecycle: if the lobby was finalized/GC'd (removed from the
+                // registry) or this client was dropped by the tick task, end
+                // this connection so the Arc<LobbyState> (and its match_history)
+                // is released instead of being pinned alive forever.
+                if let (Some(lobby), Some(pid)) = (&my_lobby, &my_player_id) {
+                    let still_registered = registry.read().await.contains_key(&lobby.id);
+                    if !still_registered {
+                        info!("[ws] fd={} lobby {} no longer registered — closing connection", fd, lobby.id);
+                        break;
+                    }
+                    if !lobby.clients.lock().await.contains_key(pid) {
+                        info!("[ws] fd={} player {} dropped from lobby {} — closing connection", fd, pid, lobby.id);
+                        break;
+                    }
+                }
+                last_ping = std::time::Instant::now();
+                if last_rx.elapsed() > Duration::from_secs(RX_DEADLINE_SECS) {
+                    warn!(
+                        "[ws] fd={} rx silence {}s — reaping stale connection",
+                        fd,
+                        last_rx.elapsed().as_secs()
+                    );
+                    break;
+                }
+                if tokio::time::timeout(
+                    Duration::from_secs(1),
+                    write.send(Message::Ping(Vec::new())),
+                )
+                .await
+                .is_err()
+                {
+                    break;
+                }
+            }
             _ = tokio::time::sleep(Duration::from_secs(15)) => {
-                break;
+                if last_rx.elapsed() > Duration::from_secs(RX_DEADLINE_SECS) {
+                    break;
+                }
             }
         }
     }
@@ -1072,7 +1265,7 @@ async fn orchestrator_task(
                     lobbies,
                 });
                 if let Ok(json) = bincode::serialize(&msg) {
-                    match tokio::time::timeout(Duration::from_secs(1), write.send(Message::Binary(json))).await {
+                    match tokio::time::timeout(Duration::from_millis(200), write.send(Message::Binary(json))).await {
                         Ok(Ok(())) => {}
                         _ => break,
                     }
