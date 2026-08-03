@@ -419,7 +419,7 @@ fn main() {
         fstack_bridge::ff_ioctl(lfd, FIONBIO as libc::c_ulong, &on);
 
         let mut addr: sockaddr_in = mem::zeroed();
-        addr.sin_family = AF_INET as u16;
+        addr.sin_family = AF_INET as _;
         addr.sin_port = gport.to_be();
         addr.sin_addr.s_addr = INADDR_ANY;
         if fstack_bridge::ff_bind(lfd, &addr, mem::size_of::<sockaddr_in>() as socklen_t) < 0 {
@@ -922,13 +922,13 @@ async fn tick_task(
 async fn bridge_worker(registry: Registry) {
     let rx = bridge::rx_ring();
     let notify = bridge::notify();
-    let mut conns: HashMap<c_int, mpsc::Sender<bridge::ZcRxGuard>> = HashMap::new();
+    let mut conns: HashMap<c_int, mpsc::UnboundedSender<bridge::ZcRxGuard>> = HashMap::new();
 
     loop {
         while let Some(ev) = rx.pop() {
             match ev {
                 Ev::Accept { fd, generation } => {
-                    let (tx, rx_conn) = mpsc::channel(BRIDGE_RX_CAP);
+                    let (tx, rx_conn) = mpsc::unbounded_channel();
                     conns.insert(fd, tx);
                     tokio::spawn(ws_task(fd, generation, rx_conn, registry.clone()));
                 }
@@ -939,7 +939,7 @@ async fn bridge_worker(registry: Registry) {
                         // the DPDK mbuf is recycled immediately instead of
                         // pinning unbounded per-connection memory (the zombie is
                         // reaped by rx-silence shortly anyway).
-                        let _ = tx.try_send(guard);
+                        let _ = tx.send(guard);
                     }
                     None => drop(guard),
                 },
@@ -965,7 +965,7 @@ enum Role {
 async fn ws_task(
     fd: c_int,
     generation: u64,
-    rx: mpsc::Receiver<bridge::ZcRxGuard>,
+    rx: mpsc::UnboundedReceiver<bridge::ZcRxGuard>,
     registry: Registry,
 ) {
     let conn = bridge::Conn::new(fd, generation, rx);
