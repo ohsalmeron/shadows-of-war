@@ -70,7 +70,9 @@ impl SowApp {
                             self.ui.app.main_menu_state.joined_lobby_id = None;
                             self.ui.app.main_menu_state.wait_timer_secs = 0.0;
                             self.ui.app.hud_state.sync_state = None;
-                            self.sim.my_player_id = start_msg.my_player_id;
+                            if start_msg.my_player_id.is_some() {
+                                self.sim.my_player_id = start_msg.my_player_id;
+                            }
                             self.sim.my_lobby_id = start_msg.lobby_id;
 
                             if let Some(relay_port) = start_msg.relay_port {

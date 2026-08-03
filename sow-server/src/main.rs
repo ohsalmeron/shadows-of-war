@@ -208,7 +208,7 @@ async fn main() {
 
     let (global_tx, _rx) = broadcast::channel::<Vec<u8>>(100);
     let (event_tx, mut event_rx) = mpsc::channel::<ServerEvent>(100000);
-    let (relay_tx, mut relay_rx) = mpsc::channel::<RelayCandidate>(1000);
+    let (relay_tx, mut relay_rx) = mpsc::unbounded_channel::<RelayCandidate>();
 
     let games_clone = Arc::clone(&games_state);
     let next_id_clone = Arc::clone(&next_id_state);
@@ -249,39 +249,44 @@ async fn main() {
 
             // Register the lobby with the monolithic relay (mgmt HTTP, kernel
             // 127.0.0.1). Retries with backoff; the relay confirms before any
-            // client is told the port.
-            match register_relay(&rc).await {
-                Ok(()) => {
-                    log::info!(
-                        "[RELAY] Lobby {} registered with relay on port {}",
-                        rc.lobby_id,
-                        relay_port
-                    );
+            // client is told the port. Each registration runs in its own task
+            // so a slow relay never serializes the whole queue behind one
+            // lobby's backoff (that backlog was starving bots of Start).
+            let relay_port_for_task = relay_port;
+            tokio::spawn(async move {
+                match register_relay(&rc).await {
+                    Ok(()) => {
+                        log::info!(
+                            "[RELAY] Lobby {} registered with relay on port {}",
+                            rc.lobby_id,
+                            relay_port_for_task
+                        );
 
-                    // Broadcast Start message to all players in the lobby with relay_port
-                    let start_msg = sow_core::protocol::ServerStartMessage {
-                        config: sow_core::game_config::GameConfig::default(),
-                        my_player_id: None,
-                        lobby_id: Some(rc.lobby_id),
-                        seed: 0,
-                        players: vec![],
-                        missed_turns: vec![],
-                        map_data: None,
-                        relay_port: Some(relay_port),
-                        relay_host: relay_host(),
-                    };
-                    if let Ok(start_json) = bincode::serialize(
-                        &sow_core::protocol::ServerMessage::Start(Box::new(start_msg)),
-                    ) {
-                        for (_, tx) in &rc.players_tx {
-                            let _ = tx.try_send(start_json.clone());
+                        // Broadcast Start message to each player with their specific my_player_id
+                        for (player_id, tx) in &rc.players_tx {
+                            let start_msg = sow_core::protocol::ServerStartMessage {
+                                config: sow_core::game_config::GameConfig::default(),
+                                my_player_id: Some(*player_id),
+                                lobby_id: Some(rc.lobby_id),
+                                seed: 0,
+                                players: vec![],
+                                missed_turns: vec![],
+                                map_data: None,
+                                relay_port: Some(relay_port_for_task),
+                                relay_host: relay_host(),
+                            };
+                            if let Ok(start_json) = bincode::serialize(
+                                &sow_core::protocol::ServerMessage::Start(Box::new(start_msg)),
+                            ) {
+                                let _ = tx.try_send(start_json);
+                            }
                         }
                     }
+                    Err(e) => {
+                        log::error!("[RELAY] {e}; lobby {} lost this tick", rc.lobby_id);
+                    }
                 }
-                Err(e) => {
-                    log::error!("[RELAY] {e}; lobby {} lost this tick", rc.lobby_id);
-                }
-            }
+            });
         }
     });
 
@@ -350,7 +355,7 @@ async fn main() {
 
                     // Enqueue relay candidates to background worker task (zero I/O in tick)
                     for rc in ready_candidates {
-                        let _ = relay_tx_clone.try_send(rc);
+                        let _ = relay_tx_clone.send(rc);
                     }
 
                     // ── PHASE 3: Broadcast + perf (no lock needed) ──
