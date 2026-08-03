@@ -44,10 +44,16 @@ async fn register_relay(rc: &RelayCandidate) -> Result<(), String> {
         .unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
     let url = format!("{}/internal/lobby/register", mgmt_url.trim_end_matches('/'));
 
+    let active_empty_secs = if rc.active_empty_secs <= 0.0 {
+        30.0
+    } else {
+        rc.active_empty_secs
+    };
+
     let relay_config = serde_json::json!({
         "lobby_id": rc.lobby_id,
         "tick_number": 0,
-        "active_empty_secs": rc.active_empty_secs,
+        "active_empty_secs": active_empty_secs,
         "players": rc.players_json,
         "tick_rate_ms": rc.tick_rate_ms,
     });

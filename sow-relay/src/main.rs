@@ -678,13 +678,19 @@ async fn spawn_lobby(registry: &Registry, body: RegisterBody) -> Arc<LobbyState>
         });
     }
 
+    let initial_empty_secs = if body.active_empty_secs <= 0.0 {
+        30.0
+    } else {
+        body.active_empty_secs
+    };
+
     tokio::spawn(tick_task(
         state.clone(),
         registry.clone(),
         ev_rx,
         body.tick_rate_ms as u64,
         body.tick_number,
-        body.active_empty_secs,
+        initial_empty_secs,
     ));
     state
 }
