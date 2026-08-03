@@ -2,10 +2,10 @@ use super::*;
 use serde_json::json;
 
 const BUILD_HOST: &str = "freebsd";
-const BUILD_ROOT: &str = "/home/user/shadows-of-war";
-const PROD_HOST: &str = "sow";
-const REMOTE_STAGE: &str = "/home/user/.sow-deploy";
-const PUBLIC_ORIGIN: &str = "https://example.com";
+const BUILD_ROOT: &str = "/home/bizkit/shadows-of-war";
+const PROD_HOST: &str = "ionos";
+const REMOTE_STAGE: &str = "/home/bizkit/.sow-deploy";
+const PUBLIC_ORIGIN: &str = "http://74.208.246.177";
 
 struct Config {
     build_host: String,
@@ -194,7 +194,7 @@ fn build_freebsd(paths: &Paths, config: &Config) -> Result<PathBuf> {
         ],
     )?;
     let cache = paths.root.join("dist/.sow-state/freebsd-build");
-    let binaries_ready = ["sow-server", "sow-relay", "sow-database"]
+    let binaries_ready = ["sow-server", "sow-database"]
         .iter()
         .all(|name| local.join(name).is_file());
 
@@ -232,7 +232,7 @@ fn build_freebsd(paths: &Paths, config: &Config) -> Result<PathBuf> {
         "set -eu; cd {root}; \
          cargo test --locked -p sow-data --features server; \
          cargo test --locked -p sow-server; \
-         cargo build --locked --profile deploy -p sow-server -p sow-relay; \
+         cargo build --locked --profile deploy -p sow-server; \
          cargo build --locked --profile deploy -p sow-data --features server --bin sow-database"
     );
     run("ssh", &[&config.build_host, &command], None)?;
@@ -242,7 +242,7 @@ fn build_freebsd(paths: &Paths, config: &Config) -> Result<PathBuf> {
     }
     fs::create_dir_all(&local)?;
 
-    for name in ["sow-server", "sow-relay", "sow-database"] {
+    for name in ["sow-server", "sow-database"] {
         let remote = format!(
             "{}:{}/target/deploy/{name}",
             config.build_host, config.build_root
@@ -344,7 +344,7 @@ fn assemble_release(paths: &Paths, binaries: &Path, version: &str) -> Result<Rel
         copy_dir(&paths.assets_maps, &work.join("maps"))?;
     }
 
-    for name in ["sow-server", "sow-relay", "sow-database"] {
+    for name in ["sow-server", "sow-database"] {
         let destination = work.join("bin").join(name);
         fs::copy(binaries.join(name), &destination)?;
         fs::set_permissions(&destination, fs::Permissions::from_mode(0o550))?;

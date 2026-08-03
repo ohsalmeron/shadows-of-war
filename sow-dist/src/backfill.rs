@@ -2,7 +2,7 @@ use super::*;
 
 const BUILD_HOST: &str = "freebsd";
 const BUILD_ROOT: &str = "/home/bizkit/shadows-of-war";
-const DEFAULT_BACKFILL_HOSTS: &str = "sow-backfill1,sow-backfill2,ionos,clouding";
+const DEFAULT_BACKFILL_HOSTS: &str = "sow-backfill1,sow-backfill2";
 
 fn env_or(key: &str, default: &str) -> String {
     env::var(key).unwrap_or_else(|_| default.to_string())
