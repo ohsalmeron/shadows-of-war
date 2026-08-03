@@ -216,6 +216,7 @@ impl SowApp {
                 last_ping_time,
                 relay_connect_start: None,
                 relay_retry_count: 0,
+                relay_handoff_done: false,
             },
             sim: SimState {
                 engine,

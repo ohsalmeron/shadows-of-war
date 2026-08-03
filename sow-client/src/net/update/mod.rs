@@ -174,6 +174,7 @@ impl SowApp {
         }
 
         if let Some((relay_port, relay_host)) = switch_to_relay {
+            self.net.relay_handoff_done = true;
             log::info!(
                 "[CLIENT NET] Handoff from Master Orchestrator -> Game Relay on port {} (host {:?})",
                 relay_port,

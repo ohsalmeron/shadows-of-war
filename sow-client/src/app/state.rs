@@ -58,6 +58,9 @@ pub struct NetState {
     pub last_ping_time: web_time::Instant,
     pub relay_connect_start: Option<web_time::Instant>,
     pub relay_retry_count: u32,
+    /// Set when the orchestrator handed us off to a game relay (Start carried
+    /// relay_host). The loader uses this instead of string-matching ws_url.
+    pub relay_handoff_done: bool,
 }
 
 pub struct SimState {
