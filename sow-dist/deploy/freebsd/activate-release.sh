@@ -97,7 +97,6 @@ find "${root}/releases" -mindepth 2 -maxdepth 2 -type l \
 test -f "${stage}/SHA256"
 test -x "${stage}/bin/sow-database"
 test -x "${stage}/bin/sow-server"
-test -x "${stage}/bin/sow-relay"
 test -f "${stage}/web/play/index.html"
 test -f "${stage}/web/game-manifest.json"
 test -f "${stage}/maps/world/map.bin"
