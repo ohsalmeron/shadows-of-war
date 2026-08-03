@@ -8,8 +8,9 @@ use lobby::{
     sync_host_lobby_to_members,
 };
 use redis::Commands;
+use sow_core::game_config::GameConfig;
 use sow_core::protocol::{
-    ServerJoinAckMessage, ServerJoinFailedMessage, ServerLobbiesBroadcastMessage,
+    PlayerInfo, ServerJoinAckMessage, ServerJoinFailedMessage, ServerLobbiesBroadcastMessage,
 };
 use std::sync::Arc;
 use std::time::Duration;
@@ -169,6 +170,9 @@ struct RelayCandidate {
     lobby_id: u64,
     active_empty_secs: f32,
     tick_rate_ms: f32,
+    config: GameConfig,
+    seed: u64,
+    start_players: Vec<PlayerInfo>,
     players_json: Vec<serde_json::Value>,
     player_ids: Vec<String>,
     players_tx: Vec<(u16, mpsc::Sender<Vec<u8>>)>,
@@ -271,11 +275,11 @@ async fn main() {
                         // Broadcast Start message to each player with their specific my_player_id
                         for (player_id, tx) in &rc.players_tx {
                             let start_msg = sow_core::protocol::ServerStartMessage {
-                                config: sow_core::game_config::GameConfig::default(),
+                                config: rc.config.clone(),
                                 my_player_id: Some(*player_id),
                                 lobby_id: Some(rc.lobby_id),
-                                seed: 0,
-                                players: vec![],
+                                seed: rc.seed,
+                                players: rc.start_players.clone(),
                                 missed_turns: vec![],
                                 map_data: None,
                                 relay_port: Some(relay_port_for_task),
@@ -318,9 +322,25 @@ async fn main() {
                             if games[i].phase == lobby::LobbyPhase::ReadyForRelay {
                                 let lobby = games.remove(i);
                                 let mut players_json = Vec::new();
+                                let mut start_players = Vec::new();
                                 let mut player_ids = Vec::new();
                                 let mut players_tx = Vec::new();
                                 for p in &lobby.players {
+                                    // Every network participant must be present in Start so each
+                                    // lockstep client/backfill can register the same player ids.
+                                    // PlayerType::Bot is reserved for local AI spawned by the
+                                    // client engine; backfill bots are network-controlled players.
+                                    start_players.push(PlayerInfo {
+                                        id: p.player_id,
+                                        name: p.name.clone(),
+                                        player_type: sow_core::player::PlayerType::Human,
+                                        color: p.leader.filler_rgb(),
+                                        team: p.team,
+                                        spawn_x: 0,
+                                        spawn_y: 0,
+                                        civilization: p.civilization,
+                                        leader: p.leader,
+                                    });
                                     players_json.push(serde_json::json!({
                                         "player_id": p.player_id,
                                         "name": p.name,
@@ -335,6 +355,9 @@ async fn main() {
                                     lobby_id: lobby.id,
                                     active_empty_secs: lobby.active_empty_secs,
                                     tick_rate_ms: lobby.config.tick_rate_ms,
+                                    config: lobby.config.clone(),
+                                    seed: lobby.seed,
+                                    start_players,
                                     players_json,
                                     player_ids,
                                     players_tx,
