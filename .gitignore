@@ -20,6 +20,7 @@ src/assets/
 /target
 .server_bin_hash
 .relay_bin_hash
+node_modules/
 
 # Debug / Log Outputs
 *.log

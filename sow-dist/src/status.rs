@@ -5,7 +5,7 @@ pub(super) fn execute() -> Result<()> {
     let prod_host = env::var("SOW_PROD_HOST").unwrap_or_else(|_| "sow".into());
     let backfill_hosts: Vec<String> = env::var("SOW_BACKFILL_HOSTS")
         .or_else(|_| env::var("SOW_BACKFILL_HOST"))
-        .unwrap_or_else(|_| "sow-backfill1,sow-backfill2,ionos,clouding".into())
+        .unwrap_or_else(|_| "sow-backfill1,sow-backfill2,ionos".into())
         .split(',')
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
