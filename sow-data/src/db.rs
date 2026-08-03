@@ -404,7 +404,10 @@ impl PlayerDb {
         let exits_key = format!("sow:match:{match_id}:exits");
         let players_json: Option<String> = con.get(&players_key).await?;
         let Some(players_json) = players_json else {
-            return Err("Match not registered".into());
+            // No account players registered (e.g. bot-only matches): the
+            // replay was already archived by the handler; there is no stats
+            // state to finalize, so treat it as a clean success.
+            return Ok(());
         };
         let players: Vec<String> = serde_json::from_str(&players_json)?;
         if players.is_empty() {

@@ -9,6 +9,7 @@ use std::{env, fs};
 mod backfill;
 mod local;
 mod prod;
+mod relay;
 mod status;
 
 const WASM_OPT_TAG: &str = "oz-cli-v1";
@@ -672,7 +673,7 @@ fn main() -> Result<()> {
     let mut _max_match_secs = 300u64;
     let mut _max_lobbies = 0usize;
     let mut _allow_empty_lobbies = false;
-    let mut url = "ws://20.7.77.78/ws/".to_string();
+    let mut url = "ws://74.208.246.177/ws/".to_string();
 
     let mut i = 0;
     while i < args.len() {
@@ -732,6 +733,7 @@ fn main() -> Result<()> {
         "l" | "local" | "localsite" | "ls" => local::execute(&paths, port, build_only),
         "p" | "prod" | "play" => prod::execute(&paths, bump),
         "b" | "backfill" | "bf" => backfill::execute(&paths, build_only, min_fill, max_fill, &url),
+        "r" | "relay" => relay::execute(&paths),
         "native" | "n" | "" => cmd_native(&paths),
         "status" | "st" => status::execute(),
         _ => {
