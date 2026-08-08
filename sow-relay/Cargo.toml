@@ -22,3 +22,6 @@ redis = { workspace = true }
 rand = { workspace = true }
 reqwest = { workspace = true }
 libc = "0.2"
+tokio-rustls = "0.24"
+rustls = "0.21"
+rustls-pemfile = "1.0"

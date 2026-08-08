@@ -111,6 +111,7 @@ impl SowApp {
     pub(crate) fn ws_on_relay(&self) -> bool {
         self.net.relay_handoff_done
             || self.net.ws_url.contains("/relay/")
+            || self.net.ws_url.contains("relay.shadowsofwar.io")
             || self.net.ws_url.contains("2557")
     }
 }

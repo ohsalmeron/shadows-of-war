@@ -32,12 +32,18 @@ use sow_core::protocol::{
     ServerLobbiesBroadcastMessage, ServerLobbyClosedMessage, ServerMessage, ServerTurnMessage,
     StampedIntent, Turn,
 };
+use rustls::{Certificate, PrivateKey, ServerConfig};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::CString;
+use std::io::BufReader;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
+use std::task::{Context, Poll};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use tokio_rustls::TlsAcceptor;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::{mpsc, oneshot, Mutex, RwLock, Semaphore};
@@ -63,6 +69,73 @@ static LISTENER_COUNT: AtomicU64 = AtomicU64::new(0);
 static DISPATCH_LOCAL: AtomicU64 = AtomicU64::new(0);
 static DISPATCH_REDIRECTED: AtomicU64 = AtomicU64::new(0);
 static DISPATCH_UNMATCHED: AtomicU64 = AtomicU64::new(0);
+
+/// TLS acceptor for direct browser connections. `None` when no cert is
+/// configured (dev mode, plain ws://). Set once at boot from
+/// `SOW_RELAY_TLS_CERT` / `SOW_RELAY_TLS_KEY` file paths.
+static TLS_ACCEPTOR: OnceLock<Option<TlsAcceptor>> = OnceLock::new();
+
+fn load_tls_acceptor() -> Option<TlsAcceptor> {
+    let cert_path = std::env::var("SOW_RELAY_TLS_CERT").ok()?;
+    let key_path = std::env::var("SOW_RELAY_TLS_KEY").ok()?;
+
+    let cert_bytes = std::fs::read(&cert_path).ok()?;
+    let key_bytes = std::fs::read(&key_path).ok()?;
+
+    // Parse certificates
+    let mut cert_reader = BufReader::new(cert_bytes.as_slice());
+    let raw_certs = match rustls_pemfile::certs(&mut cert_reader) {
+        Ok(v) => v,
+        Err(e) => {
+            error!("[tls] cert parse error: {e}");
+            return None;
+        }
+    };
+    let certs: Vec<Certificate> = raw_certs.into_iter().map(Certificate).collect();
+    if certs.is_empty() {
+        error!("[tls] no certificates found in {}", cert_path);
+        return None;
+    }
+
+    // Parse private key (try PKCS8, then RSA)
+    let mut key_reader = BufReader::new(key_bytes.as_slice());
+    let mut key_data: Option<Vec<u8>> = None;
+    if let Ok(keys) = rustls_pemfile::pkcs8_private_keys(&mut key_reader) {
+        if let Some(d) = keys.into_iter().next() {
+            key_data = Some(d);
+        }
+    }
+    if key_data.is_none() {
+        let mut r2 = BufReader::new(key_bytes.as_slice());
+        if let Ok(keys) = rustls_pemfile::rsa_private_keys(&mut r2) {
+            if let Some(d) = keys.into_iter().next() {
+                key_data = Some(d);
+            }
+        }
+    }
+    let key = match key_data {
+        Some(k) => PrivateKey(k),
+        None => {
+            error!("[tls] no private key found in {}", key_path);
+            return None;
+        }
+    };
+
+    match ServerConfig::builder()
+        .with_safe_defaults()
+        .with_no_client_auth()
+        .with_single_cert(certs, key)
+    {
+        Ok(config) => {
+            info!("[tls] cert loaded from {}, key from {}", cert_path, key_path);
+            Some(TlsAcceptor::from(Arc::new(config)))
+        }
+        Err(e) => {
+            error!("[tls] config error: {e}");
+            None
+        }
+    }
+}
 
 fn base_mgmt_port() -> u16 {
     std::env::var("SOW_RELAY_BASE_MGMT_PORT")
@@ -609,6 +682,17 @@ fn main() {
     env_logger::init();
 
     let base_mgmt = base_mgmt_port();
+
+    // TLS: load cert if configured, otherwise plain ws://.
+    TLS_ACCEPTOR.get_or_init(|| {
+        let acceptor = load_tls_acceptor();
+        if acceptor.is_some() {
+            info!("[BOOT] TLS enabled — browser connects via wss:// directly");
+        } else {
+            info!("[BOOT] TLS disabled — plain ws:// (dev mode)");
+        }
+        acceptor
+    });
 
     // TAP dev loop: inject --no-pci + net_tap0 vdev (FSTACK_TAP=1). Empty for the physical VF.
     let mut extra_eal: Vec<&str> = Vec::new();
@@ -1277,6 +1361,53 @@ async fn bridge_worker(registry: Registry) {
 
 // ---- per-connection protocol task -------------------------------------------
 
+/// Unified stream: either plain Conn or TLS-wrapped Conn.
+/// tokio-tungstenite needs AsyncRead + AsyncWrite; we delegate both.
+enum MaybeTlsConn {
+    Plain(bridge::Conn),
+    Tls(tokio_rustls::server::TlsStream<bridge::Conn>),
+}
+
+impl AsyncRead for MaybeTlsConn {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            MaybeTlsConn::Plain(c) => Pin::new(c).poll_read(cx, buf),
+            MaybeTlsConn::Tls(c) => Pin::new(c).poll_read(cx, buf),
+        }
+    }
+}
+
+impl AsyncWrite for MaybeTlsConn {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
+        match self.get_mut() {
+            MaybeTlsConn::Plain(c) => Pin::new(c).poll_write(cx, buf),
+            MaybeTlsConn::Tls(c) => Pin::new(c).poll_write(cx, buf),
+        }
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            MaybeTlsConn::Plain(c) => Pin::new(c).poll_flush(cx),
+            MaybeTlsConn::Tls(c) => Pin::new(c).poll_flush(cx),
+        }
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            MaybeTlsConn::Plain(c) => Pin::new(c).poll_shutdown(cx),
+            MaybeTlsConn::Tls(c) => Pin::new(c).poll_shutdown(cx),
+        }
+    }
+}
+
 #[derive(Clone)]
 enum Role {
     RelayPlayer {
@@ -1292,7 +1423,21 @@ async fn ws_task(
     registry: Registry,
 ) {
     let conn = bridge::Conn::new(fd, generation, rx);
-    let ws = match tokio_tungstenite::accept_async(conn).await {
+
+    // TLS handshake (if cert configured), then WebSocket upgrade.
+    let stream = if let Some(acceptor) = TLS_ACCEPTOR.get().and_then(|o| o.as_ref()) {
+        match acceptor.accept(conn).await {
+            Ok(tls) => MaybeTlsConn::Tls(tls),
+            Err(e) => {
+                warn!("[tls] handshake fail fd={} err={}", fd, e);
+                return;
+            }
+        }
+    } else {
+        MaybeTlsConn::Plain(conn)
+    };
+
+    let ws = match tokio_tungstenite::accept_async(stream).await {
         Ok(ws) => ws,
         Err(e) => {
             warn!("[ws] handshake fail fd={} err={}", fd, e);
@@ -1597,11 +1742,11 @@ async fn try_ready_register(
 /// so the backfill daemon keeps spawning until slots fill.
 async fn orchestrator_task(
     write: &mut futures_util::stream::SplitSink<
-        tokio_tungstenite::WebSocketStream<bridge::Conn>,
+        tokio_tungstenite::WebSocketStream<MaybeTlsConn>,
         Message,
     >,
     read: &mut futures_util::stream::SplitStream<
-        tokio_tungstenite::WebSocketStream<bridge::Conn>,
+        tokio_tungstenite::WebSocketStream<MaybeTlsConn>,
     >,
     registry: &Registry,
 ) {

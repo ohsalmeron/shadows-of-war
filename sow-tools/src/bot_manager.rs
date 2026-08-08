@@ -403,7 +403,7 @@ async fn run_bot(
     drop(read);
 
     let relay_url = if url.contains("shadowsofwar.io") {
-        format!("wss://shadowsofwar.io/relay/{}/ws/", relay_port)
+        format!("wss://relay.shadowsofwar.io:{}/ws/", relay_port)
     } else {
         let mut parsed = reqwest::Url::parse(&url).unwrap();
         let _ = parsed.set_port(Some(relay_port));

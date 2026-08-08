@@ -96,12 +96,31 @@ EOF\n\
          Environment=SOW_RELAY_WORKER_COUNT={}\n\
          Environment=SOW_DB_URL={}\n\
          Environment=SOW_DB_SECRET={}\n\
+         Environment=SOW_RELAY_TLS_CERT=/usr/local/etc/sow/relay.crt\n\
+         Environment=SOW_RELAY_TLS_KEY=/usr/local/etc/sow/relay.key\n\
          EOF",
         worker_count,
         env_or("SOW_DB_URL", "http://74.208.246.177:80"),
         env_or("SOW_DB_SECRET", "sow_db_dev_secret_123_change_me_in_prod"),
     );
     run("ssh", &[&host, &drop_in], None)?;
+
+    // Deploy TLS cert + key to the relay VM if they exist locally.
+    let cert_local = env_or("SOW_RELAY_TLS_CERT_LOCAL", "/etc/letsencrypt/live/relay.shadowsofwar.io/fullchain.pem");
+    let key_local = env_or("SOW_RELAY_TLS_KEY_LOCAL", "/etc/letsencrypt/live/relay.shadowsofwar.io/privkey.pem");
+    if Path::new(&cert_local).exists() && Path::new(&key_local).exists() {
+        run("scp", &["-q", &cert_local, &format!("{host}:/tmp/relay-fullchain.pem")], None)?;
+        run("scp", &["-q", &key_local, &format!("{host}:/tmp/relay-privkey.pem")], None)?;
+        let install = format!(
+            "sudo install -d -m 0755 /usr/local/etc/sow && \
+             sudo install -m 0644 /tmp/relay-fullchain.pem /usr/local/etc/sow/relay.crt && \
+             sudo install -m 0600 /tmp/relay-privkey.pem /usr/local/etc/sow/relay.key"
+        );
+        run("ssh", &[&host, &install], None)?;
+        println!("✅ TLS cert deployed to {host} (/usr/local/etc/sow/)");
+    } else {
+        println!("⚠️  TLS cert not found at {cert_local} — relay will run plain ws://");
+    }
 
     let worker_unit = format!(
         "sudo tee /etc/systemd/system/sow-relay@.service >/dev/null <<'EOF'\n\
