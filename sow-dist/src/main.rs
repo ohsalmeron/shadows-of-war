@@ -669,6 +669,10 @@ fn main() -> Result<()> {
     let mut bump = false;
     let mut min_fill = 65usize;
     let mut max_fill = 92usize;
+    let mut governor = env::var("SOW_BACKFILL_GOVERNOR")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(20_000usize);
     let mut _max_bots = 10usize;
     let mut _max_match_secs = 300u64;
     let mut _max_lobbies = 0usize;
@@ -696,6 +700,12 @@ fn main() -> Result<()> {
                 i += 1;
                 if i < args.len() {
                     max_fill = args[i].parse().unwrap_or(92);
+                }
+            }
+            "--governor" => {
+                i += 1;
+                if i < args.len() {
+                    governor = args[i].parse().unwrap_or(governor);
                 }
             }
             "--max-bots" => {
@@ -732,7 +742,9 @@ fn main() -> Result<()> {
     match cmd.as_str() {
         "l" | "local" | "localsite" | "ls" => local::execute(&paths, port, build_only),
         "p" | "prod" | "play" => prod::execute(&paths, bump),
-        "b" | "backfill" | "bf" => backfill::execute(&paths, build_only, min_fill, max_fill, &url),
+        "b" | "backfill" | "bf" => {
+            backfill::execute(&paths, build_only, min_fill, max_fill, governor, &url)
+        }
         "r" | "relay" => relay::execute(&paths),
         "native" | "n" | "" => cmd_native(&paths),
         "status" | "st" => status::execute(),

@@ -33,7 +33,11 @@ CRATES: dict[str, set[Path]] = {
     },
     "sow-audio": set(),
     "sow-map": set(),
-    "sow-dist": set(),
+    "sow-dist": {
+        # CLI grew past 750 with the multi-worker relay deploy rework
+        # (worker catalog, relay subcommand, prod/relay modules).
+        ROOT / "sow-dist" / "src" / "main.rs",
+    },
 }
 
 

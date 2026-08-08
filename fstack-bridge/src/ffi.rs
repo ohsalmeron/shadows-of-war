@@ -37,6 +37,19 @@ pub struct kevent {
 /// `int (*)(void *)` — the per-iteration loop callback passed to `ff_run`.
 pub type loop_func_t = unsafe extern "C" fn(*mut c_void) -> c_int;
 
+/// F-Stack packet dispatcher callback. It runs on the RX path before the
+/// packet enters the FreeBSD stack. Returning another queue transfers the
+/// mbuf through F-Stack's shared dispatch ring to that queue's process.
+pub type dispatch_func_t = unsafe extern "C" fn(
+    data: *mut c_void,
+    len: *mut u16,
+    queue_id: u16,
+    nb_queues: u16,
+) -> c_int;
+
+pub const FF_DISPATCH_ERROR: c_int = -1;
+pub const FF_DISPATCH_RESPONSE: c_int = -2;
+
 // ---- kqueue filter/flag constants (ff_event.h) ----
 pub const EVFILT_READ: i16 = -1;
 pub const EVFILT_WRITE: i16 = -2;
@@ -60,6 +73,7 @@ extern "C" {
     // ---- run loop ----
     pub fn ff_run(callback: loop_func_t, arg: *mut c_void);
     pub fn ff_stop_run();
+    pub fn ff_regist_packet_dispatcher(func: dispatch_func_t);
 
     // ---- kqueue ----
     pub fn ff_kqueue() -> c_int;

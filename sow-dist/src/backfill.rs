@@ -23,6 +23,7 @@ pub(super) fn execute(
     build_only: bool,
     min_fill: usize,
     max_fill: usize,
+    governor: usize,
     url: &str,
 ) -> Result<()> {
     let build_host = env_or("SOW_BUILD_HOST", BUILD_HOST);
@@ -143,7 +144,7 @@ pub(super) fn execute(
         }
 
         let args = format!(
-            "--min-fill {min_fill} --max-fill {max_fill} --url {url} --maps-root /usr/local/share/sow/maps --build-version 0.1.2"
+            "--min-fill {min_fill} --max-fill {max_fill} --governor {governor} --url {url} --maps-root /usr/local/share/sow/maps --build-version 0.1.2"
         );
         let conf = format!("sow_backfill_enable=\"YES\"\nsow_backfill_args=\"{args}\"\n");
         run(

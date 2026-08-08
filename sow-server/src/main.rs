@@ -7,43 +7,178 @@ use lobby::{
     leave_player, lobby_to_info, master_tick, notify_lobby_closed, set_player_team,
     sync_host_lobby_to_members,
 };
-use redis::Commands;
 use sow_core::game_config::GameConfig;
 use sow_core::protocol::{
     PlayerInfo, ServerJoinAckMessage, ServerJoinFailedMessage, ServerLobbiesBroadcastMessage,
 };
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, broadcast, mpsc};
 use tokio_tungstenite::tungstenite::protocol::Message;
 
-const REDIS_PORTS_KEY: &str = "sow:ports";
+const DEFAULT_RELAY_WORKER_COUNT: usize = 4;
+const RELAY_PORT_MIN: u16 = 25592;
+const RELAY_PORT_MAX: u16 = 26500;
 
-/// The monolithic DPDK relay's fixed game port (SOW_RELAY_PORT, default 80).
-fn relay_port() -> u16 {
-    std::env::var("SOW_RELAY_PORT")
+#[derive(Clone, Debug)]
+struct RelayWorker {
+    id: usize,
+    host: String,
+    mgmt_url: String,
+}
+
+fn relay_worker_count() -> usize {
+    std::env::var("SOW_RELAY_WORKER_COUNT")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|count| (1..=64).contains(count))
+        .unwrap_or(DEFAULT_RELAY_WORKER_COUNT)
+}
+
+/// Parse one worker as either `game_host:legacy_game_port:mgmt_port` or
+/// `game_host:legacy_game_port:mgmt_host:mgmt_port`.
+///
+/// `SOW_RELAY_WORKERS` is a comma-separated catalog in this format. Hosts are
+/// intentionally plain DNS/IP tokens here; IPv6 literals should be supplied
+/// through a front door/DNS name until the client URL contract is upgraded.
+fn parse_relay_worker(spec: &str, id: usize) -> Option<RelayWorker> {
+    let fields: Vec<_> = spec.trim().split(':').collect();
+    let (host, legacy_game_port, mgmt_host, mgmt_port) = match fields.as_slice() {
+        [host, legacy_game_port, mgmt_port] => (
+            *host,
+            *legacy_game_port,
+            *host,
+            *mgmt_port,
+        ),
+        [host, legacy_game_port, mgmt_host, mgmt_port] => (
+            *host,
+            *legacy_game_port,
+            *mgmt_host,
+            *mgmt_port,
+        ),
+        _ => return None,
+    };
+    let mgmt_port = mgmt_port.parse::<u16>().ok()?;
+    // The middle field is a legacy worker game port. Dynamic routing no
+    // longer uses it, but accepting the old catalog shape keeps deployment
+    // configuration backwards-compatible while the new ports are allocated
+    // per lobby.
+    let _legacy_game_port = legacy_game_port.parse::<u16>().ok()?;
+    if host.is_empty()
+        || host.contains('/')
+        || host.contains('[')
+        || host.contains(']')
+        || mgmt_host.is_empty()
+        || mgmt_host.contains('/')
+        || mgmt_host.contains('[')
+        || mgmt_host.contains(']')
+    {
+        return None;
+    }
+    Some(RelayWorker {
+        id,
+        host: host.to_string(),
+        mgmt_url: format!("http://{mgmt_host}:{mgmt_port}"),
+    })
+}
+
+fn relay_workers() -> Vec<RelayWorker> {
+    if let Ok(specs) = std::env::var("SOW_RELAY_WORKERS") {
+        let parsed_specs: Vec<_> = specs
+            .split(',')
+            .filter_map(|spec| parse_relay_worker(spec, 0))
+            .collect();
+        let parsed: Vec<_> = parsed_specs
+            .into_iter()
+            .enumerate()
+            .map(|(id, mut worker)| {
+                worker.id = id;
+                worker
+            })
+            .collect();
+        if !parsed.is_empty() {
+            return parsed;
+        }
+        log::warn!("SOW_RELAY_WORKERS had no valid entries; using legacy single-worker settings");
+    }
+
+    let host = std::env::var("SOW_RELAY_HOST")
+        .ok()
+        .filter(|h| !h.trim().is_empty())
+        .or_else(|| {
+            std::env::var("SOW_RELAY_ADDR").ok().map(|addr| {
+                addr.rsplit_once(':')
+                    .map(|(host, _)| host.to_string())
+                    .unwrap_or(addr)
+            })
+        })
+        .unwrap_or_else(|| "127.0.0.1".to_string());
+    let _legacy_game_port = std::env::var("SOW_RELAY_BASE_PORT")
+        .or_else(|_| std::env::var("SOW_RELAY_PORT"))
         .ok()
         .and_then(|p| p.parse().ok())
-        .unwrap_or(80)
-}
-
-/// Host the clients should reach the relay at (data PIP on Azure). None means
-/// "use the orchestrator host" (legacy client behavior).
-fn relay_host() -> Option<String> {
-    std::env::var("SOW_RELAY_HOST")
+        .unwrap_or(80);
+    let mgmt_port = std::env::var("SOW_RELAY_BASE_MGMT_PORT")
+        .or_else(|_| std::env::var("SOW_RELAY_MGMT_PORT"))
         .ok()
-        .filter(|host| !host.trim().is_empty())
-        .map(|host| host.trim().to_string())
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(8080);
+    // Keep the pre-worker deployment contract working. Older environments
+    // supplied a complete management URL instead of host/port components.
+    let mgmt_url = std::env::var("SOW_RELAY_MGMT_URL")
+        .ok()
+        .filter(|url| !url.trim().is_empty())
+        .unwrap_or_else(|| format!("http://{host}:{mgmt_port}"));
+    vec![RelayWorker {
+        id: 0,
+        host: host.clone(),
+        mgmt_url,
+    }]
 }
 
-/// Register a lobby with the monolithic relay over mgmt HTTP. The relay
+struct RelayPortAllocator {
+    next: u32,
+    used: HashSet<u16>,
+}
+
+impl RelayPortAllocator {
+    fn new() -> Self {
+        Self {
+            next: RELAY_PORT_MIN as u32,
+            used: HashSet::new(),
+        }
+    }
+
+    fn allocate(&mut self) -> Option<u16> {
+        let capacity = (RELAY_PORT_MAX as u32 - RELAY_PORT_MIN as u32) + 1;
+        for _ in 0..capacity {
+            if self.next > RELAY_PORT_MAX as u32 {
+                self.next = RELAY_PORT_MIN as u32;
+            }
+            let candidate = self.next as u16;
+            self.next += 1;
+            if self.used.insert(candidate) {
+                return Some(candidate);
+            }
+        }
+        None
+    }
+
+    fn release(&mut self, port: u16) {
+        self.used.remove(&port);
+    }
+}
+
+/// Register a lobby with its assigned relay worker over mgmt HTTP. The worker
 /// confirms with 200 OK before the server broadcasts Start to the clients.
 /// Retries with exponential backoff (same resilience as the old spawn path).
-async fn register_relay(rc: &RelayCandidate) -> Result<(), String> {
-    let mgmt_url = std::env::var("SOW_RELAY_MGMT_URL")
-        .unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
-    let url = format!("{}/internal/lobby/register", mgmt_url.trim_end_matches('/'));
+async fn register_relay(rc: &RelayCandidate, worker: &RelayWorker) -> Result<(), String> {
+    let url = format!(
+        "{}/internal/lobby/register",
+        worker.mgmt_url.trim_end_matches('/')
+    );
 
     let active_empty_secs = if rc.active_empty_secs <= 0.0 {
         30.0
@@ -53,6 +188,7 @@ async fn register_relay(rc: &RelayCandidate) -> Result<(), String> {
 
     let relay_config = serde_json::json!({
         "lobby_id": rc.lobby_id,
+        "relay_port": rc.relay_port,
         "tick_number": 0,
         "active_empty_secs": active_empty_secs,
         "players": rc.players_json,
@@ -94,26 +230,15 @@ async fn register_relay(rc: &RelayCandidate) -> Result<(), String> {
 }
 
 // =============================================================================
-// RELAY INTEGRATION — monolithic DPDK relay (no per-lobby processes)
+// RELAY INTEGRATION — worker-per-queue DPDK relay (no per-lobby processes)
 // =============================================================================
 //
-// The relay is a single process (sow-relay + fstack-bridge) listening on a
-// fixed game port (SOW_RELAY_PORT, default 80) on the data NIC. There is no
-// dynamic port allocation, no per-lobby spawn, no nginx /relay/{port}/ws/
-// reverse proxy, and no port-claiming race: the server registers each lobby
-// with the relay over mgmt HTTP (SOW_RELAY_MGMT_URL, default
-// http://127.0.0.1:8080) and ONLY broadcasts Start{relay_port, relay_host}
-// after the relay answers 200 OK — the relay accepts the lobby before any
-// client is told where to connect.
+// Each worker process owns dynamic lobby ports selected by `port % 4` and one
+// kernel management port. The server registers the lobby and ONLY broadcasts
+// Start{relay_port, relay_host} after the owning worker answers 200 OK.
 //
-// History (why the old code is gone): the previous design gave each match its
-// own `sow-relay` process on a dynamic port. Port liveness was tracked via
-// Redis (`sow:ports` set + `sow:relay:{port}` TTL), and a race between relay
-// startup, TTL expiry and lazy-cleanup could hand a still-bound port to a new
-// lobby → "Address already in use" → clients routed to the OLD relay of a
-// DIFFERENT lobby → "Invalid Ready request" spam and stalled matches
-// (relay_25623.log, 2026-08-01). The probe-bind gate fixed the symptom; the
-// monolithic relay removes the failure mode entirely.
+// Dynamic ports are bound by the long-lived worker process through the bridge
+// command ring, so no relay subprocess is created for an individual match.
 
 
 
@@ -164,10 +289,12 @@ enum ServerEvent {
     },
 }
 
-/// Data collected inside the lock for a lobby that needs a relay spawned.
+/// Data collected inside the lock for a lobby that needs dynamic relay binding.
 /// All blocking I/O (Redis, disk, process) happens *outside* the games lock in a dedicated worker task.
 struct RelayCandidate {
     lobby_id: u64,
+    relay_port: u16,
+    worker_index: usize,
     active_empty_secs: f32,
     tick_rate_ms: f32,
     config: GameConfig,
@@ -185,25 +312,11 @@ async fn main() {
     let redis_url =
         std::env::var("SOW_REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1/".to_string());
     let redis_client = redis::Client::open(redis_url).expect("Failed to connect to Redis");
-    let redis_con = Arc::new(std::sync::Mutex::new(
-        redis_client
-            .get_connection()
-            .expect("Failed to get Redis connection"),
-    ));
-    {
-        let mut con = redis_con.lock().unwrap();
-        let occupied: std::collections::HashSet<u16> = match con.smembers(REDIS_PORTS_KEY) {
-            Ok(s) => s,
-            Err(e) => {
-                log::error!("[REDIS] SMEMBERS {REDIS_PORTS_KEY} FAILED at startup: {e}");
-                std::collections::HashSet::new()
-            }
-        };
-        log::info!(
-            "Redis connected. Active relay ports preserved: {:?}",
-            occupied
-        );
-    }
+    // Establish one connection at boot as a hard dependency check.
+    let _redis_connection = redis_client
+        .get_connection()
+        .expect("Failed to get Redis connection");
+    log::info!("Redis connected");
 
     let mut games: Vec<ServerLobby> = Vec::new();
     let mut next_lobby_id: u64 = 1;
@@ -219,6 +332,22 @@ async fn main() {
     let (global_tx, _rx) = broadcast::channel::<Vec<u8>>(100);
     let (event_tx, mut event_rx) = mpsc::channel::<ServerEvent>(100000);
     let (relay_tx, mut relay_rx) = mpsc::unbounded_channel::<RelayCandidate>();
+    let relay_workers = relay_workers();
+    let relay_worker_count = relay_worker_count();
+    if relay_workers.len() != relay_worker_count {
+        log::error!(
+            "Dynamic relay routing requires exactly {} workers; configured {}",
+            relay_worker_count,
+            relay_workers.len()
+        );
+        return;
+    }
+    let relay_ports = Arc::new(Mutex::new(RelayPortAllocator::new()));
+    log::info!(
+        "Relay worker catalog: {} worker(s) {:?}",
+        relay_worker_count,
+        relay_workers
+    );
 
     let games_clone = Arc::clone(&games_state);
     let next_id_clone = Arc::clone(&next_id_state);
@@ -226,17 +355,14 @@ async fn main() {
     let relay_tx_clone = relay_tx.clone();
 
     // ── DEDICATED ASYNC RELAY WORKER TASK ──
-    // The relay is a monolithic DPDK process (fstack-bridge) listening on a
-    // fixed game port. There is no per-lobby process and no dynamic port: the
-    // worker registers the lobby over mgmt HTTP and only broadcasts
-    // Start{relay_port, relay_host} AFTER the relay confirms with 200 OK.
-    // This closes the old spawn/bind race ("Failed to bind... Address already
-    // in use", wrong-relay routing) for good: the relay accepts the lobby
-    // before any client is told where to connect.
+    // A worker owns many lobbies. The destination port is the ownership key;
+    // the client receives it only after the owning worker confirms that it
+    // successfully bound the port.
+    let relay_workers_for_task = relay_workers.clone();
+    let relay_ports_for_task = relay_ports.clone();
+    let relay_ports_for_tick = relay_ports.clone();
     tokio::spawn(async move {
         while let Some(rc) = relay_rx.recv().await {
-            let relay_port = relay_port();
-
             // DB match registration
             if !rc.player_ids.is_empty() {
                 let match_id = rc.lobby_id.to_string();
@@ -257,22 +383,26 @@ async fn main() {
                 });
             }
 
-            // Register the lobby with the monolithic relay (mgmt HTTP, kernel
-            // 127.0.0.1). Retries with backoff; the relay confirms before any
-            // client is told the port. Each registration runs in its own task
-            // so a slow relay never serializes the whole queue behind one
-            // lobby's backoff (that backlog was starving bots of Start).
-            let relay_port_for_task = relay_port;
+            let workers = relay_workers_for_task.clone();
+            let relay_ports = relay_ports_for_task.clone();
             tokio::spawn(async move {
-                match register_relay(&rc).await {
+                let Some(worker) = workers.get(rc.worker_index) else {
+                    log::error!(
+                        "[RELAY] worker index {} missing for lobby {} port {}",
+                        rc.worker_index, rc.lobby_id, rc.relay_port
+                    );
+                    relay_ports.lock().await.release(rc.relay_port);
+                    return;
+                };
+
+                match register_relay(&rc, worker).await {
                     Ok(()) => {
                         log::info!(
-                            "[RELAY] Lobby {} registered with relay on port {}",
-                            rc.lobby_id,
-                            relay_port_for_task
+                            "[RELAY] Lobby {} registered with worker {} on dynamic port {}",
+                            rc.lobby_id, worker.id, rc.relay_port
                         );
 
-                        // Broadcast Start message to each player with their specific my_player_id
+                        // Broadcast Start message to each player with their specific my_player_id.
                         for (player_id, tx) in &rc.players_tx {
                             let start_msg = sow_core::protocol::ServerStartMessage {
                                 config: rc.config.clone(),
@@ -282,8 +412,8 @@ async fn main() {
                                 players: rc.start_players.clone(),
                                 missed_turns: vec![],
                                 map_data: None,
-                                relay_port: Some(relay_port_for_task),
-                                relay_host: relay_host(),
+                                relay_port: Some(rc.relay_port),
+                                relay_host: Some(worker.host.clone()),
                             };
                             if let Ok(start_json) = bincode::serialize(
                                 &sow_core::protocol::ServerMessage::Start(Box::new(start_msg)),
@@ -293,7 +423,24 @@ async fn main() {
                         }
                     }
                     Err(e) => {
-                        log::error!("[RELAY] {e}; lobby {} lost this tick", rc.lobby_id);
+                        log::error!(
+                            "[RELAY] lobby {} port {} registration failed: {}",
+                            rc.lobby_id, rc.relay_port, e
+                        );
+                        relay_ports.lock().await.release(rc.relay_port);
+
+                        let closed_msg = sow_core::protocol::ServerLobbyClosedMessage {
+                            lobby_id: rc.lobby_id,
+                            reason: format!("RELAY_REGISTRATION_FAILED: {}", e),
+                            rematch_lobby_id: None,
+                        };
+                        if let Ok(closed_json) = bincode::serialize(
+                            &sow_core::protocol::ServerMessage::LobbyClosed(closed_msg),
+                        ) {
+                            for (_player_id, tx) in &rc.players_tx {
+                                let _ = tx.try_send(closed_json.clone());
+                            }
+                        }
                     }
                 }
             });
@@ -320,6 +467,11 @@ async fn main() {
                         let mut i = 0;
                         while i < games.len() {
                             if games[i].phase == lobby::LobbyPhase::ReadyForRelay {
+                                let Some(relay_port) = relay_ports_for_tick.lock().await.allocate() else {
+                                    log::error!("dynamic relay port pool exhausted; lobby {} remains pending", games[i].id);
+                                    i += 1;
+                                    continue;
+                                };
                                 let lobby = games.remove(i);
                                 let mut players_json = Vec::new();
                                 let mut start_players = Vec::new();
@@ -353,6 +505,8 @@ async fn main() {
                                 }
                                 ready_candidates.push(RelayCandidate {
                                     lobby_id: lobby.id,
+                                    relay_port,
+                                    worker_index: relay_port as usize % relay_worker_count,
                                     active_empty_secs: lobby.active_empty_secs,
                                     tick_rate_ms: lobby.config.tick_rate_ms,
                                     config: lobby.config.clone(),
@@ -388,6 +542,8 @@ async fn main() {
                     }
 
                     // ── PHASE 3: Broadcast + perf (no lock needed) ──
+                    // Note: Initial LobbiesBroadcast is sent on connection & HTTP endpoint.
+                    // Global tick broadcast is disabled at high scale to preserve WS throughput.
                     if let Some(json) = broadcast_json {
                         let _ = global_tx_clone.send(json);
                     }
@@ -913,4 +1069,47 @@ async fn catalog_json_handler() -> impl axum::response::IntoResponse {
             serde_json::to_string(&catalog).unwrap(),
         ))
         .unwrap()
+}
+
+#[cfg(test)]
+mod relay_worker_tests {
+    use super::{parse_relay_worker, RelayPortAllocator, RELAY_PORT_MAX, RELAY_PORT_MIN,
+        DEFAULT_RELAY_WORKER_COUNT};
+
+    #[test]
+    fn parses_host_game_and_management_ports() {
+        let worker = parse_relay_worker("relay-a.example:83:8083", 2).expect("valid worker");
+        assert_eq!(worker.id, 2);
+        assert_eq!(worker.host, "relay-a.example");
+        assert_eq!(worker.mgmt_url, "http://relay-a.example:8083");
+    }
+
+    #[test]
+    fn parses_separate_game_and_management_hosts() {
+        let worker = parse_relay_worker("data.example:80:mgmt.example:8080", 0)
+            .expect("valid worker");
+        assert_eq!(worker.host, "data.example");
+        assert_eq!(worker.mgmt_url, "http://mgmt.example:8080");
+    }
+
+    #[test]
+    fn allocates_ports_in_range_and_by_worker_modulo() {
+        let mut allocator = RelayPortAllocator::new();
+        let first = allocator.allocate().expect("first dynamic port");
+        let second = allocator.allocate().expect("second dynamic port");
+        assert!((RELAY_PORT_MIN..=RELAY_PORT_MAX).contains(&first));
+        assert!((RELAY_PORT_MIN..=RELAY_PORT_MAX).contains(&second));
+        assert_eq!(first % DEFAULT_RELAY_WORKER_COUNT as u16, 0);
+        assert_eq!(second % DEFAULT_RELAY_WORKER_COUNT as u16, 1);
+        allocator.release(first);
+        assert!(!allocator.used.contains(&first));
+    }
+
+    #[test]
+    fn rejects_malformed_worker_entries() {
+        assert!(parse_relay_worker("relay-a.example:80", 0).is_none());
+        assert!(parse_relay_worker("relay-a.example:not-a-port:8080", 0).is_none());
+        assert!(parse_relay_worker("http://relay-a.example:80:8080", 0).is_none());
+        assert!(parse_relay_worker("[::1]:80:8080", 0).is_none());
+    }
 }

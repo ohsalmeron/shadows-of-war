@@ -147,43 +147,27 @@ fn spawn_waiting_lobby(
 }
 
 fn ensure_queue_depth(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
-    if games
-        .iter()
-        .filter(|g| g.joinable() && g.kind == LobbyKind::Matchmaking && g.game_mode == "FFA")
-        .count()
-        < 1
-    {
-        spawn_waiting_lobby(
-            games,
-            next_id,
-            SpawnLobbyOpts {
-                game_mode: "FFA".to_string(),
-                kind: LobbyKind::Matchmaking,
-                is_private: false,
-                config_override: None,
-                password: None,
-                host_name: String::new(),
-            },
-        );
-    }
-    if games
-        .iter()
-        .filter(|g| g.joinable() && g.kind == LobbyKind::Matchmaking && g.game_mode == "Teams")
-        .count()
-        < 1
-    {
-        spawn_waiting_lobby(
-            games,
-            next_id,
-            SpawnLobbyOpts {
-                game_mode: "Teams".to_string(),
-                kind: LobbyKind::Matchmaking,
-                is_private: false,
-                config_override: None,
-                password: None,
-                host_name: String::new(),
-            },
-        );
+    for mode in &["FFA", "Teams"] {
+        let count = games
+            .iter()
+            .filter(|g| g.joinable() && g.kind == LobbyKind::Matchmaking && g.game_mode == *mode)
+            .count();
+        if count < 4 {
+            for _ in 0..(4 - count) {
+                spawn_waiting_lobby(
+                    games,
+                    next_id,
+                    SpawnLobbyOpts {
+                        game_mode: mode.to_string(),
+                        kind: LobbyKind::Matchmaking,
+                        is_private: false,
+                        config_override: None,
+                        password: None,
+                        host_name: String::new(),
+                    },
+                );
+            }
+        }
     }
 }
 
@@ -307,42 +291,30 @@ fn spawn_bots_for_lobby(lobby_id: u64, bots_needed: usize) {
 }
 */
 
-/// Prefer counting-down lobby with lowest id, else lowest waiting id (matches DR client `primary_lobby_for_browser`).
 pub fn primary_lobby_id(games: &[ServerLobby], game_mode: &str) -> Option<u64> {
-    let mut counting: Vec<u64> = games
+    let mut joinable_lobbies: Vec<u64> = games
         .iter()
         .filter(|g| {
             g.joinable()
                 && g.kind == LobbyKind::Matchmaking
                 && g.game_mode == game_mode
-                && matches!(g.phase, LobbyPhase::CountingDown)
+                && g.players.len() < g.config.max_players as usize
         })
         .map(|g| g.id)
         .collect();
-    if !counting.is_empty() {
-        counting.sort_unstable();
-        return Some(counting[0]);
-    }
-    let mut waiting: Vec<u64> = games
-        .iter()
-        .filter(|g| {
-            g.joinable()
-                && g.kind == LobbyKind::Matchmaking
-                && g.game_mode == game_mode
-                && matches!(g.phase, LobbyPhase::Waiting)
-        })
-        .map(|g| g.id)
-        .collect();
-    if waiting.is_empty() {
+    if joinable_lobbies.is_empty() {
         return None;
     }
-    waiting.sort_unstable();
-    Some(waiting[0])
+    joinable_lobbies.sort_unstable();
+    Some(joinable_lobbies[0])
 }
 
 fn resolve_join_target(requested: Option<u64>, games: &[ServerLobby]) -> Option<u64> {
     if let Some(id) = requested {
-        if games.iter().any(|g| g.id == id && g.joinable()) {
+        if games
+            .iter()
+            .any(|g| g.id == id && g.joinable() && g.players.len() < g.config.max_players as usize)
+        {
             return Some(id);
         }
         return None;
@@ -457,13 +429,11 @@ pub fn join_player(
                     let new_lobby = games.last_mut().unwrap();
                     new_lobby.id = req; // Override the ID to match the rematch ID
                     req
-                } else if games
-                    .iter()
-                    .any(|g| g.id == req && g.kind == LobbyKind::Matchmaking)
-                {
+                } else {
                     log::info!(
-                        "[JOIN] Requested matchmaking lobby {} not joinable, falling back",
-                        req
+                        "[JOIN] Requested matchmaking lobby {} unavailable, falling back for {}",
+                        req,
+                        name
                     );
                     if let Some(fallback_id) = resolve_join_target(None, games) {
                         fallback_id
@@ -482,13 +452,6 @@ pub fn join_player(
                         );
                         games.last().unwrap().id
                     }
-                } else {
-                    log::warn!(
-                        "[JOIN] {} target lobby {} not found or not joinable",
-                        name,
-                        req
-                    );
-                    return Err("Lobby not found or not joinable".to_string());
                 }
             }
         }
@@ -517,17 +480,78 @@ pub fn join_player(
         }
     };
 
-    let lobby = match games.iter_mut().find(|g| g.id == lobby_id) {
-        Some(l) => l,
-        None => {
-            log::error!(
-                "[JOIN] Lobby {} disappeared between selection and join for player {}",
-                lobby_id,
-                name
-            );
-            return Err("Lobby not found".to_string());
-        }
+    let (is_joinable, is_full, is_matchmaking, game_mode) = match games.iter().find(|g| g.id == lobby_id) {
+        Some(g) => (
+            g.joinable(),
+            g.players.len() >= g.config.max_players as usize,
+            g.kind == LobbyKind::Matchmaking,
+            g.game_mode.clone(),
+        ),
+        None => return Err("Lobby not found".to_string()),
     };
+
+    if is_matchmaking && (!is_joinable || is_full) {
+        log::info!(
+            "[JOIN] Target lobby {} unavailable (joinable={}, full={}), directing {} to open lobby",
+            lobby_id,
+            is_joinable,
+            is_full,
+            name
+        );
+        let target_id = match primary_lobby_id(games, &game_mode) {
+            Some(id) if id != lobby_id => id,
+            _ => {
+                spawn_waiting_lobby(
+                    games,
+                    next_id,
+                    SpawnLobbyOpts {
+                        game_mode: game_mode.clone(),
+                        kind: LobbyKind::Matchmaking,
+                        is_private: false,
+                        config_override: None,
+                        password: None,
+                        host_name: String::new(),
+                    },
+                );
+                games.last().unwrap().id
+            }
+        };
+        let fallback_lobby = games.iter_mut().find(|g| g.id == target_id).unwrap();
+        let player_id = fallback_lobby
+            .players
+            .iter()
+            .map(|p| p.player_id)
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
+        let team = if fallback_lobby.game_mode == "Teams" {
+            let reds = fallback_lobby.players.iter().filter(|p| p.team == Some(Team::Red)).count();
+            let blues = fallback_lobby.players.iter().filter(|p| p.team == Some(Team::Blue)).count();
+            Some(if blues < reds { Team::Blue } else { Team::Red })
+        } else {
+            None
+        };
+        fallback_lobby.players.push(PlayerConnection {
+            name,
+            clan_tag,
+            player_id,
+            tx: client_tx,
+            download_progress: 0,
+            civilization,
+            leader,
+            database_account_id,
+            team,
+            ip,
+        });
+        return Ok((
+            target_id,
+            player_id,
+            fallback_lobby.config.map_name.clone(),
+            fallback_lobby.is_private,
+        ));
+    }
+
+    let lobby = games.iter_mut().find(|g| g.id == lobby_id).unwrap();
 
     if !lobby.joinable() {
         log::warn!(

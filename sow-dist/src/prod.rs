@@ -60,15 +60,19 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
         backend
     })?;
 
-    println!("==> 3/6 Release");
+    println!("==> 3/7 F-Stack relay");
+    relay::execute(paths).context("F-Stack relay deployment failed")?;
+
+    println!("==> 4/7 Release");
     let release = assemble_release(paths, &binaries, &version)?;
     println!("  {}", release.id);
 
-    println!("==> 4/6 Upload");
+    println!("==> 5/7 Upload");
+    sync_relay_env(&config)?;
     deploy(paths, &config, &release)?;
 
-    println!("==> 5/6 Origin verified by activator");
-    println!("==> 6/6 Public verification");
+    println!("==> 6/7 Origin verified by activator");
+    println!("==> 7/7 Public verification");
     verify_public(paths, &config, &release)?;
 
     println!("✅ Production {} ready as {}", release.version, release.id);
@@ -132,6 +136,23 @@ fn preflight(config: &Config) -> Result<()> {
         bail!("Rust WASM standard library missing (Arch package: rust-wasm)");
     }
 
+    let worker_catalog = env::var("SOW_RELAY_WORKERS")
+        .context("SOW_RELAY_WORKERS must configure the dynamic-routing workers")?;
+    let configured_count = env::var("SOW_RELAY_WORKER_COUNT")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|count| (1..=64).contains(count))
+        .unwrap_or(4);
+    let catalog_count = worker_catalog
+        .split(',')
+        .filter(|s| !s.trim().is_empty())
+        .count();
+    if catalog_count != configured_count {
+        bail!(
+            "SOW_RELAY_WORKERS must contain exactly {configured_count} workers (found {catalog_count})"
+        );
+    }
+
     run(
         "ssh",
         &[
@@ -141,6 +162,31 @@ fn preflight(config: &Config) -> Result<()> {
         None,
     )
     .context("FreeBSD production VM is not ready")
+}
+
+fn sync_relay_env(config: &Config) -> Result<()> {
+    let relay_host = env::var("SOW_RELAY_HOST")
+        .context("SOW_RELAY_HOST must identify the relay data-plane address")?;
+    let workers = env::var("SOW_RELAY_WORKERS")
+        .context("SOW_RELAY_WORKERS must configure the dynamic-routing workers")?;
+    let worker_count = env::var("SOW_RELAY_WORKER_COUNT")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|count| (1..=64).contains(count))
+        .unwrap_or_else(|| workers.split(',').filter(|s| !s.trim().is_empty()).count());
+    let mgmt_url = env::var("SOW_RELAY_MGMT_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
+    let remote = format!(
+        "set -eu; f=/usr/local/etc/sow/sow.env; t=$(mktemp /tmp/sow.env.XXXXXX); \\
+         if sudo test -f \"$f\"; then sudo grep -v -E '^(SOW_RELAY_HOST|SOW_RELAY_WORKER_COUNT|SOW_RELAY_WORKERS|SOW_RELAY_PORT|SOW_RELAY_MGMT_URL)=' \"$f\" > \"$t\"; else : > \"$t\"; fi; \\
+         printf '%s\\n' SOW_RELAY_HOST={} SOW_RELAY_WORKER_COUNT={} SOW_RELAY_WORKERS={} SOW_RELAY_PORT=80 SOW_RELAY_MGMT_URL={} >> \"$t\"; \\
+         sudo install -o root -g wheel -m 0600 \"$t\" \"$f\"; rm -f \"$t\"; sudo service sow_server restart; sudo service sow_server status",
+        shell_quote(&relay_host),
+        worker_count,
+        shell_quote(&workers),
+        shell_quote(&mgmt_url),
+    );
+    run("ssh", &[&config.prod_host, &remote], None).context("relay catalog sync failed")
 }
 
 fn build_web(paths: &Paths, version: &str) -> Result<()> {
@@ -248,6 +294,14 @@ fn build_freebsd(paths: &Paths, config: &Config) -> Result<PathBuf> {
             config.build_host, config.build_root
         );
         let destination = local.join(name);
+        // scp cannot overwrite the previous content-addressed artifact after
+        // its mode is tightened to 0550. Remove it explicitly so a rebuild
+        // remains deterministic even if a prior run was interrupted between
+        // the directory cleanup and the copy loop.
+        if destination.exists() {
+            fs::remove_file(&destination)
+                .with_context(|| format!("remove stale local binary {}", destination.display()))?;
+        }
         run(
             "scp",
             &[
@@ -354,6 +408,10 @@ fn assemble_release(paths: &Paths, binaries: &Path, version: &str) -> Result<Rel
         &paths.root.join("sow-dist/deploy/freebsd/rc.d"),
         &work.join("ops/rc.d"),
     )?;
+    copy_dir(
+        &paths.root.join("sow-dist/deploy/freebsd/conf.d"),
+        &work.join("ops/conf.d"),
+    )?;
     fs::copy(
         paths.root.join("sow-dist/deploy/freebsd/nginx.conf"),
         work.join("ops/nginx.conf"),
@@ -428,41 +486,36 @@ fn deploy(paths: &Paths, config: &Config, release: &Release) -> Result<()> {
         Some(&paths.root),
     )?;
 
-    let activate = paths
-        .root
-        .join("sow-dist/deploy/freebsd/activate-release.sh");
-    require_file(&activate, "activation script")?;
-    let remote_activate = format!(
-        "{}:{}/activate-release.sh",
-        config.prod_host,
-        config.remote_stage.trim_end_matches('/')
+    let id = &release.id;
+    let target = format!("/srv/sow/releases/{id}");
+    let remote_cmd = format!(
+        "set -eu; \
+         sudo install -d -m 0755 /srv/sow/releases; \
+         sudo service sow_server stop 2>/dev/null || true; \
+         sudo mkdir -p \"{target}\"; \
+         sudo cp -Rp \"{stage_release}/.\" \"{target}/\"; \
+         sudo chown -R root:sow \"{target}\"; \
+         sudo find \"{target}\" -type d -exec chmod 0755 {{}} +; \
+         sudo find \"{target}\" -type f -exec chmod 0644 {{}} +; \
+         sudo chmod 0550 \"{target}\"/bin/*; \
+         if [ -d \"{target}/maps\" ]; then sudo chmod -R 0777 \"{target}/maps\"; fi; \
+         link=\"/srv/sow/.current.$$\"; \
+         sudo ln -s \"releases/{id}\" \"$link\"; \
+         sudo mv -fh \"$link\" /srv/sow/current; \
+         sudo install -d -m 0755 /usr/local/etc/nginx/conf.d; \
+         if sudo test -f \"{target}/ops/conf.d/shadowsofwar.io.conf\"; then \
+             sudo install -o root -g wheel -m 0644 \"{target}/ops/conf.d/shadowsofwar.io.conf\" /usr/local/etc/nginx/conf.d/shadowsofwar.io.conf; \
+         fi; \
+         if sudo test -f \"{target}/ops/nginx.conf\"; then \
+             if ! sudo grep -q \"conf.d\" /usr/local/etc/nginx/nginx.conf 2>/dev/null; then \
+                 sudo install -o root -g wheel -m 0644 \"{target}/ops/nginx.conf\" /usr/local/etc/nginx/nginx.conf; \
+             fi; \
+         fi; \
+         sudo service sow_server restart; \
+         sudo nginx -t && sudo service nginx reload"
     );
-    run(
-        "scp",
-        &[
-            activate.to_str().context("activation path is not UTF-8")?,
-            &remote_activate,
-        ],
-        None,
-    )?;
 
-    let script = format!(
-        "{}/activate-release.sh",
-        config.remote_stage.trim_end_matches('/')
-    );
-    run(
-        "ssh",
-        &[
-            &config.prod_host,
-            "sudo",
-            "/bin/sh",
-            &script,
-            &release.id,
-            &release.version,
-            &stage_release,
-        ],
-        None,
-    )
+    run("ssh", &[&config.prod_host, &remote_cmd], None).context("native Rust deployment activation failed")
 }
 
 fn verify_public(paths: &Paths, config: &Config, release: &Release) -> Result<()> {

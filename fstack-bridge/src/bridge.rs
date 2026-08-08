@@ -36,13 +36,13 @@ use std::sync::{Arc, OnceLock};
 use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::sync::mpsc::Receiver;
-use tokio::sync::Notify;
+use tokio::sync::{oneshot, Notify};
 
 pub const MAX_EVENTS: usize = 512;
 /// Slot ceilings are intentionally small. The byte ceilings below are the
 /// actual memory budget; a burst must not reserve multiple GiB of buffers.
 pub const RX_CAP: usize = 4096;
-pub const TX_CAP: usize = 1024;
+pub const TX_CAP: usize = 65536;
 pub const RECYCLE_CAP: usize = RX_CAP;
 pub const POOL_CAP: usize = 1024;
 pub const MAX_TX_BYTES: usize = 64 * 1024 * 1024;
@@ -62,6 +62,19 @@ pub enum Ev {
 
 /// TX ring item: tokio -> ff_run.
 pub enum Cmd {
+    /// Bind a new F-Stack listener on the driver thread and register it with
+    /// kqueue. F-Stack's socket API is single-threaded, so management HTTP
+    /// must request this through the command ring instead of calling ff_bind
+    /// directly from Tokio.
+    Listen {
+        port: u16,
+        reply: oneshot::Sender<Result<bool, String>>,
+    },
+    /// Close a dynamic listener on the driver thread.
+    Unlisten {
+        port: u16,
+        reply: oneshot::Sender<Result<bool, String>>,
+    },
     Send {
         fd: c_int,
         generation: u64,
@@ -230,7 +243,10 @@ impl Drop for ZcRxGuard {
 
 /// kqueue + listening fd, owned by the example and read by the driver.
 pub static mut KQ: c_int = -1;
+/// Compatibility alias for older examples. Dynamic relays use LISTENERS.
 pub static mut LISTEN_FD: c_int = -1;
+/// Dynamic listener fd -> TCP port map. Only the ff_run driver mutates it.
+static mut LISTENERS: Option<HashMap<c_int, u16>> = None;
 
 static RX: OnceLock<Arc<ArrayQueue<Ev>>> = OnceLock::new();
 static TX: OnceLock<Arc<ArrayQueue<Cmd>>> = OnceLock::new();
@@ -353,6 +369,8 @@ pub fn setup() {
         PENDING_SEND_BYTES = 0;
         PENDING_SEND_PEAK = 0;
         FD_GEN = None;
+        LISTEN_FD = -1;
+        LISTENERS = Some(HashMap::new());
     }
 }
 
@@ -364,6 +382,30 @@ pub fn tx_ring() -> Arc<ArrayQueue<Cmd>> {
 }
 pub fn notify() -> Arc<Notify> {
     NOTIFY.get().expect("bridge::setup()").clone()
+}
+
+/// Queue a listener bind for the ff_run driver and await its result.
+pub async fn listen_port(port: u16) -> Result<bool, String> {
+    let (reply, result) = oneshot::channel();
+    TX.get()
+        .expect("bridge::setup()")
+        .push(Cmd::Listen { port, reply })
+        .map_err(|_| "bridge TX command ring full while binding listener".to_string())?;
+    result
+        .await
+        .map_err(|_| "ff_run driver stopped before binding listener".to_string())?
+}
+
+/// Queue a listener close for the ff_run driver and await its result.
+pub async fn unlisten_port(port: u16) -> Result<bool, String> {
+    let (reply, result) = oneshot::channel();
+    TX.get()
+        .expect("bridge::setup()")
+        .push(Cmd::Unlisten { port, reply })
+        .map_err(|_| "bridge TX command ring full while closing listener".to_string())?;
+    result
+        .await
+        .map_err(|_| "ff_run driver stopped before closing listener".to_string())?
 }
 
 /// Take a clean writable buffer using the normal small-frame size.
@@ -620,12 +662,17 @@ pub unsafe extern "C" fn driver_cb(_arg: *mut c_void) -> c_int {
         }
         let fd = ev.ident as c_int;
 
+        if fd == LISTEN_FD || is_listener(fd) {
+            if ev.flags & (EV_EOF | EV_ERROR) != 0 {
+                close_listener_fd(fd);
+            } else {
+                accept_pending(fd);
+            }
+            continue;
+        }
         if ev.flags & EV_EOF != 0 {
             close_fd(fd);
             continue;
-        }
-        if fd == LISTEN_FD {
-            accept_pending();
         } else if ev.filter == EVFILT_READ {
             zc_read(fd);
         } else if ev.filter == EVFILT_WRITE {
@@ -652,11 +699,11 @@ pub unsafe extern "C" fn driver_cb(_arg: *mut c_void) -> c_int {
     0
 }
 
-unsafe fn accept_pending() {
+unsafe fn accept_pending(listener_fd: c_int) {
     loop {
         let mut peer: sockaddr_in = mem::zeroed();
         let mut peerlen: socklen_t = mem::size_of::<sockaddr_in>() as socklen_t;
-        let nfd = crate::ffi::ff_accept(LISTEN_FD, &mut peer, &mut peerlen);
+        let nfd = crate::ffi::ff_accept(listener_fd, &mut peer, &mut peerlen);
         if nfd < 0 {
             break;
         }
@@ -671,6 +718,97 @@ unsafe fn accept_pending() {
         crate::ffi::ff_kevent(KQ, &kev, 1, ptr::null_mut(), 0, ptr::null());
         push_rx(Ev::Accept { fd: nfd, generation: ACCEPTS });
     }
+}
+
+unsafe fn listener_for_port(port: u16) -> Option<c_int> {
+    LISTENERS
+        .as_ref()?
+        .iter()
+        .find_map(|(fd, bound_port)| (*bound_port == port).then_some(*fd))
+}
+
+unsafe fn is_listener(fd: c_int) -> bool {
+    fd == LISTEN_FD
+        || LISTENERS
+            .as_ref()
+            .is_some_and(|listeners| listeners.contains_key(&fd))
+}
+
+unsafe fn register_listener(fd: c_int, port: u16) {
+    let listeners = LISTENERS.get_or_insert_with(HashMap::new);
+    listeners.insert(fd, port);
+    if LISTEN_FD < 0 {
+        LISTEN_FD = fd;
+    }
+}
+
+unsafe fn close_listener_fd(fd: c_int) {
+    if !is_listener(fd) {
+        return;
+    }
+    let mut kev: kevent = mem::zeroed();
+    ev_set(&mut kev, fd as usize, EVFILT_READ, EV_DELETE, 0, 0, ptr::null_mut());
+    crate::ffi::ff_kevent(KQ, &kev, 1, ptr::null_mut(), 0, ptr::null());
+    crate::ffi::ff_close(fd);
+    if let Some(listeners) = LISTENERS.as_mut() {
+        listeners.remove(&fd);
+        if LISTEN_FD == fd {
+            LISTEN_FD = listeners.keys().next().copied().unwrap_or(-1);
+        }
+    }
+}
+
+unsafe fn bind_listener(port: u16) -> Result<bool, String> {
+    if listener_for_port(port).is_some() {
+        return Ok(false);
+    }
+
+    let fd = crate::ffi::ff_socket(libc::AF_INET, libc::SOCK_STREAM, 0);
+    if fd < 0 {
+        return Err(format!("ff_socket failed for listener port {port}"));
+    }
+    let on: c_int = 1;
+    crate::ffi::ff_setsockopt(
+        fd,
+        libc::SOL_SOCKET,
+        libc::SO_REUSEADDR,
+        &on as *const _ as *const c_void,
+        mem::size_of::<c_int>() as socklen_t,
+    );
+    if crate::ffi::ff_ioctl(fd, FIONBIO as libc::c_ulong, &on) < 0 {
+        crate::ffi::ff_close(fd);
+        return Err(format!("ff_ioctl nonblocking failed for listener port {port}"));
+    }
+
+    let mut addr: sockaddr_in = mem::zeroed();
+    addr.sin_family = libc::AF_INET as _;
+    addr.sin_port = port.to_be();
+    addr.sin_addr.s_addr = libc::INADDR_ANY;
+    if crate::ffi::ff_bind(fd, &addr, mem::size_of::<sockaddr_in>() as socklen_t) < 0 {
+        crate::ffi::ff_close(fd);
+        return Err(format!("ff_bind failed for listener port {port}"));
+    }
+    if crate::ffi::ff_listen(fd, 512) < 0 {
+        crate::ffi::ff_close(fd);
+        return Err(format!("ff_listen failed for listener port {port}"));
+    }
+
+    let mut kev: kevent = mem::zeroed();
+    ev_set(&mut kev, fd as usize, EVFILT_READ, EV_ADD, 0, 512, ptr::null_mut());
+    if crate::ffi::ff_kevent(KQ, &kev, 1, ptr::null_mut(), 0, ptr::null()) < 0 {
+        crate::ffi::ff_close(fd);
+        return Err(format!("ff_kevent failed for listener port {port}"));
+    }
+    register_listener(fd, port);
+    Ok(true)
+}
+
+unsafe fn unbind_listener(port: u16) -> Result<bool, String> {
+    let Some(fd) = listener_for_port(port) else {
+        return Ok(false);
+    };
+    close_listener_fd(fd);
+    Ok(true)
 }
 
 unsafe fn zc_read(fd: c_int) {
@@ -747,6 +885,14 @@ unsafe fn drain_tx() {
     };
     while let Some(cmd) = tx.pop() {
         match cmd {
+            Cmd::Listen { port, reply } => {
+                let result = bind_listener(port);
+                let _ = reply.send(result);
+            }
+            Cmd::Unlisten { port, reply } => {
+                let result = unbind_listener(port);
+                let _ = reply.send(result);
+            }
             Cmd::Send {
                 fd,
                 generation,

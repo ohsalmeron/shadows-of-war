@@ -50,7 +50,11 @@ impl SowApp {
                     match server_msg {
                         ServerMessage::Start(start_msg) => {
                             log::info!(
-                                "Received ServerStartMessage; entering Splash phase immediately"
+                                "[CLIENT NET] 🎮 Received ServerStartMessage! lobby_id={:?}, player_id={:?}, relay_port={:?}, relay_host={:?}",
+                                start_msg.lobby_id,
+                                start_msg.my_player_id,
+                                start_msg.relay_port,
+                                start_msg.relay_host
                             );
                             self.sync_portal_room(false);
                             let not_splash = self.ui.app.phase != sow_ui_kit::ClientPhase::Splash;

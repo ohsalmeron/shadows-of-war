@@ -16,6 +16,9 @@
 use std::process::Command;
 
 fn main() {
+    let fstack_lib_dir = std::env::var("FSTACK_LIB_DIR")
+        .unwrap_or_else(|_| "/opt/sow-dpdk/lib".to_string());
+    println!("cargo:rerun-if-env-changed=FSTACK_LIB_DIR");
     let out = Command::new("pkg-config")
         .args(["--static", "--libs", "libdpdk"])
         .output();
@@ -25,7 +28,7 @@ fn main() {
                 println!("cargo:rustc-link-arg={}", tok);
             }
 
-            println!("cargo:rustc-link-search=native=/usr/local/lib");
+            println!("cargo:rustc-link-search=native={fstack_lib_dir}");
 
             // libfstack.a MUST be pulled in whole (fstack localizes all symbols
             // then re-exports only ff_api.symlist globals).

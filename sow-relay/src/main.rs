@@ -1,11 +1,16 @@
-//! sow-relay — monolithic game relay over the F-Stack DPDK bridge.
+//! sow-relay — one F-Stack worker process over the DPDK bridge.
 //!
-//! One process, one game port (default :80) on the data NIC. Lobbies are
-//! registered by the orchestrator (sow-server) via mgmt HTTP on 127.0.0.1:8080:
+//! Each lobby owns one dynamic TCP port in 1024..=65535. The destination port
+//! modulo the number of F-Stack queues selects the owning worker. Lobbies are
+//! registered by sow-server via that worker's kernel management HTTP port:
 //!
 //!     POST /internal/lobby/register   {lobby_id, tick_number, tick_rate_ms,
 //!                                      active_empty_secs, players, config?}
 //!     GET  /internal/lobbies          active lobby roster (ops/validation)
+//!
+//! `SOW_RELAY_BASE_MGMT_PORT` (legacy `SOW_RELAY_MGMT_PORT` remains accepted)
+//! selects the management port; game listeners are created dynamically when
+//! the owning worker accepts a lobby registration.
 //!
 //! Connections arrive via RSS on the game port. The first frame decides the
 //! role: `ClientMessage::Ready` → relay player routed to its registered lobby;
@@ -16,12 +21,8 @@
 //! finalize upload) is the sow-relay logic, now keyed by registry lookup.
 
 use fstack_bridge::bridge::{self, Ev};
-use fstack_bridge::ffi::{ev_set, kevent, EV_ADD, EVFILT_READ};
 use futures_util::{SinkExt, StreamExt};
-use libc::{
-    c_int, c_void, sockaddr_in, socklen_t, AF_INET, FIONBIO, INADDR_ANY, SOCK_STREAM, SOL_SOCKET,
-    SO_REUSEADDR,
-};
+use libc::{c_int, c_void};
 use log::{error, info, warn};
 use redis::Commands;
 use sow_core::game_config::{BotDifficulty, GameConfig};
@@ -33,10 +34,9 @@ use sow_core::protocol::{
 };
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::CString;
-use std::mem;
 use std::path::PathBuf;
 use std::ptr;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::error::TrySendError;
@@ -45,23 +45,79 @@ use tokio::io::AsyncWriteExt;
 use tokio::time::{interval, Duration};
 use tokio_tungstenite::tungstenite::Message;
 
-fn game_port() -> u16 {
-    std::env::var("SOW_RELAY_PORT")
+const DEFAULT_MGMT_PORT: u16 = 8080;
+const DYNAMIC_PORT_MIN: u16 = 1024;
+const DEFAULT_EXPECTED_WORKER_COUNT: u16 = 4;
+
+fn expected_worker_count() -> u16 {
+    std::env::var("SOW_RELAY_WORKER_COUNT")
         .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(80)
+        .and_then(|value| value.parse::<u16>().ok())
+        .filter(|count| (1..=64).contains(count))
+        .unwrap_or(DEFAULT_EXPECTED_WORKER_COUNT)
 }
 
-fn mgmt_port() -> u16 {
-    std::env::var("SOW_RELAY_MGMT_PORT")
+static WORKER_QUEUE_ID: AtomicU16 = AtomicU16::new(0);
+static WORKER_QUEUE_COUNT: AtomicU16 = AtomicU16::new(1);
+static LISTENER_COUNT: AtomicU64 = AtomicU64::new(0);
+static DISPATCH_LOCAL: AtomicU64 = AtomicU64::new(0);
+static DISPATCH_REDIRECTED: AtomicU64 = AtomicU64::new(0);
+static DISPATCH_UNMATCHED: AtomicU64 = AtomicU64::new(0);
+
+fn base_mgmt_port() -> u16 {
+    std::env::var("SOW_RELAY_BASE_MGMT_PORT")
+        .or_else(|_| std::env::var("SOW_RELAY_MGMT_PORT"))
         .ok()
         .and_then(|p| p.parse().ok())
-        .unwrap_or(8080)
+        .unwrap_or(DEFAULT_MGMT_PORT)
+}
+
+fn worker_port(base: u16, queue_id: u16) -> Result<u16, String> {
+    base.checked_add(queue_id)
+        .ok_or_else(|| format!("worker port overflow: base={base} queue={queue_id}"))
 }
 
 /// Advertised relay address (data PIP) written to `sow:relay:{lobby_id}`.
-fn relay_addr() -> String {
-    std::env::var("SOW_RELAY_ADDR").unwrap_or_else(|_| "127.0.0.1:80".to_string())
+fn relay_host() -> String {
+    if let Ok(host) = std::env::var("SOW_RELAY_HOST") {
+        if !host.trim().is_empty() {
+            return host.trim().to_string();
+        }
+    }
+    let addr = std::env::var("SOW_RELAY_ADDR").unwrap_or_else(|_| "127.0.0.1:80".to_string());
+    addr.rsplit_once(':')
+        .map(|(host, _)| host.to_string())
+        .unwrap_or(addr)
+}
+
+fn relay_addr(port: u16) -> String {
+    format!("{}:{port}", relay_host())
+}
+
+unsafe extern "C" fn relay_packet_dispatcher(
+    data: *mut c_void,
+    len: *mut u16,
+    queue_id: u16,
+    nb_queues: u16,
+) -> c_int {
+    if data.is_null() || len.is_null() {
+        return queue_id as c_int;
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(data as *const u8, *len as usize) };
+    match fstack_bridge::tcp_destination_queue(bytes, nb_queues, DYNAMIC_PORT_MIN) {
+        Some(target) if target == queue_id => {
+            DISPATCH_LOCAL.fetch_add(1, Ordering::Relaxed);
+            target as c_int
+        }
+        Some(target) => {
+            DISPATCH_REDIRECTED.fetch_add(1, Ordering::Relaxed);
+            target as c_int
+        }
+        None => {
+            DISPATCH_UNMATCHED.fetch_add(1, Ordering::Relaxed);
+            queue_id as c_int
+        }
+    }
 }
 
 /// Seconds without any frame before a connection is classified as the
@@ -71,7 +127,7 @@ const ORCHESTRATOR_GRACE_SECS: u64 = 3;
 /// Max consecutive missed ticks before dropping a slow client.
 /// At 10 ticks/s, 40 = 4 seconds of silence — fast enough that a zombie
 /// connection (backfill saturated, not draining its socket) cannot pin
-/// megabytes of turns in its per-client channel and OOM the monolithic relay.
+/// megabytes of turns in its per-client channel and OOM a relay worker.
 const MAX_MISSED_TICKS: u32 = 40;
 
 /// Per-connection outbound channel capacity. A smaller queue keeps the global
@@ -228,10 +284,8 @@ impl ReplayJournal {
                 live.pop_front();
             }
         }
-        self.tx
-            .send(ReplayCommand::Append(turn))
-            .await
-            .map_err(|_| "replay writer stopped".to_string())
+        let _ = self.tx.try_send(ReplayCommand::Append(turn));
+        Ok(())
     }
 
     async fn snapshot(&self) -> Vec<Turn> {
@@ -512,11 +566,12 @@ impl MatchTracker {
 
 // ---- registry / lobby state -------------------------------------------------
 
-/// Register body — the orchestrator's lobby shape (RelayConfig from sow-relay)
-/// plus the optional GameConfig for the coming simulation phase.
+/// Register body — the orchestrator's lobby shape plus the dynamic game port
+/// that this worker must bind before Start is broadcast.
 #[derive(serde::Deserialize, serde::Serialize)]
 struct RegisterBody {
     lobby_id: u64,
+    relay_port: u16,
     tick_number: u64,
     tick_rate_ms: f32,
     active_empty_secs: f32,
@@ -534,6 +589,7 @@ struct PlayerEntry {
 
 struct LobbyState {
     id: u64,
+    relay_port: u16,
     valid_players: HashMap<u16, String>,
     clients: Arc<Mutex<HashMap<u16, ClientChannel>>>,
     journal: Arc<ReplayJournal>,
@@ -552,74 +608,68 @@ fn main() {
         .collect();
     env_logger::init();
 
-    let gport = game_port();
-    let mport = mgmt_port();
+    let base_mgmt = base_mgmt_port();
+
+    // TAP dev loop: inject --no-pci + net_tap0 vdev (FSTACK_TAP=1). Empty for the physical VF.
+    let mut extra_eal: Vec<&str> = Vec::new();
+    if std::env::var("FSTACK_TAP").ok().as_deref() == Some("1") {
+        extra_eal.push("--no-pci");
+        extra_eal.push("--iova-mode=va"); // TAP vdev needs VA IOVA (no physical NIC for PA)
+        extra_eal.push("--vdev=net_tap0,iface=tap0");
+        info!("[sow-relay] TAP mode (--no-pci + --iova-mode=va + net_tap0)");
+    } else {
+        info!("[sow-relay] physical VF mode (config.ini [dpdk] allow=)");
+    }
 
     unsafe {
-        if let Err(code) = fstack_bridge::init(&prog_args, &[]) {
+        if let Err(code) = fstack_bridge::init(&prog_args, &extra_eal) {
             error!("[sow-relay] init failed (code={})", code);
             std::process::exit(1);
         }
 
         let (mut pid, mut qid, mut nbq, mut reta) = (0u16, 0u16, 0u16, 0u16);
-        if fstack_bridge::ff_rss_self_queue_info(&mut pid, &mut qid, &mut nbq, &mut reta) == 0 {
-            info!(
-                "[BOOT] proc_id={} queue_id={} nb_queues={} reta_size={}",
-                pid, qid, nbq, reta
-            );
+        if fstack_bridge::ff_rss_self_queue_info(&mut pid, &mut qid, &mut nbq, &mut reta) != 0 {
+            error!("[sow-relay] unable to inspect F-Stack worker queue");
+            std::process::exit(1);
         }
+        if qid >= nbq || nbq == 0 {
+            error!("[sow-relay] invalid F-Stack queue assignment: proc_id={pid} queue_id={qid} nb_queues={nbq}");
+            std::process::exit(1);
+        }
+        let expected_workers = expected_worker_count();
+        if nbq != expected_workers {
+            error!(
+                "[sow-relay] dynamic routing requires {} F-Stack queues, got {}",
+                expected_workers, nbq
+            );
+            std::process::exit(1);
+        }
+        if pid != qid {
+            error!(
+                "[sow-relay] F-Stack proc_id must equal queue_id for worker ownership: proc_id={pid} queue_id={qid}"
+            );
+            std::process::exit(1);
+        }
+        let mport = match worker_port(base_mgmt, qid) {
+            Ok(port) => port,
+            Err(e) => {
+                error!("[sow-relay] {e}");
+                std::process::exit(1);
+            }
+        };
+        WORKER_QUEUE_ID.store(qid, Ordering::Relaxed);
+        WORKER_QUEUE_COUNT.store(nbq, Ordering::Relaxed);
+        info!(
+            "[BOOT] proc_id={} queue_id={} nb_queues={} reta_size={} dynamic_ports={}..65535 mgmt_port={}",
+            pid, qid, nbq, reta, DYNAMIC_PORT_MIN, mport
+        );
+        fstack_bridge::ff_regist_packet_dispatcher(relay_packet_dispatcher);
 
         bridge::setup();
         bridge::KQ = fstack_bridge::ff_kqueue();
         if bridge::KQ < 0 {
             error!("[sow-relay] ff_kqueue failed");
             std::process::exit(1);
-        }
-
-        let lfd = fstack_bridge::ff_socket(AF_INET, SOCK_STREAM, 0);
-        if lfd < 0 {
-            error!("[sow-relay] ff_socket failed");
-            std::process::exit(1);
-        }
-        bridge::LISTEN_FD = lfd;
-
-        let on: c_int = 1;
-        fstack_bridge::ff_setsockopt(
-            lfd,
-            SOL_SOCKET,
-            SO_REUSEADDR,
-            &on as *const _ as *const c_void,
-            mem::size_of::<c_int>() as socklen_t,
-        );
-        fstack_bridge::ff_ioctl(lfd, FIONBIO as libc::c_ulong, &on);
-
-        let mut addr: sockaddr_in = mem::zeroed();
-        addr.sin_family = AF_INET as _;
-        addr.sin_port = gport.to_be();
-        addr.sin_addr.s_addr = INADDR_ANY;
-        if fstack_bridge::ff_bind(lfd, &addr, mem::size_of::<sockaddr_in>() as socklen_t) < 0 {
-            error!("[sow-relay] ff_bind :{} failed", gport);
-            std::process::exit(1);
-        }
-        if fstack_bridge::ff_listen(lfd, 512) < 0 {
-            error!("[sow-relay] ff_listen failed");
-            std::process::exit(1);
-        }
-
-        let mut kev: kevent = mem::zeroed();
-        ev_set(&mut kev, lfd as usize, EVFILT_READ, EV_ADD, 0, 512, ptr::null_mut());
-        fstack_bridge::ff_kevent(bridge::KQ, &kev, 1, ptr::null_mut(), 0, ptr::null());
-
-        // Redis: advertise the single game port once at boot.
-        {
-            let redis_con = redis_shared();
-            let mut guard = redis_con.lock().unwrap();
-            if let Some(ref mut con) = *guard {
-                if let Err(e) = con.sadd::<_, _, ()>("sow:ports", gport) {
-                    error!("[REDIS] SADD sow:ports {gport} FAILED: {e}");
-                }
-                info!("Registered port {} in Redis", gport);
-            }
         }
 
         let registry: Registry = Arc::new(RwLock::new(HashMap::new()));
@@ -629,13 +679,10 @@ fn main() {
             .enable_all()
             .build()
             .expect("tokio runtime");
-        rt.spawn(mgmt_http(registry.clone()));
+        rt.spawn(mgmt_http(registry.clone(), mport));
         rt.spawn(bridge_worker(registry.clone()));
 
-        info!(
-            "[BOOT] listening on :{}, mgmt :{}, entering ff_run",
-            gport, mport
-        );
+        info!("[BOOT] dynamic game listeners, mgmt :{}, entering ff_run", mport);
         fstack_bridge::ff_run(bridge::driver_cb, ptr::null_mut());
     }
 }
@@ -650,8 +697,55 @@ fn mgmt_listen() -> String {
     std::env::var("SOW_MGMT_LISTEN").unwrap_or_else(|_| "127.0.0.1".to_string())
 }
 
-async fn mgmt_http(registry: Registry) {
-    let mport = mgmt_port();
+async fn bind_game_port(port: u16) -> Result<(), String> {
+    if !(DYNAMIC_PORT_MIN..=u16::MAX).contains(&port) {
+        return Err(format!("relay port {port} outside dynamic range"));
+    }
+    let newly_bound = bridge::listen_port(port).await?;
+    if !newly_bound {
+        return Ok(());
+    }
+    LISTENER_COUNT.fetch_add(1, Ordering::Relaxed);
+
+    let redis_con = redis_shared();
+    tokio::task::spawn_blocking(move || {
+        let mut guard = redis_con.lock().unwrap();
+        if let Some(ref mut con) = *guard {
+            if let Err(e) = con.sadd::<_, _, ()>("sow:ports", port) {
+                error!("[REDIS] SADD sow:ports {port} FAILED: {e}");
+            }
+        }
+    });
+    Ok(())
+}
+
+async fn release_game_port(port: u16) {
+    let removed = match bridge::unlisten_port(port).await {
+        Ok(removed) => removed,
+        Err(e) => {
+            error!("[relay] failed to close dynamic listener {port}: {e}");
+            return;
+        }
+    };
+    if !removed {
+        return;
+    }
+    LISTENER_COUNT.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+        Some(n.saturating_sub(1))
+    }).ok();
+
+    let redis_con = redis_shared();
+    tokio::task::spawn_blocking(move || {
+        let mut guard = redis_con.lock().unwrap();
+        if let Some(ref mut con) = *guard {
+            if let Err(e) = con.srem::<_, _, ()>("sow:ports", port) {
+                error!("[REDIS] SREM sow:ports {port} FAILED: {e}");
+            }
+        }
+    });
+}
+
+async fn mgmt_http(registry: Registry, mport: u16) {
     let listen = mgmt_listen();
     let listener = match TcpListener::bind((listen.as_str(), mport)).await {
         Ok(l) => l,
@@ -746,13 +840,49 @@ async fn handle_http(
             if rb.lobby_id == 0 {
                 return ("400 Bad Request", serde_json::json!({ "error": "lobby_id required" }));
             }
-            let exists = registry.read().await.contains_key(&rb.lobby_id);
-            if !exists {
-                spawn_lobby(registry, rb).await;
+            if !(DYNAMIC_PORT_MIN..=u16::MAX).contains(&rb.relay_port) {
+                return (
+                    "400 Bad Request",
+                    serde_json::json!({ "error": "relay_port must be in 1024..=65535" }),
+                );
             }
+            let queue_id = WORKER_QUEUE_ID.load(Ordering::Relaxed);
+            let queue_count = WORKER_QUEUE_COUNT.load(Ordering::Relaxed);
+            if queue_count == 0 || rb.relay_port % queue_count != queue_id {
+                return (
+                    "409 Conflict",
+                    serde_json::json!({
+                        "error": "relay_port belongs to another worker",
+                        "relay_port": rb.relay_port,
+                        "worker": rb.relay_port % queue_count.max(1),
+                        "this_worker": queue_id,
+                    }),
+                );
+            }
+            if let Err(e) = bind_game_port(rb.relay_port).await {
+                return (
+                    "409 Conflict",
+                    serde_json::json!({ "error": e }),
+                );
+            }
+            let existing = registry.read().await.get(&rb.lobby_id).cloned();
+            if let Some(existing) = existing {
+                if existing.relay_port != rb.relay_port {
+                    return (
+                        "409 Conflict",
+                        serde_json::json!({ "error": "lobby already owns another relay port" }),
+                    );
+                }
+                return (
+                    "200 OK",
+                    serde_json::json!({ "ok": true, "existing": true }),
+                );
+            }
+            let port = rb.relay_port;
+            spawn_lobby(registry, rb).await;
             (
                 "200 OK",
-                serde_json::json!({ "ok": true, "existing": exists }),
+                serde_json::json!({ "ok": true, "existing": false, "relay_port": port }),
             )
         }
         ("GET", "/internal/lobbies") => {
@@ -762,12 +892,25 @@ async fn handle_http(
                 .map(|(id, st)| {
                     serde_json::json!({
                         "lobby_id": id,
+                        "relay_port": st.relay_port,
                         "humans": st.clients.try_lock().map(|c| c.len()).unwrap_or(0),
                     })
                 })
                 .collect();
             ("200 OK", serde_json::json!({ "lobbies": lobbies }))
         }
+        ("GET", "/internal/metrics") => (
+            "200 OK",
+            serde_json::json!({
+                "proc_id": std::process::id(),
+                "listener_count": LISTENER_COUNT.load(Ordering::Relaxed),
+                "queue_id": WORKER_QUEUE_ID.load(Ordering::Relaxed),
+                "queue_count": WORKER_QUEUE_COUNT.load(Ordering::Relaxed),
+                "dispatch_local": DISPATCH_LOCAL.load(Ordering::Relaxed),
+                "dispatch_redirected": DISPATCH_REDIRECTED.load(Ordering::Relaxed),
+                "dispatch_unmatched": DISPATCH_UNMATCHED.load(Ordering::Relaxed),
+            }),
+        ),
         ("POST", "/internal/lobby/close") => {
             let lobby_id: u64 = serde_json::from_slice::<serde_json::Value>(body)
                 .ok()
@@ -779,7 +922,11 @@ async fn handle_http(
                     serde_json::json!({ "error": "lobby_id required" }),
                 );
             }
-            let removed = registry.write().await.remove(&lobby_id).is_some();
+            let removed_state = registry.write().await.remove(&lobby_id);
+            let removed = removed_state.is_some();
+            if let Some(state) = removed_state {
+                release_game_port(state.relay_port).await;
+            }
             info!(
                 "[relay] lobby {} closed via mgmt API (removed={})",
                 lobby_id, removed
@@ -819,6 +966,7 @@ async fn spawn_lobby(registry: &Registry, body: RegisterBody) -> Arc<LobbyState>
 
     let state = Arc::new(LobbyState {
         id: body.lobby_id,
+        relay_port: body.relay_port,
         valid_players,
         clients,
         journal,
@@ -841,7 +989,7 @@ async fn spawn_lobby(registry: &Registry, body: RegisterBody) -> Arc<LobbyState>
     {
         let redis_con = redis_shared();
         let key = format!("sow:relay:{}", state.id);
-        let val = relay_addr();
+        let val = relay_addr(body.relay_port);
         tokio::task::spawn_blocking(move || {
             let mut guard = redis_con.lock().unwrap();
             if let Some(ref mut con) = *guard {
@@ -889,7 +1037,7 @@ async fn tick_task(
     // dropped when the match ends (GameOver / all clients leave) OR when it
     // outlives the maximum match duration. Backfill bots play indefinitely, so
     // without this ceiling a filled lobby keeps pushing to live history forever
-    // and the monolithic relay OOMs (5.5GB in ~4min under 50k bots).
+    // and a relay worker OOMs (5.5GB in ~4min under 50k bots).
     let match_started = std::time::Instant::now();
     let max_match_secs: u64 = std::env::var("SOW_RELAY_MATCH_MAX_SECS")
         .ok()
@@ -911,6 +1059,7 @@ async fn tick_task(
                         let lobby_json = state.tracker.lock().unwrap().lobby_json.clone();
                         trigger_match_finalize(state.id, lobby_json, state.journal.clone());
                         registry.write().await.remove(&state.id);
+                        release_game_port(state.relay_port).await;
                         break;
                     }
                     // No clients: skip turn serialization/broadcast entirely.
@@ -948,6 +1097,7 @@ async fn tick_task(
                     let lobby_json = state.tracker.lock().unwrap().lobby_json.clone();
                     trigger_match_finalize(state.id, lobby_json, state.journal.clone());
                     registry.write().await.remove(&state.id);
+                    release_game_port(state.relay_port).await;
                     break;
                 }
 
@@ -1010,13 +1160,13 @@ async fn tick_task(
                 if last_status.elapsed().as_secs() >= 10 {
                     info!(
                         "STATUS|{}|{}|{}|{}|{}|{}",
-                        state.id, std::process::id(), game_port(), humans, total_ticks, total_intents
+                        state.id, std::process::id(), state.relay_port, humans, total_ticks, total_intents
                     );
                     last_status = std::time::Instant::now();
                     // Heartbeat: refresh per-lobby Redis TTL.
                     let redis_con = redis_shared();
                     let key = format!("sow:relay:{}", state.id);
-                    let val = relay_addr();
+                    let val = relay_addr(state.relay_port);
                     tokio::task::spawn_blocking(move || {
                         let mut guard = redis_con.lock().unwrap();
                         if let Some(ref mut con) = *guard {
@@ -1203,6 +1353,17 @@ async fn ws_task(
             orchestrator_task(&mut write, &mut read, &registry).await;
             return;
         }
+    }
+
+    // A connection that sent a player frame but did not resolve to a lobby
+    // owned by this worker is never a valid game session. Close it explicitly
+    // instead of leaving an unowned socket in the worker's event loop. This is
+    // the cross-worker ownership guard: the client must reconnect using the
+    // relay endpoint carried by ServerStartMessage.
+    if role.is_none() {
+        warn!("[relay] rejecting unowned/invalid player connection fd={fd}");
+        let _ = write.send(Message::Close(None)).await;
+        return;
     }
 
     // Relay player: the per-connection loop, routed to its lobby.
@@ -1504,5 +1665,20 @@ fn lobby_info(state: &Arc<LobbyState>) -> LobbyInfo {
         nation_count: 0,
         bot_difficulty: BotDifficulty::Vanilla,
         kind: LobbyKind::Matchmaking,
+    }
+}
+
+#[cfg(test)]
+mod dispatcher_tests {
+    use super::{try_ready_register, Registry};
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use tokio::sync::{mpsc, RwLock};
+
+    #[tokio::test]
+    async fn rejects_ready_for_lobby_not_owned_by_worker() {
+        let registry: Registry = Arc::new(RwLock::new(HashMap::new()));
+        let (tx, _rx) = mpsc::channel(1);
+        assert!(try_ready_register(&registry, 42, 7, &tx).await.is_none());
     }
 }

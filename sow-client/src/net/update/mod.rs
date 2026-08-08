@@ -180,20 +180,26 @@ impl SowApp {
                 relay_port,
                 relay_host
             );
-            // The monolithic DPDK relay is reachable directly at
-            // ws://{relay_host}:{relay_port}/ws/ — no nginx, no TLS path.
-            if let Some(host) = relay_host {
+            
+            let is_secure = self.net.orchestrator_url.starts_with("wss://")
+                || self.net.ws_url.starts_with("wss://")
+                || self.net.ws_url.contains("shadowsofwar.io");
+
+            if is_secure {
+                let domain = if let Ok(parsed) = url::Url::parse(&self.net.orchestrator_url) {
+                    parsed.host_str().unwrap_or("shadowsofwar.io").to_string()
+                } else {
+                    "shadowsofwar.io".to_string()
+                };
+                self.net.ws_url = format!("wss://{}/relay/{}/ws/", domain, relay_port);
+            } else if let Some(host) = relay_host {
                 self.net.ws_url = format!("ws://{}:{}/ws/", host, relay_port);
             } else if let Ok(mut url) = url::Url::parse(&self.net.ws_url) {
-                // Legacy: derive from the orchestrator URL.
-                if url.scheme() == "wss" || self.net.ws_url.contains("shadowsofwar.io") {
-                    let new_path = format!("/relay/{}/ws/", relay_port);
-                    url.set_path(&new_path);
-                } else {
-                    let _ = url.set_port(Some(relay_port));
-                }
+                let _ = url.set_port(Some(relay_port));
                 self.net.ws_url = url.to_string();
             }
+
+            log::info!("[CLIENT NET] 📡 Handoff URL resolved to: {}", self.net.ws_url);
             self.net.client = None; // Drop orchestrator connection
             self.ui.app.main_menu_state.is_connected = false; // Reset connection status during handoff
             self.ui.app.main_menu_state.server_address = self.net.ws_url.clone();

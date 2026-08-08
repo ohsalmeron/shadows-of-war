@@ -290,7 +290,7 @@ pub struct ServerStartMessage {
     pub missed_turns: Vec<Turn>,
     pub map_data: Option<Vec<u8>>, // currently unused (maps fetched via HTTP)
     pub relay_port: Option<u16>,
-    /// Direct relay host (data PIP) for the monolithic DPDK relay. None means
+    /// Direct relay host (data PIP) for the assigned DPDK worker. None means
     /// "connect to the relay on the orchestrator host" (legacy nginx path).
     #[serde(default)]
     pub relay_host: Option<String>,
