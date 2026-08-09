@@ -157,11 +157,13 @@ application-state namespaces were then removed:
   `server.log` and 8.6 MiB `database.log` were truncated; system journal
   history was left intact and should be queried from the checkpoint timestamp.
 
-Post-reset verification: IONOS has zero account, identity, analytics, and
-match keys; zero replay files; and static catalog counts of 1,062 geo plus 12
-leader records.  Azure has zero replay/journal files, zero Redis keys, empty
-dead-letter queue, four active workers with `NRestarts=0`, and empty lobby
-rosters on ports 8080–8083.
+At the immediate post-reset check IONOS had zero account, identity, analytics,
+and match keys; zero replay files; and static catalog counts of 1,062 geo plus
+12 leader records.  A new `local:guest_d88…` account was created at
+08:31:25Z during the restart window (profile still has zero matches); it is
+new post-reset activity, not retained state.  Azure remains at zero replay /
+journal files, zero Redis keys, empty dead-letter queue, four active workers
+with `NRestarts=0`, and empty lobby rosters on ports 8080–8083.
 
 The reset was deployed and restarted through `./sow p` as release
 `0.1.2-6884b4ebcafc`.  To roll back code, use `git revert <this-commit>` and
