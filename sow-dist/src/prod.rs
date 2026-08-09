@@ -39,6 +39,11 @@ struct Release {
 
 pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
     let config = Config::load();
+    let db_secret = env::var("SOW_DB_SECRET")
+        .context("SOW_DB_SECRET must be provided via ignored sow-dist/.env")?;
+    if db_secret.trim().is_empty() {
+        bail!("SOW_DB_SECRET must not be empty");
+    }
     let version = version(paths, bump)?;
 
     println!("==> Production {version}");
@@ -69,6 +74,7 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
 
     println!("==> 5/7 Upload");
     sync_relay_env(&config)?;
+    sync_prod_secret(&config, &db_secret)?;
     deploy(paths, &config, &release)?;
 
     println!("==> 6/7 Origin verified by activator");
@@ -77,6 +83,25 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
 
     println!("✅ Production {} ready as {}", release.version, release.id);
     Ok(())
+}
+
+fn sync_prod_secret(config: &Config, secret: &str) -> Result<()> {
+    let remote_secret = format!("/tmp/sow-db-secret-{}", std::process::id());
+    stage_secret(&config.prod_host, secret, &remote_secret)?;
+    let remote = format!(
+        "set -eu; secret_file={}; f=/usr/local/etc/sow/sow.env; t=$(mktemp /tmp/sow.env.XXXXXX); \\
+         trap 'rm -f \"$t\" \"$secret_file\"' EXIT; \\
+         chmod 600 \"$secret_file\"; \\
+         for pid in $(sudo ps -axo pid= -o command= | awk '$2 == \"daemon:\" && index($0, \"/root/shadowsofwar/sow-database\") {{print $1}}'); do sudo kill -TERM \"$pid\"; done; \\
+         sleep 1; \\
+         for pid in $(sudo ps -axo pid= -o command= | awk '$2 == \"/root/shadowsofwar/sow-database\" {{print $1}}'); do sudo kill -TERM \"$pid\"; done; \\
+         if sudo test -f \"$f\"; then sudo grep -v '^SOW_DB_SECRET=' \"$f\" > \"$t\"; else : > \"$t\"; fi; \\
+         printf 'SOW_DB_SECRET=' >> \"$t\"; cat \"$secret_file\" >> \"$t\"; printf '\\n' >> \"$t\"; \\
+         sudo install -o root -g wheel -m 0600 \"$t\" \"$f\"; \\
+         sudo service sow_database restart; sudo service sow_database status",
+        shell_quote(&remote_secret)
+    );
+    run("ssh", &[&config.prod_host, &remote], None).context("production secret sync failed")
 }
 
 fn env_or(name: &str, default: &str) -> String {
@@ -492,6 +517,7 @@ fn deploy(paths: &Paths, config: &Config, release: &Release) -> Result<()> {
         "set -eu; \
          sudo install -d -m 0755 /srv/sow/releases; \
          sudo service sow_server stop 2>/dev/null || true; \
+         sudo service sow_database stop 2>/dev/null || true; \
          sudo mkdir -p \"{target}\"; \
          sudo cp -Rp \"{stage_release}/.\" \"{target}/\"; \
          sudo chown -R root:sow \"{target}\"; \
@@ -511,6 +537,8 @@ fn deploy(paths: &Paths, config: &Config, release: &Release) -> Result<()> {
                  sudo install -o root -g wheel -m 0644 \"{target}/ops/nginx.conf\" /usr/local/etc/nginx/nginx.conf; \
              fi; \
          fi; \
+         sudo service sow_database start; \
+         sudo service sow_database status; \
          sudo service sow_server restart; \
          sudo nginx -t && sudo service nginx reload"
     );

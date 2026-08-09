@@ -164,7 +164,7 @@ fn trigger_match_finalize(match_id: u64, lobby_json: String, match_history: Arc<
         let db_url =
             std::env::var("SOW_DB_URL").unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
         let secret = std::env::var("SOW_DB_SECRET")
-            .unwrap_or_else(|_| "sow_db_dev_secret_123_change_me_in_prod".to_string());
+            .expect("SOW_DB_SECRET must be set; refusing insecure default");
         let url = format!("{}/internal/match-finalize", db_url.trim_end_matches('/'));
 
         let payload = serde_json::json!({

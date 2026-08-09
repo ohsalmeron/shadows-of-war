@@ -35,6 +35,19 @@ fn run(cmd: &str, args: &[&str], cwd: Option<&Path>) -> Result<()> {
     Ok(())
 }
 
+/// Stage a secret on a remote host without putting its value in the command
+/// line or the pipeline log. The caller's remote command is responsible for
+/// consuming and deleting the file.
+fn stage_secret(host: &str, secret: &str, remote_path: &str) -> Result<()> {
+    let mut file = tempfile::NamedTempFile::new().context("create secret staging file")?;
+    file.write_all(secret.as_bytes())?;
+    file.as_file().sync_all()?;
+    fs::set_permissions(file.path(), fs::Permissions::from_mode(0o600))?;
+    let local_path = file.path().to_str().context("secret path is not UTF-8")?;
+    let destination = format!("{host}:{remote_path}");
+    run("scp", &["-q", local_path, &destination], None)
+}
+
 fn output(cmd: &str, args: &[&str]) -> Result<String> {
     let o = Command::new(cmd).args(args).output()?;
     if !o.status.success() {

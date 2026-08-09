@@ -229,6 +229,57 @@ async fn register_relay(rc: &RelayCandidate, worker: &RelayWorker) -> Result<(),
     Err(format!("relay registration failed for lobby {}", rc.lobby_id))
 }
 
+/// Register the account-backed match before the relay is exposed to clients.
+/// This ordering prevents a fast match from finalizing before Valkey contains
+/// its player list, which otherwise loses statistics as `Match not registered`.
+async fn register_match_start(rc: &RelayCandidate) -> Result<(), String> {
+    if rc.player_ids.is_empty() {
+        return Ok(());
+    }
+    let db_base_url = std::env::var("SOW_DB_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
+    let secret_token = std::env::var("SOW_DB_SECRET")
+        .map_err(|_| "SOW_DB_SECRET missing while registering match".to_string())?;
+    let url = format!("{}/match/start", db_base_url.trim_end_matches('/'));
+    let payload = serde_json::json!({
+        "match_id": rc.lobby_id.to_string(),
+        "player_ids": rc.player_ids,
+    });
+    let client = reqwest::Client::new();
+
+    for attempt in 1..=5 {
+        match client
+            .post(&url)
+            .header("Authorization", format!("Bearer {secret_token}"))
+            .json(&payload)
+            .send()
+            .await
+        {
+            Ok(res) if res.status().is_success() => {
+                log::info!("[DB] Match {} registered before relay handoff", rc.lobby_id);
+                return Ok(());
+            }
+            Ok(res) => {
+                log::warn!(
+                    "[DB] match {} registration returned HTTP {} (attempt {attempt}/5)",
+                    rc.lobby_id,
+                    res.status()
+                );
+            }
+            Err(e) => {
+                log::warn!(
+                    "[DB] match {} registration failed: {e} (attempt {attempt}/5)",
+                    rc.lobby_id
+                );
+            }
+        }
+        if attempt < 5 {
+            tokio::time::sleep(Duration::from_secs(2u64.pow(attempt as u32))).await;
+        }
+    }
+    Err(format!("database match registration failed for lobby {}", rc.lobby_id))
+}
+
 // =============================================================================
 // RELAY INTEGRATION — worker-per-queue DPDK relay (no per-lobby processes)
 // =============================================================================
@@ -309,6 +360,15 @@ struct RelayCandidate {
 async fn main() {
     env_logger::init();
 
+    if std::env::var("SOW_DB_SECRET")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .is_none()
+    {
+        log::error!("SOW_DB_SECRET must be set; refusing insecure default");
+        return;
+    }
+
     let redis_url =
         std::env::var("SOW_REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1/".to_string());
     let redis_client = redis::Client::open(redis_url).expect("Failed to connect to Redis");
@@ -363,29 +423,30 @@ async fn main() {
     let relay_ports_for_tick = relay_ports.clone();
     tokio::spawn(async move {
         while let Some(rc) = relay_rx.recv().await {
-            // DB match registration
-            if !rc.player_ids.is_empty() {
-                let match_id = rc.lobby_id.to_string();
-                let pids = rc.player_ids.clone();
-                tokio::spawn(async move {
-                    let db_base_url = std::env::var("SOW_DB_URL")
-                        .unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
-                    let secret_token = std::env::var("SOW_DB_SECRET").unwrap_or_else(|_| {
-                        "sow_db_dev_secret_123_change_me_in_prod".to_string()
-                    });
-                    let url = format!("{}/match/start", db_base_url.trim_end_matches('/'));
-                    let _ = reqwest::Client::new()
-                        .post(&url)
-                        .header("Authorization", format!("Bearer {}", secret_token))
-                        .json(&serde_json::json!({ "match_id": match_id, "player_ids": pids }))
-                        .send()
-                        .await;
-                });
-            }
-
             let workers = relay_workers_for_task.clone();
             let relay_ports = relay_ports_for_task.clone();
             tokio::spawn(async move {
+                if let Err(e) = register_match_start(&rc).await {
+                    log::error!(
+                        "[DB] lobby {} will not start without match registration: {}",
+                        rc.lobby_id, e
+                    );
+                    relay_ports.lock().await.release(rc.relay_port);
+                    let closed_msg = sow_core::protocol::ServerLobbyClosedMessage {
+                        lobby_id: rc.lobby_id,
+                        reason: format!("DB_REGISTRATION_FAILED: {e}"),
+                        rematch_lobby_id: None,
+                    };
+                    if let Ok(closed_json) = bincode::serialize(
+                        &sow_core::protocol::ServerMessage::LobbyClosed(closed_msg),
+                    ) {
+                        for (_player_id, tx) in &rc.players_tx {
+                            let _ = tx.try_send(closed_json.clone());
+                        }
+                    }
+                    return;
+                }
+
                 let Some(worker) = workers.get(rc.worker_index) else {
                     log::error!(
                         "[RELAY] worker index {} missing for lobby {} port {}",

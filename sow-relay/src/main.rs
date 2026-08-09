@@ -232,6 +232,10 @@ const RX_DEADLINE_SECS: u64 = 45;
 /// allowing replay backlog to grow with the match duration.
 const REPLAY_QUEUE_CAP: usize = 256;
 const LIVE_HISTORY_CAP: usize = 512;
+/// Hard ceiling for one replay artifact. The current production replays are
+/// below 1 MiB; this keeps a malformed or runaway match from becoming a RAM
+/// or disk amplification vector.
+const MAX_REPLAY_BYTES: u64 = 16 * 1024 * 1024;
 
 // ---- relay event plumbing ---------------------------------------------------
 
@@ -314,8 +318,20 @@ fn log_player_stats(
 enum ReplayCommand {
     Append(Turn),
     Finalize {
-        reply: oneshot::Sender<Result<Vec<u8>, String>>,
+        reply: oneshot::Sender<Result<ReplayArtifact, String>>,
     },
+}
+
+struct ReplayArtifact {
+    bytes: Vec<u8>,
+    path: PathBuf,
+}
+
+#[derive(serde::Serialize)]
+struct ReplayFinalizePayload<'a> {
+    match_id: &'a str,
+    lobby_json: &'a str,
+    replay_data: &'a [u8],
 }
 
 struct ReplayJournal {
@@ -350,14 +366,18 @@ impl ReplayJournal {
         if self.failed.load(Ordering::Acquire) {
             return Err("replay writer failed".to_string());
         }
-        {
-            let mut live = self.live.lock().await;
-            live.push_back(turn.clone());
-            while live.len() > LIVE_HISTORY_CAP {
-                live.pop_front();
-            }
+        // Backpressure is intentional: dropping an append would silently
+        // corrupt the replay. The bounded channel prevents an unbounded RAM
+        // queue while the writer catches up.
+        self.tx
+            .send(ReplayCommand::Append(turn.clone()))
+            .await
+            .map_err(|_| "replay writer stopped".to_string())?;
+        let mut live = self.live.lock().await;
+        live.push_back(turn);
+        while live.len() > LIVE_HISTORY_CAP {
+            live.pop_front();
         }
-        let _ = self.tx.try_send(ReplayCommand::Append(turn));
         Ok(())
     }
 
@@ -365,7 +385,7 @@ impl ReplayJournal {
         self.live.lock().await.iter().cloned().collect()
     }
 
-    async fn finalize(&self) -> Result<Vec<u8>, String> {
+    async fn finalize(&self) -> Result<ReplayArtifact, String> {
         if self.finalized.swap(true, Ordering::AcqRel) {
             return Err("replay journal already finalized".to_string());
         }
@@ -402,6 +422,7 @@ async fn replay_writer(
         }
     };
 
+    let mut journal_bytes = 0u64;
     while let Some(command) = rx.recv().await {
         match command {
             ReplayCommand::Append(turn) => {
@@ -414,6 +435,15 @@ async fn replay_writer(
                     }
                 };
                 let len = encoded.len() as u32;
+                let record_bytes = 4u64.saturating_add(encoded.len() as u64);
+                if journal_bytes.saturating_add(record_bytes) > MAX_REPLAY_BYTES {
+                    failed.store(true, Ordering::Release);
+                    error!(
+                        "[replay] journal {:?} exceeded {} byte limit",
+                        journal_path, MAX_REPLAY_BYTES
+                    );
+                    break;
+                }
                 if file.write_all(&len.to_le_bytes()).await.is_err()
                     || file.write_all(&encoded).await.is_err()
                 {
@@ -421,11 +451,22 @@ async fn replay_writer(
                     error!("[replay] append journal {:?} failed", journal_path);
                     break;
                 }
+                journal_bytes = journal_bytes.saturating_add(record_bytes);
             }
             ReplayCommand::Finalize { reply } => {
                 let result = async {
                     file.flush().await.map_err(|e| e.to_string())?;
                     file.sync_all().await.map_err(|e| e.to_string())?;
+                    let size = tokio::fs::metadata(&journal_path)
+                        .await
+                        .map_err(|e| e.to_string())?
+                        .len();
+                    if size > MAX_REPLAY_BYTES {
+                        return Err(format!(
+                            "replay journal exceeds {} byte limit",
+                            MAX_REPLAY_BYTES
+                        ));
+                    }
                     let bytes = tokio::fs::read(&journal_path)
                         .await
                         .map_err(|e| e.to_string())?;
@@ -440,7 +481,10 @@ async fn replay_writer(
                         .await
                         .map_err(|e| e.to_string())?;
                     let _ = tokio::fs::remove_file(&journal_path).await;
-                    Ok(canonical)
+                    Ok(ReplayArtifact {
+                        bytes: canonical,
+                        path: replay_path,
+                    })
                 }
                 .await;
                 if result.is_err() {
@@ -488,26 +532,44 @@ fn trigger_match_finalize(match_id: u64, lobby_json: String, journal: Arc<Replay
             Ok(permit) => permit,
             Err(_) => return,
         };
-        let replay_bytes = match journal.finalize().await {
-            Ok(bytes) => bytes,
+        let artifact = match journal.finalize().await {
+            Ok(artifact) => artifact,
             Err(e) => {
                 error!("Failed to finalize replay journal for {match_id}: {e}");
                 return;
             }
         };
+        let replay_path = artifact.path.clone();
+        let metadata_path = replay_path.with_extension("json");
+        let metadata_tmp = replay_path.with_extension("json.tmp");
+        if let Err(e) = async {
+            tokio::fs::write(&metadata_tmp, lobby_json.as_bytes())
+                .await
+                .map_err(|e| e.to_string())?;
+            tokio::fs::rename(&metadata_tmp, &metadata_path)
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok::<(), String>(())
+        }
+        .await
+        {
+            error!("Failed to write replay metadata for {match_id}: {e}");
+            let _ = tokio::fs::remove_file(&metadata_tmp).await;
+            return;
+        }
 
         let db_url =
             std::env::var("SOW_DB_URL").unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
         let secret = std::env::var("SOW_DB_SECRET")
-            .unwrap_or_else(|_| "sow_db_dev_secret_123_change_me_in_prod".to_string());
+            .expect("SOW_DB_SECRET validated at relay startup");
         let url = format!("{}/internal/match-finalize", db_url.trim_end_matches('/'));
 
-        // ponytail: Raw replay bytes are passed directly to avoid any heavy relay processing
-        let payload = serde_json::json!({
-            "match_id": match_id.to_string(),
-            "lobby_json": Some(lobby_json.clone()),
-            "replay_data": Some(replay_bytes.clone()),
-        });
+        let match_id_string = match_id.to_string();
+        let payload = ReplayFinalizePayload {
+            match_id: &match_id_string,
+            lobby_json: &lobby_json,
+            replay_data: &artifact.bytes,
+        };
 
         let mut success = false;
         let client = reqwest::Client::new();
@@ -546,10 +608,24 @@ fn trigger_match_finalize(match_id: u64, lobby_json: String, journal: Arc<Replay
             }
         }
 
-        if !success {
+        if success {
+            if let Err(e) = tokio::fs::remove_file(&replay_path).await {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    warn!("[replay] cleanup {:?} failed: {}", replay_path, e);
+                }
+            }
+            if let Err(e) = tokio::fs::remove_file(&metadata_path).await {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    warn!("[replay] cleanup {:?} failed: {}", metadata_path, e);
+                }
+            }
+        } else {
             error!("[CRITICAL] Failed to upload match {match_id} to database after 5 attempts.");
 
-            // Try local Valkey dead-letter fallback
+            // Keep only a small pointer in Valkey. The replay and metadata
+            // remain in the bounded local spool for recovery; placing the raw
+            // bytes in Valkey duplicates the payload in RAM and caused the
+            // historical relay OOM.
             let url = std::env::var("SOW_VALKEY_URL")
                 .or_else(|_| std::env::var("SOW_REDIS_URL"))
                 .unwrap_or_else(|_| "redis://127.0.0.1/".to_string());
@@ -558,12 +634,15 @@ fn trigger_match_finalize(match_id: u64, lobby_json: String, journal: Arc<Replay
             if let Ok(client) = redis::Client::open(url) {
                 if let Ok(mut con) = client.get_connection() {
                     let key = "sow:match_history:dead_letter";
-                    let fallback_payload =
-                        bincode::serialize(&(lobby_json.clone(), replay_bytes.clone()))
-                            .unwrap_or_default();
+                    let fallback_payload = serde_json::to_vec(&serde_json::json!({
+                        "match_id": match_id,
+                        "replay_path": replay_path.to_string_lossy(),
+                        "metadata_path": metadata_path.to_string_lossy(),
+                    }))
+                    .unwrap_or_default();
                     if let Ok(()) = con.lpush::<_, _, ()>(key, fallback_payload) {
                         warn!(
-                            "[FALLBACK] Saved raw replay backup in local Valkey queue under key '{}' for match {match_id}",
+                            "[FALLBACK] Saved replay pointer in local Valkey queue under key '{}' for match {match_id}",
                             key
                         );
                         valkey_success = true;
@@ -572,16 +651,10 @@ fn trigger_match_finalize(match_id: u64, lobby_json: String, journal: Arc<Replay
             }
 
             if !valkey_success {
-                // Extreme backup: save directly to host disk so DevOps can recover it easily
-                let backup_dir = "/tmp/sow_crash_replays";
                 error!(
-                    "[ALERT] Valkey local fallback also failed! Dumping raw payload directly to local disk at {} for match {match_id}",
-                    backup_dir
+                    "[ALERT] Valkey fallback failed; replay remains at {:?} and metadata at {:?}",
+                    replay_path, metadata_path
                 );
-                let _ = std::fs::create_dir_all(backup_dir);
-                let _ = std::fs::write(format!("{}/{}.json", backup_dir, match_id), &lobby_json);
-                let _ =
-                    std::fs::write(format!("{}/{}.replay", backup_dir, match_id), &replay_bytes);
             }
         }
     });
@@ -675,6 +748,15 @@ type Registry = Arc<RwLock<HashMap<u64, Arc<LobbyState>>>>;
 // ---- main (bridge boot — same shape as the fstack-bridge examples) ----------
 
 fn main() {
+    if std::env::var("SOW_DB_SECRET")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .is_none()
+    {
+        eprintln!("SOW_DB_SECRET must be set; refusing insecure default");
+        std::process::exit(78);
+    }
+
     let prog_args: Vec<CString> = std::env::args()
         .filter(|a| !a.starts_with("--fstack-"))
         .map(|a| CString::new(a).unwrap())

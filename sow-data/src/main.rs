@@ -3,7 +3,7 @@ use sow_data::{crazygames, db};
 
 use axum::{
     Json, Router,
-    extract::{Query, State},
+    extract::{DefaultBodyLimit, Query, State},
     http::{HeaderMap, StatusCode, header},
     response::IntoResponse,
     routing::{get, post},
@@ -12,7 +12,11 @@ use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
 use tower_http::cors::{Any, CorsLayer};
+
+const MAX_REPLAY_BYTES: usize = 16 * 1024 * 1024;
+const MAX_REPLAY_REQUEST_BYTES: usize = 32 * 1024 * 1024;
 
 struct AppState {
     db: PlayerDb,
@@ -106,7 +110,9 @@ async fn main() {
         .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
 
     let secret_token = std::env::var("SOW_DB_SECRET")
-        .unwrap_or_else(|_| "sow_db_dev_secret_123_change_me_in_prod".to_string());
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .expect("SOW_DB_SECRET must be set; refusing insecure default");
 
     let crazygames_api_key = std::env::var("CRAZYGAMES_API_KEY").ok();
 
@@ -183,6 +189,7 @@ async fn main() {
         .route("/internal/save", post(handle_direct_save))
         .route("/internal/link", post(handle_link_identity))
         .route("/internal/stats", get(handle_internal_stats))
+        .layer(DefaultBodyLimit::max(MAX_REPLAY_REQUEST_BYTES))
         .layer(cors)
         .with_state(state);
 
@@ -336,28 +343,66 @@ async fn handle_match_finalize(
             .into_response();
     }
 
-    // ponytail: High-performance streaming of raw replay bytes directly to ZFS disk storage
+    // Commit the replay before finalizing statistics. The bounded request and
+    // replay sizes prevent a malformed match from becoming an unbounded
+    // allocation, while fsync+rename prevents a stats ACK from preceding a
+    // durable replay.
     if let Some(ref replay_bytes) = payload.replay_data {
+        if replay_bytes.len() > MAX_REPLAY_BYTES {
+            return (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                Json(ErrorResponse {
+                    error: format!("replay exceeds {} byte limit", MAX_REPLAY_BYTES),
+                }),
+            )
+                .into_response();
+        }
         let replay_dir = std::env::var("SOW_REPLAY_DIR").unwrap_or_else(|_| "replays".to_string());
         let file_path =
             std::path::Path::new(&replay_dir).join(format!("{}.replay", payload.match_id));
 
         if let Some(parent) = file_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+            if let Err(e) = tokio::fs::create_dir_all(parent).await {
+                error!("Failed to create replay directory {:?}: {}", parent, e);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: "replay directory unavailable".to_string(),
+                    }),
+                )
+                    .into_response();
+            }
         }
 
-        match std::fs::write(&file_path, replay_bytes) {
+        let temp_path = file_path.with_extension("replay.tmp");
+        let write_result = async {
+            let mut file = tokio::fs::File::create(&temp_path).await?;
+            file.write_all(replay_bytes).await?;
+            file.sync_all().await?;
+            drop(file);
+            tokio::fs::rename(&temp_path, &file_path).await
+        }
+        .await;
+        match write_result {
             Ok(()) => {
                 info!(
-                    "Successfully wrote raw replay for match {} directly to ZFS disk storage: {:?}",
+                    "Successfully committed raw replay for match {} to durable storage: {:?}",
                     payload.match_id, file_path
                 );
             }
             Err(e) => {
                 error!(
-                    "Failed to write raw replay file for match {} to disk: {}",
+                    "Failed to commit raw replay file for match {} to disk: {}",
                     payload.match_id, e
                 );
+                let _ = tokio::fs::remove_file(&temp_path).await;
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: "replay storage unavailable".to_string(),
+                    }),
+                )
+                    .into_response();
             }
         }
     }
@@ -369,14 +414,40 @@ async fn handle_match_finalize(
             std::path::Path::new(&replay_dir).join(format!("{}.json", payload.match_id));
 
         if let Some(parent) = meta_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+            if let Err(e) = tokio::fs::create_dir_all(parent).await {
+                error!("Failed to create metadata directory {:?}: {}", parent, e);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: "metadata directory unavailable".to_string(),
+                    }),
+                )
+                    .into_response();
+            }
         }
 
-        if let Err(e) = std::fs::write(&meta_path, lobby_json) {
+        let temp_path = meta_path.with_extension("json.tmp");
+        let write_result = async {
+            let mut file = tokio::fs::File::create(&temp_path).await?;
+            file.write_all(lobby_json.as_bytes()).await?;
+            file.sync_all().await?;
+            drop(file);
+            tokio::fs::rename(&temp_path, &meta_path).await
+        }
+        .await;
+        if let Err(e) = write_result {
             error!(
-                "Failed to write metadata JSON file for match {} to disk: {}",
+                "Failed to commit metadata JSON for match {} to disk: {}",
                 payload.match_id, e
             );
+            let _ = tokio::fs::remove_file(&temp_path).await;
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "metadata storage unavailable".to_string(),
+                }),
+            )
+                .into_response();
         }
     }
 
