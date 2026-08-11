@@ -1028,10 +1028,10 @@ pub fn lobby_to_info(g: &ServerLobby) -> LobbyInfo {
     }
 }
 
-/// Custom lobbies (host-created, public or private) push roster/timer updates to all members.
-/// Called every tick so the host sees joiners and players see the countdown once the host starts.
+/// All joinable lobbies (Matchmaking or Custom) push roster/timer updates to all members.
+/// Called every tick so all players see joiners and countdown in real time.
 pub fn sync_host_lobby_to_members(lobby: &ServerLobby) {
-    if lobby.kind != LobbyKind::Custom || !lobby.joinable() {
+    if !lobby.joinable() {
         return;
     }
     let players: Vec<sow_core::protocol::LobbyPlayerSyncState> = lobby

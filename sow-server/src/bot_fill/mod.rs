@@ -284,6 +284,7 @@ pub fn inject_internal_bots(games: &mut [ServerLobby]) {
             is_internal_bot: true,
         });
         g.ready_players.insert(player_id);
+        crate::lobby::sync_host_lobby_to_members(g);
         log::debug!(
             "[BOT_FILL] Lobby {}: ghost {player_id} ({}) joined ({}/{} target)",
             g.id,
