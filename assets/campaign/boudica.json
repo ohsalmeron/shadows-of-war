@@ -1,6 +1,6 @@
 {
   "_comment": "Boudica tutorial roster — edited via tools/campaign-editor. role = kin | independent | vassal | boss | big_boss | neutral.",
-  "map": "boudica",
+  "map": "eastanglia",
   "player_spawn": [
     720,
     180

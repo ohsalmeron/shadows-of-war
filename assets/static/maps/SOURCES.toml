@@ -1,5 +1,6 @@
 # Offline bundled map only (compile-time embed in WASM via repo_asset_bytes!).
 # Must contain exactly one slug folder. Online maps live under assets/maps/.
+# The tutorial map (eastanglia) is served from the online library like any other map.
 
 [world]
 source = "image"

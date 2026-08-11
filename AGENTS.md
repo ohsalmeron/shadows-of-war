@@ -53,10 +53,6 @@
 5. Activator: verify, install rc.d/nginx, activate symlink, restart services, verify health
 6. Public verification (optional, `SOW_REQUIRE_PUBLIC`)
 
-### Backfill (`./sow b`)
-- Build on FreeBSD VM, deploy to remote host as rc.d service.
-- Binary at `/usr/local/libexec/sow-backfill`, config at `/usr/local/etc/sow-backfill.conf`.
-
 ### Service users
 - `sowserver`: game server + relays
 - `sowdb`: database
@@ -101,9 +97,6 @@ ssh sow 'readlink /usr/local/sow/current'
 curl -s http://20.7.77.78/health
 curl -s http://20.7.77.78/admin/lobbies
 
-# Remote backfill (IONOS)
-ssh ionos 'ps aux | grep sow-backfill'
-ssh ionos 'tail -50 /var/log/sow/backfill.log'
 ```
 
 **Clear line:** if the command modifies files, restarts services, or moves releases, it's not debug — it's deploy. That goes through the pipeline.
@@ -118,6 +111,3 @@ ssh ionos 'tail -50 /var/log/sow/backfill.log'
 - Nothing fails silently. Every Redis operation that fails must log the error.
 - Only commit when explicitly asked.
 - Ask before assuming. No override without confirmation.
-
-### Backfill
-`./sow b`

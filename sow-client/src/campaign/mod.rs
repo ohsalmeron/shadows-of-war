@@ -3,7 +3,6 @@
 //! ScriptedSpawn`). Adding an episode = a new submodule returning `Vec<Faction>` + the player's
 //! homeland tile. A faction's `Role` fixes its **team, color, AI, and troop tier** in one place,
 //! so allegiance + difficulty read at a glance and stay consistent across episodes.
-//! See docs/campaign-tutorial.md §11.
 
 pub mod boudica;
 pub mod dialog;

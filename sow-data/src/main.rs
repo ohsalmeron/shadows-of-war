@@ -53,6 +53,16 @@ struct DirectSaveRequest {
 }
 
 #[derive(Deserialize)]
+struct BotPoolSeedRequest {
+    external_ids: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct BotPoolSeedResponse {
+    account_ids: Vec<String>,
+}
+
+#[derive(Deserialize)]
 struct LinkRequest {
     account_id: String,
     provider: String,
@@ -189,6 +199,7 @@ async fn main() {
         .route("/internal/save", post(handle_direct_save))
         .route("/internal/link", post(handle_link_identity))
         .route("/internal/stats", get(handle_internal_stats))
+        .route("/internal/bot-pool/seed", post(handle_bot_pool_seed))
         .layer(DefaultBodyLimit::max(MAX_REPLAY_REQUEST_BYTES))
         .layer(cors)
         .with_state(state);
@@ -467,6 +478,43 @@ async fn handle_match_finalize(
             )
                 .into_response()
         }
+    }
+}
+
+/// POST /internal/bot-pool/seed — resolve or create persistent bot accounts
+/// for the given external_ids (provider="bot"). Idempotent: re-calling with
+/// the same external_ids returns the same account_ids in the same order.
+/// The display_name mapping is held by the caller; this endpoint only
+/// guarantees stable (external_id → account_id) linkage.
+async fn handle_bot_pool_seed(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(payload): Json<BotPoolSeedRequest>,
+) -> impl IntoResponse {
+    if !verify_internal_auth(&headers, &state.secret_token) {
+        warn!("Unauthorized access attempt to /internal/bot-pool/seed");
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
+    match state.db.seed_bot_pool(payload.external_ids).await {
+        Ok(account_ids) => (
+            StatusCode::OK,
+            Json(BotPoolSeedResponse { account_ids }),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+            .into_response(),
     }
 }
 

@@ -39,7 +39,10 @@ fn main() {
             eprintln!("write-play-catalog: parse header {}: {e}", slug);
             std::process::exit(1);
         });
-        items.push((slug, header));
+        let frequency = std::fs::read_to_string(args.maps_root.join(&slug).join("info.toml"))
+            .map(|blob| sow_core::map_file::parse_frequency_toml(&blob))
+            .unwrap_or(1);
+        items.push((slug, header, frequency));
     }
 
     let catalog = sow_core::map_file::catalog_from_headers(items);

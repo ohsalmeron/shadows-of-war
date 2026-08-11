@@ -70,7 +70,7 @@ impl SowApp {
         let (factions, player_spawn) = crate::campaign::boudica::roster();
         crate::campaign::log_plan("Boudica's Rebellion", player_spawn, &factions);
         let config = GameConfig {
-            map_name: "boudica".to_string(),
+            map_name: "eastanglia".to_string(),
             bot_count: 0,
             nation_count: 0,
             seed,
@@ -166,6 +166,7 @@ impl SowApp {
                 spawn_y: 0,
                 civilization: self.ui.app.main_menu_state.selected_civilization,
                 leader: self.ui.app.main_menu_state.selected_leader,
+                is_ai_controlled: false,
             }],
             missed_turns: vec![],
             map_data: None,

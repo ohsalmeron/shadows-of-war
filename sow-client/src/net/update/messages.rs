@@ -145,7 +145,7 @@ impl SowApp {
                                                     id,
                                                     kind,
                                                     num_players: sync_msg.players.len() as u32,
-                                                    max_players: 8,
+                                                    max_players: 0, // unknown until the server broadcast arrives
                                                     is_counting_down: sync_msg.time_remaining > 0.0
                                                         && sync_msg.time_remaining < 30.0,
                                                     timer_secs: sync_msg.time_remaining,

@@ -43,7 +43,7 @@ pub(crate) fn seed_joined_lobby_entry(
             id: ack.lobby_id,
             kind,
             num_players: 1,
-            max_players: 8,
+            max_players: 0, // unknown until the server broadcast arrives
             is_counting_down: false,
             timer_secs: 0.0,
             map_name: ack.map_name.clone(),

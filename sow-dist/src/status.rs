@@ -3,29 +3,8 @@ use std::thread;
 
 pub(super) fn execute() -> Result<()> {
     let prod_host = env::var("SOW_PROD_HOST").unwrap_or_else(|_| "sow".into());
-    let backfill_hosts: Vec<String> = env::var("SOW_BACKFILL_HOSTS")
-        .or_else(|_| env::var("SOW_BACKFILL_HOST"))
-        .unwrap_or_else(|_| "sow-backfill1,sow-backfill2,ionos".into())
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
 
-    let (azure, workers) = thread::scope(|scope| {
-        let azure_handle = scope.spawn(|| collect_azure(&prod_host));
-        let worker_handles: Vec<_> = backfill_hosts
-            .iter()
-            .map(|host| scope.spawn(move || collect_worker(host)))
-            .collect();
-
-        let azure = azure_handle.join().unwrap_or_default();
-        let workers: Vec<_> = worker_handles
-            .into_iter()
-            .map(|h| h.join().unwrap_or_default())
-            .collect();
-        (azure, workers)
-    });
-
+    let azure = collect_azure(&prod_host);
     let local = collect_local();
 
     println!("─── SOW MONITOR ───────────────────────────────────────────");
@@ -37,10 +16,6 @@ pub(super) fn execute() -> Result<()> {
         }
     }
     println!();
-    println!("Workers");
-    for w in &workers {
-        println!("  {w}");
-    }
     println!("  {local}");
     println!();
     println!("───────────────────────────────────────────────────────────");
@@ -162,26 +137,7 @@ print(f"In-Game Active Players: {in_game_players} (connected to {healthy_relays}
 print(f"Worker Connections to Server: {worker_bot_sockets} ESTABLISHED sockets | Valkey: {valkey_ops} ops/s, {valkey_mem}")
 "#;
 
-const WORKER_PY_SCRIPT: &str = r#"import subprocess
-try:
-    ps_out = subprocess.check_output(["ps", "aux"]).decode()
-    sup_count = 0
-    for line in ps_out.splitlines():
-        if "sow-backfill" in line and "--min-fill" in line:
-            sup_count += 1
-    
-    netstat_out = subprocess.check_output(["netstat", "-an"]).decode()
-    active_ws = 0
-    for line in netstat_out.splitlines():
-        if "ESTABLISHED" in line and "tcp" in line:
-            if ".80" in line or ".443" in line or ":80" in line or ":443" in line:
-                active_ws += 1
 
-    sup_str = "1 Active Daemon" if sup_count >= 1 else "OFFLINE"
-    print(f"Supervisor: {sup_str} | Active Bot WebSockets: {active_ws} ESTABLISHED sockets")
-except Exception as e:
-    print(f"ERROR: {e}")
-"#;
 
 fn b64_encode(data: &str) -> String {
     const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -251,20 +207,13 @@ fn collect_azure(host: &str) -> AzureInfo {
     }
 }
 
-fn collect_worker(host: &str) -> String {
-    if let Some(res) = run_b64_py(host, WORKER_PY_SCRIPT) {
-        format!("{host}: {res}")
-    } else {
-        format!("{host}: UNREACHABLE")
-    }
-}
 
 fn collect_local() -> String {
-    let sup = Command::new("/bin/sh")
-        .args(["-c", "pgrep -f 'sow-backfill.*--url' 2>/dev/null | wc -l"])
+    let n = Command::new("/bin/sh")
+        .args(["-c", "pgrep -f 'sow-(server|relay|database)' 2>/dev/null | wc -l"])
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .unwrap_or_else(|_| "0".into());
 
-    format!("local: {} sup daemon", sup.trim())
+    format!("local: {} sow processes", n.trim())
 }

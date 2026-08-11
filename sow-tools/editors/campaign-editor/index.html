@@ -54,7 +54,7 @@
   <div id="side">
     <header>
       <h1>Campaign Roster Editor</h1>
-      <div class="sub">boudica · 896×504 · drag tribes · <a href="logic.html" style="color:var(--accent);text-decoration:none">⚙ Logic →</a></div>
+      <div class="sub">eastanglia · 896×504 · drag tribes · <a href="logic.html" style="color:var(--accent);text-decoration:none">⚙ Logic →</a></div>
     </header>
 
     <div class="group">
@@ -108,7 +108,7 @@ function iqTier(iq){ return iq>=130 ? "sharp (≥130)" : iq>=100 ? "standard" : 
 
 const MAPW = 896, MAPH = 504;
 let terrain = null;            // Uint8Array length MAPW*MAPH, bit7 = land
-let roster = { map:"boudica", player_spawn:[696,45], factions:[] };
+let roster = { map:"eastanglia", player_spawn:[696,45], factions:[] };
 let sel = -1;                  // index into factions, or -2 = player spawn
 let scale = 1, ox = 0, oy = 0, minScale = 1, maxScale = 12; // view: sx = mx*scale+ox
 let hovered = -1, panning = false, panStart = null;
@@ -376,7 +376,7 @@ document.getElementById("ringsChk").onchange = draw;
 function serialize() {
   const out = {
     _comment: roster._comment || "Boudica tutorial roster — edited via tools/campaign-editor.",
-    map: roster.map || "boudica",
+    map: roster.map || "eastanglia",
     player_spawn: roster.player_spawn.map(n=>Math.round(n)),
     factions: roster.factions.map(f=>({ name:f.name, x:Math.round(f.x), y:Math.round(f.y), role:f.role, iq:f.iq??100 })),
   };
@@ -405,7 +405,7 @@ document.getElementById("fileIn").onchange = e => {
 function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.style.opacity=1; clearTimeout(t._t); t._t=setTimeout(()=>t.style.opacity=0,2200); }
 
 function normalize(j){
-  return { _comment:j._comment, map:j.map||"boudica", player_spawn:j.player_spawn||[696,45], factions:(j.factions||[]).map(f=>({name:f.name,x:f.x|0,y:f.y|0,role:f.role||"neutral",iq:(f.iq==null?100:f.iq|0)})) };
+  return { _comment:j._comment, map:j.map||"eastanglia", player_spawn:j.player_spawn||[696,45], factions:(j.factions||[]).map(f=>({name:f.name,x:f.x|0,y:f.y|0,role:f.role||"neutral",iq:(f.iq==null?100:f.iq|0)})) };
 }
 
 // ---- boot ----
@@ -416,8 +416,8 @@ document.getElementById("zout").onclick = () => zoomAt(cv.width/2, cv.height/2, 
 document.getElementById("zfit").onclick = () => { fitView(); draw(); };
 
 async function loadMap(){
-  const res = await fetch("./boudica.bin");
-  if(!res.ok) throw new Error("boudica.bin "+res.status);
+  const res = await fetch("./eastanglia.bin");
+  if(!res.ok) throw new Error("eastanglia.bin "+res.status);
   const buf = await res.arrayBuffer();
   const m = parseMap(buf);
   if (m.w!==MAPW || m.h!==MAPH) console.warn("map dims", m.w, m.h, "expected", MAPW, MAPH);

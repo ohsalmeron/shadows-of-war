@@ -3,7 +3,7 @@
 //! bottom-panel takeover modal (a `BottomDialog` painted by `paint_dialog_contents`); add freely.
 //!
 //! Lines go through the emoji atlas pipeline, so emoji render fine; keep lines short — the panel
-//! is compact (see docs/campaign-tutorial.md §0).
+//! is compact.
 //!
 //! The speaker's *visual* (avatar / tribe emoji / empire disc) is built from the live snapshot at
 //! render time, not stored here — this file is just the words.

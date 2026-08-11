@@ -8,6 +8,11 @@ const ANALYTICS_UNIQUE: &str = "sow:analytics:unique_users";
 const ANALYTICS_ACTIVE_PREFIX: &str = "sow:analytics:active:";
 const ANALYTICS_DAU_TTL_SECS: i64 = 35 * 24 * 3600;
 
+/// SET index of all bot account_ids — populated by `seed_bot_pool`, used for
+/// pool introspection and analytics. The (account_id → display_name) mapping
+/// is held by the caller (sow-server), not stored here.
+const BOT_POOL_KEY: &str = "sow:bot:pool";
+
 const XP_WIN: u32 = 100;
 const XP_MATCH: u32 = 20;
 
@@ -114,13 +119,33 @@ pub struct PlayerAccount {
     pub id: String, // Stable canonical internal account ID
     pub profile: PlayerProfile,
     pub linked_identities: Vec<LinkedIdentity>,
+    /// Account kind. Defaults to Human for legacy accounts (serde default).
+    /// Bots are accounts with `kind = Bot` — they have profiles, accumulate
+    /// stats, and serve as the persistent identity pool for internal fillers.
+    #[serde(default)]
+    pub kind: AccountKind,
     pub created_at: u64,
     pub updated_at: u64,
 }
 
+/// Distinguishes real players from persistent bot accounts. Bots are
+/// full-fledged accounts (they have stats, profiles) — they just aren't
+/// driven by a human. Used for stat filtering, leaderboards, display.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AccountKind {
+    Human,
+    Bot,
+}
+
+impl Default for AccountKind {
+    fn default() -> Self {
+        Self::Human
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct LinkedIdentity {
-    pub provider: String, // "crazygames", "poki", "steam", "playgames", "gamecenter", "local"
+    pub provider: String, // "crazygames", "poki", "steam", "playgames", "gamecenter", "local", "bot"
     pub external_id: String, // Stable unique ID from the platform
 }
 
@@ -275,10 +300,20 @@ impl PlayerDb {
             external_id,
         };
 
+        // Bot identities (provider == "bot") are marked at creation. All
+        // other providers — including legacy accounts without a `kind` field
+        // in storage — default to Human via serde.
+        let kind = if identity.provider == "bot" {
+            AccountKind::Bot
+        } else {
+            AccountKind::Human
+        };
+
         let new_account = PlayerAccount {
             id: random_id.clone(),
             profile: PlayerProfile::default(),
             linked_identities: vec![identity.clone()],
+            kind,
             created_at: now,
             updated_at: now,
         };
@@ -301,6 +336,68 @@ impl PlayerDb {
         );
         self.save_player_account_to_redb(&new_account);
         Ok(new_account)
+    }
+
+    /// Seed the persistent bot-account pool. For each external_id, performs
+    /// a get-or-create with `provider = "bot"` (so created accounts carry
+    /// `kind = Bot`). Idempotent — re-running with the same external_ids
+    /// returns the existing account_ids without duplication. Also maintains
+    /// the `sow:bot:pool` SET as an index of all bot account_ids for
+    /// analytics / debugging.
+    ///
+    /// The display name is NOT stored here — it is derived deterministically
+    /// by the caller (sow-server) from the external_id index, so the caller
+    /// keeps the (account_id, display_name) mapping in its local cache.
+    pub async fn seed_bot_pool(
+        &self,
+        external_ids: Vec<String>,
+    ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
+        let mut con = self.get_connection().await?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let mut account_ids = Vec::with_capacity(external_ids.len());
+
+        for external_id in external_ids {
+            let id_key = Self::identity_key("bot", &external_id);
+
+            // 1. Fast path: identity already mapped.
+            if let Some(account_id) = con.get::<_, Option<String>>(&id_key).await? {
+                account_ids.push(account_id);
+                continue;
+            }
+
+            // 2. Create new bot account.
+            let random_id = format!("{:032x}", rand::random::<u128>());
+            let identity = LinkedIdentity {
+                provider: "bot".to_string(),
+                external_id: external_id.clone(),
+            };
+            let account = PlayerAccount {
+                id: random_id.clone(),
+                profile: PlayerProfile::default(),
+                linked_identities: vec![identity.clone()],
+                kind: AccountKind::Bot,
+                created_at: now,
+                updated_at: now,
+            };
+            let acc_key = Self::account_key(&random_id);
+            let acc_json = serde_json::to_string(&account)?;
+
+            redis::pipe()
+                .set(&acc_key, acc_json)
+                .set(&id_key, &random_id)
+                .sadd(BOT_POOL_KEY, &random_id)
+                .query_async::<()>(&mut con)
+                .await?;
+
+            self.save_player_account_to_redb(&account);
+            account_ids.push(random_id);
+        }
+
+        info!("[bot-pool] seed resolved {} bot accounts", account_ids.len());
+        Ok(account_ids)
     }
 
     /// Update player profile stats

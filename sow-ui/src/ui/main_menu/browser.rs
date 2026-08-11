@@ -3,30 +3,6 @@ use crate::UiAction;
 use crate::widgets::LobbyCard;
 use egui::Ui;
 
-fn find_primary_lobby<'a>(
-    lobbies: &[&'a sow_core::protocol::LobbyInfo],
-) -> Option<&'a sow_core::protocol::LobbyInfo> {
-    let mut counting: Vec<_> = lobbies
-        .iter()
-        .filter(|l| l.is_counting_down)
-        .copied()
-        .collect();
-    if !counting.is_empty() {
-        counting.sort_by_key(|l| l.id);
-        return Some(counting[0]);
-    }
-    let mut waiting: Vec<_> = lobbies
-        .iter()
-        .filter(|l| !l.is_counting_down)
-        .copied()
-        .collect();
-    if !waiting.is_empty() {
-        waiting.sort_by_key(|l| l.id);
-        return Some(waiting[0]);
-    }
-    None
-}
-
 fn draw_lobby_list(
     ui: &mut Ui,
     state: &mut MainMenuState,
@@ -61,7 +37,8 @@ fn draw_lobby_list(
         return;
     }
 
-    // Main menu shows ONLY the primary Matchmaking queue — Custom lobbies live in the Game Browser.
+    // Main menu shows the Matchmaking queue — every joinable lobby, one card per
+    // game mode (OpenFront-style: the FFA and Teams rooms side by side).
     let matchmaking_lobbies: Vec<_> = state
         .lobbies
         .iter()
@@ -78,7 +55,19 @@ fn draw_lobby_list(
         };
         // Cap height so the Quick Match card stays a compact hero, not a giant banner.
         let card_h = if parent_w > 640.0 { 150.0 } else { 168.0 };
-        let response = ui.add(LobbyCard::new(lobby, thumbnail).width(card_w).side(card_h));
+        let display_name = asset_loader
+            .map_catalog
+            .as_ref()
+            .and_then(|catalog| sow_core::maps::catalog_lookup(catalog, &lobby.map_name))
+            .map(|entry| entry.display_name.clone())
+            .unwrap_or_else(|| lobby.map_name.clone());
+        let response = ui
+            .add(
+                LobbyCard::new(lobby, thumbnail)
+                    .width(card_w)
+                    .side(card_h)
+                    .display_name(display_name),
+            );
         if response.clicked() {
             *action = Some(UiAction::JoinLobby(lobby.id));
         }
@@ -104,9 +93,10 @@ fn draw_lobby_list(
         ui.add_space(8.0);
     };
 
-    let primary_lobby = find_primary_lobby(&matchmaking_lobbies);
-
-    if let Some(lobby) = primary_lobby {
+    if matchmaking_lobbies.is_empty() {
+        return;
+    }
+    for lobby in matchmaking_lobbies {
         draw_lobby(ui, lobby);
     }
 }

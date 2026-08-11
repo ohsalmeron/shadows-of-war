@@ -140,6 +140,8 @@ pub fn catalog_from_cache() -> Vec<MapCatalogEntry> {
             display_name: map.display_name,
             width: map.width,
             height: map.height,
+            num_land_tiles: map.num_land_tiles,
+            multiplayer_frequency: 1,
         });
     }
     entries.sort_by(|a, b| {

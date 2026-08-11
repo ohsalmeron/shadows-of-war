@@ -1,5 +1,7 @@
 # Online map library (rsync → VPS SOW_MAPS_ROOT, served at /maps/).
 # Additional map folders here are gitignored; only `world/` is tracked as the seed map.
+# Each folder carries info.toml with its weighted-rotation frequency
+# (OpenFront `multiplayer_frequency`; 0 = out of rotation).
 
 [world]
 source = "image"

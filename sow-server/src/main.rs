@@ -1,5 +1,7 @@
+mod bot_fill;
 mod lobby;
 mod map_catalog;
+mod map_playlist;
 
 use futures_util::{SinkExt, StreamExt};
 use lobby::{
@@ -12,6 +14,7 @@ use sow_core::protocol::{
     PlayerInfo, ServerJoinAckMessage, ServerJoinFailedMessage, ServerLobbiesBroadcastMessage,
 };
 use std::collections::HashSet;
+use std::env;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
@@ -280,6 +283,110 @@ async fn register_match_start(rc: &RelayCandidate) -> Result<(), String> {
     Err(format!("database match registration failed for lobby {}", rc.lobby_id))
 }
 
+#[derive(serde::Deserialize)]
+struct BotPoolSeedResponse {
+    account_ids: Vec<String>,
+}
+
+/// Resolve (or lazily create) the persistent bot-account pool at boot.
+///
+/// Builds a deterministic spec of `SOW_BOT_POOL_SIZE` (default 10000)
+/// identities where `external_id = "bot_{:05}"` and `display_name` cycles
+/// through `bot_fill::names::BOT_NAMES`. Calls
+/// `POST {SOW_DB_URL}/internal/bot-pool/seed` with those external_ids — the
+/// db get-or-creates each one and returns the stable account_ids in order.
+/// The resulting `(account_id, display_name)` pairs are installed as the
+/// process-wide `BotPool`.
+///
+/// MENTAL MODEL (organic): the pool is identities only — it never dictates
+/// timing. Entry is a chaotic drip in `bot_fill` (see its module header).
+///
+/// On failure the pool installs empty and injection simply skips lobbies
+/// (no anonymous fallback). Boot continues; the game must not refuse to
+/// start over a fill subsystem.
+async fn init_bot_pool() {
+    let pool_size: usize = env::var("SOW_BOT_POOL_SIZE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(10_000);
+
+    let name_pool = bot_fill::names::BOT_NAMES;
+    if name_pool.is_empty() {
+        log::error!("[BOT_POOL] names::BOT_NAMES is empty — cannot seed pool");
+        bot_fill::BotPool::new(Vec::new()).install();
+        return;
+    }
+
+    let external_ids: Vec<String> = (0..pool_size).map(|i| format!("bot_{:05}", i)).collect();
+    let display_names: Vec<String> = (0..pool_size)
+        .map(|i| name_pool[i % name_pool.len()].to_string())
+        .collect();
+
+    let db_base_url = env::var("SOW_DB_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
+    let secret = match env::var("SOW_DB_SECRET") {
+        Ok(s) => s,
+        Err(_) => {
+            log::error!("[BOT_POOL] SOW_DB_SECRET missing — cannot seed pool");
+            bot_fill::BotPool::new(Vec::new()).install();
+            return;
+        }
+    };
+    let url = format!("{}/internal/bot-pool/seed", db_base_url.trim_end_matches('/'));
+    let body = serde_json::json!({ "external_ids": external_ids });
+
+    let client = reqwest::Client::new();
+    for attempt in 1..=5 {
+        match client
+            .post(&url)
+            .header("Authorization", format!("Bearer {secret}"))
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(res) if res.status().is_success() => {
+                match res.json::<BotPoolSeedResponse>().await {
+                    Ok(resp) if resp.account_ids.len() == pool_size => {
+                        let entries: Vec<bot_fill::BotPoolEntry> = resp
+                            .account_ids
+                            .into_iter()
+                            .zip(display_names.iter().cloned())
+                            .map(|(account_id, display_name)| bot_fill::BotPoolEntry {
+                                account_id,
+                                display_name,
+                            })
+                            .collect();
+                        log::info!("[BOT_POOL] resolved {} identities", entries.len());
+                        bot_fill::BotPool::new(entries).install();
+                        return;
+                    }
+                    Ok(resp) => log::warn!(
+                        "[BOT_POOL] seed returned {} ids, expected {}",
+                        resp.account_ids.len(),
+                        pool_size
+                    ),
+                    Err(e) => log::warn!("[BOT_POOL] seed response parse error: {e}"),
+                }
+            }
+            Ok(res) => log::warn!(
+                "[BOT_POOL] seed HTTP {} (attempt {attempt}/5)",
+                res.status()
+            ),
+            Err(e) => log::warn!(
+                "[BOT_POOL] seed unreachable: {e} (attempt {attempt}/5)"
+            ),
+        }
+        if attempt < 5 {
+            tokio::time::sleep(Duration::from_secs(2u64.pow(attempt as u32))).await;
+        }
+    }
+
+    log::error!(
+        "[BOT_POOL] seed failed after 5 attempts — installing empty pool (ghosts will be anonymous)"
+    );
+    bot_fill::BotPool::new(Vec::new()).install();
+}
+
 // =============================================================================
 // RELAY INTEGRATION — worker-per-queue DPDK relay (no per-lobby processes)
 // =============================================================================
@@ -377,6 +484,12 @@ async fn main() {
         .get_connection()
         .expect("Failed to get Redis connection");
     log::info!("Redis connected");
+
+    // Resolve (or lazily create) the persistent bot-account pool before any
+    // lobby can be promoted. Idempotent — the seed endpoint get-or-creates
+    // each account, so a restart reuses the same identities and their
+    // accumulated stats.
+    init_bot_pool().await;
 
     let mut games: Vec<ServerLobby> = Vec::new();
     let mut next_lobby_id: u64 = 1;
@@ -540,9 +653,9 @@ async fn main() {
                                 let mut players_tx = Vec::new();
                                 for p in &lobby.players {
                                     // Every network participant must be present in Start so each
-                                    // lockstep client/backfill can register the same player ids.
-                                    // PlayerType::Bot is reserved for local AI spawned by the
-                                    // client engine; backfill bots are network-controlled players.
+                                    // lockstep client can register the same player ids. Internal
+                                    // backfillers go as Human + is_ai_controlled — the core
+                                    // auto-plays them on every client (zero sockets).
                                     start_players.push(PlayerInfo {
                                         id: p.player_id,
                                         name: p.name.clone(),
@@ -553,16 +666,21 @@ async fn main() {
                                         spawn_y: 0,
                                         civilization: p.civilization,
                                         leader: p.leader,
+                                        is_ai_controlled: p.is_internal_bot,
                                     });
                                     players_json.push(serde_json::json!({
                                         "player_id": p.player_id,
                                         "name": p.name,
                                         "database_account_id": p.database_account_id,
+                                        "is_internal": p.is_internal_bot,
                                     }));
                                     if let Some(acc_id) = &p.database_account_id {
                                         player_ids.push(acc_id.clone());
                                     }
-                                    players_tx.push((p.player_id, p.tx.clone()));
+                                    // Internal bots have no socket — exclude from Start delivery.
+                                    if !p.is_internal_bot {
+                                        players_tx.push((p.player_id, p.tx.clone()));
+                                    }
                                 }
                                 ready_candidates.push(RelayCandidate {
                                     lobby_id: lobby.id,

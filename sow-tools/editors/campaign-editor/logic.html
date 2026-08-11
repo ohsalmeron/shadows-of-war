@@ -342,7 +342,7 @@ function compile() {
 }
 function serialize() {
   const out = {
-    _comment: "Boudica campaign triggers (ECA). Authored via tools/campaign-editor/logic.html. The game reads `triggers`; `_editor` is the node layout for re-editing and is ignored by the game.",
+    _comment: "Boudica campaign triggers (ECA). Editor-only output — the game hand-codes its tutorial logic in sow-client/src/hud/tutorial/steps.rs and does NOT read this file.",
     chapter: "boudica-1",
     triggers: compile(),
     _editor: { pan:S.pan, zoom:S.zoom, nodes:S.nodes, wires:S.wires },

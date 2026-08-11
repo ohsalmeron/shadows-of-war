@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::{env, fs};
 
-mod backfill;
 mod local;
 mod prod;
 mod relay;
@@ -680,17 +679,10 @@ fn main() -> Result<()> {
     let mut port = 8787u16;
     let mut build_only = false;
     let mut bump = false;
-    let mut min_fill = 65usize;
-    let mut max_fill = 92usize;
-    let mut governor = env::var("SOW_BACKFILL_GOVERNOR")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(20_000usize);
     let mut _max_bots = 10usize;
     let mut _max_match_secs = 300u64;
     let mut _max_lobbies = 0usize;
     let mut _allow_empty_lobbies = false;
-    let mut url = "ws://74.208.246.177/ws/".to_string();
 
     let mut i = 0;
     while i < args.len() {
@@ -703,24 +695,6 @@ fn main() -> Result<()> {
             }
             "--build-only" => build_only = true,
             "-v" | "--version" => bump = true,
-            "--min" => {
-                i += 1;
-                if i < args.len() {
-                    min_fill = args[i].parse().unwrap_or(65);
-                }
-            }
-            "--max" => {
-                i += 1;
-                if i < args.len() {
-                    max_fill = args[i].parse().unwrap_or(92);
-                }
-            }
-            "--governor" => {
-                i += 1;
-                if i < args.len() {
-                    governor = args[i].parse().unwrap_or(governor);
-                }
-            }
             "--max-bots" => {
                 i += 1;
                 if i < args.len() {
@@ -740,12 +714,6 @@ fn main() -> Result<()> {
                 }
             }
             "--allow-empty" => _allow_empty_lobbies = true,
-            "--url" => {
-                i += 1;
-                if i < args.len() {
-                    url = args[i].clone();
-                }
-            }
             _ if cmd.is_empty() => cmd = args[i].clone(),
             _ => {}
         }
@@ -755,14 +723,11 @@ fn main() -> Result<()> {
     match cmd.as_str() {
         "l" | "local" | "localsite" | "ls" => local::execute(&paths, port, build_only),
         "p" | "prod" | "play" => prod::execute(&paths, bump),
-        "b" | "backfill" | "bf" => {
-            backfill::execute(&paths, build_only, min_fill, max_fill, governor, &url)
-        }
         "r" | "relay" => relay::execute(&paths),
         "native" | "n" | "" => cmd_native(&paths),
         "status" | "st" => status::execute(),
         _ => {
-            eprintln!("Usage: ./sow [l|p|b|status|native]");
+            eprintln!("Usage: ./sow [l|p|status|native]");
             std::process::exit(1);
         }
     }

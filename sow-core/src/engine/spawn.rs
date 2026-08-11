@@ -279,6 +279,7 @@ impl SowEngine {
         team: Option<crate::protocol::Team>,
         civilization: crate::player::Civilization,
         leader: crate::player::Leader,
+        is_ai_controlled: bool,
     ) {
         use crate::player::Player;
         use wyrand::WyRand;
@@ -294,6 +295,7 @@ impl SowEngine {
                 player.team = team;
                 player.civilization = civilization;
                 player.leader = leader;
+                player.is_ai_controlled = is_ai_controlled;
                 self.state.spawn_player(player, sx, sy);
                 log::info!("spawn_human: scripted at ({},{})", sx, sy);
                 return;
@@ -306,6 +308,7 @@ impl SowEngine {
             player.team = team;
             player.civilization = civilization;
             player.leader = leader;
+            player.is_ai_controlled = is_ai_controlled;
             self.state.register_player(player);
             return;
         }
@@ -315,6 +318,7 @@ impl SowEngine {
             player.team = team;
             player.civilization = civilization;
             player.leader = leader;
+            player.is_ai_controlled = is_ai_controlled;
             self.state.spawn_player(player, sx, sy);
         } else {
             log::warn!("Failed to spawn Human {} - no room!", player_id);

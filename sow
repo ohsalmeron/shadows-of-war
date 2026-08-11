@@ -3,7 +3,6 @@
 #   ./sow       → run native client
 #   ./sow l     → local web dev (WASM + serve :8787)
 #   ./sow p     → full production deployment (web + server)
-#   ./sow b     → build and deploy backfill to configured hosts
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${ROOT}"

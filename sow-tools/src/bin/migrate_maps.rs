@@ -159,7 +159,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
 
-    let mut catalog_items: Vec<(String, map_file::MapHeader)> = Vec::new();
+    let mut catalog_items: Vec<(String, map_file::MapHeader, u32)> = Vec::new();
     let mut migrated = 0usize;
     let mut skipped = 0usize;
 
@@ -193,7 +193,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let _ = fs::remove_file(map_dir.join("manifest.json"));
                 let _ = fs::remove_file(map_dir.join("mini_map.bin"));
 
-                catalog_items.push((slug(&key), header));
+                let frequency = fs::read_to_string(map_dir.join("info.toml"))
+                    .map(|blob| map_file::parse_frequency_toml(&blob))
+                    .unwrap_or(1);
+                catalog_items.push((slug(&key), header, frequency));
                 migrated += 1;
                 if migrated.is_multiple_of(10) {
                     println!("... {migrated} maps");

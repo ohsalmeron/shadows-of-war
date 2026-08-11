@@ -35,9 +35,19 @@ pub fn scan_maps_root(root: &Path) -> MapCatalog {
             log::warn!("Skipping {key}: invalid map.bin header");
             continue;
         };
-        items.push((slug(&key), header));
+        let frequency = read_frequency(&map_dir);
+        items.push((slug(&key), header, frequency));
     }
     map_file::catalog_from_headers(items)
+}
+
+/// Read the weighted-rotation ticket count for a map folder from its
+/// `info.toml` (`frequency = N`; 0 = out of rotation). Missing → default 1.
+fn read_frequency(map_dir: &Path) -> u32 {
+    let Ok(blob) = std::fs::read_to_string(map_dir.join("info.toml")) else {
+        return 1;
+    };
+    map_file::parse_frequency_toml(&blob)
 }
 
 pub fn init(maps_root: &Path) {
@@ -83,6 +93,8 @@ pub struct MapCatalogJsonEntry {
     pub display_name: String,
     pub width: u32,
     pub height: u32,
+    pub num_land_tiles: u32,
+    pub multiplayer_frequency: u32,
     pub thumbnail: String,
 }
 
@@ -94,6 +106,8 @@ pub fn catalog_json() -> Vec<MapCatalogJsonEntry> {
             display_name: entry.display_name.clone(),
             width: entry.width,
             height: entry.height,
+            num_land_tiles: entry.num_land_tiles,
+            multiplayer_frequency: entry.multiplayer_frequency,
             thumbnail: format!("/maps/{}/thumbnail.webp", entry.key),
         })
         .collect()

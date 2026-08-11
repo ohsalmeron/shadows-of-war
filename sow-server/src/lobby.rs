@@ -28,6 +28,8 @@ pub struct PlayerConnection {
     /// Lobby-stage team (Teams mode only; `None` in FFA). Carried into the match start.
     pub team: Option<Team>,
     pub ip: String,
+    /// Internal backfiller: ghost player injected to fill the lobby. No socket behind it.
+    pub is_internal_bot: bool,
 }
 
 pub struct ServerLobby {
@@ -52,7 +54,18 @@ pub struct ServerLobby {
     pub host_name: String,
     /// Identities (account id, or `name:<name>` fallback) banned from this lobby.
     pub banned: std::collections::HashSet<String>,
-    // pub auto_bots_spawned: bool,
+    /// Internal bot fill (fictional humans, ORGANIC staged entry — see
+    /// `bot_fill/mod.rs` MENTAL MODEL: random fill %, random per-lobby drip
+    /// mean, exponential inter-arrival, never predictable, never a pattern).
+    /// `bot_fill_target`: total ghost count to reach (rolled once per lobby).
+    /// `bot_fill_mean`: this lobby's random drip mean in seconds (1–8s).
+    /// `bot_fill_cooldown`: seconds until the next ghost drips in.
+    /// `pending_bots`: reserved pool identities still waiting to join (names
+    /// are reserved up-front only for uniqueness — timing stays chaotic).
+    pub bot_fill_target: Option<usize>,
+    pub bot_fill_mean: f32,
+    pub bot_fill_cooldown: f32,
+    pub pending_bots: Vec<(String, String)>,
 }
 
 /// Stable identity for ban tracking: prefer the account id, fall back to name.
@@ -92,22 +105,30 @@ fn spawn_waiting_lobby(
     *next_id += 1;
     let mut config = if let Some(mut c) = config_override {
         // Resolve map dimensions from catalog when host provides a config.
+        // Capacity is derived from the chosen map (OpenFront model) — the host
+        // picks the map, the map picks the lobby size.
         if let Some(entry) = crate::map_catalog::lookup(&c.map_name) {
             c.map_width = entry.width;
             c.map_height = entry.height;
             c.map_name = entry.key.clone();
+            let mut rng = rand::thread_rng();
+            c.max_players = crate::map_playlist::lobby_max_players(&entry, &game_mode, &mut rng);
         }
         c
     } else {
+        // Matchmaking: draw the next map from the mode's weighted playlist and
+        // derive the lobby capacity from it.
         let mut c = GameConfig::default();
-        static NEXT_MAP_INDEX: std::sync::atomic::AtomicUsize =
-            std::sync::atomic::AtomicUsize::new(0);
-        let map_idx = NEXT_MAP_INDEX.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let pool = crate::map_catalog::entries();
-        if let Some(entry) = sow_core::maps::catalog_entry_at(pool, map_idx) {
-            c.map_name = entry.key.clone();
-            c.map_width = entry.width;
-            c.map_height = entry.height;
+        if let Some(key) = crate::map_playlist::next_map_for_mode(&game_mode, pool) {
+            if let Some(entry) = crate::map_catalog::lookup(&key) {
+                c.map_name = entry.key.clone();
+                c.map_width = entry.width;
+                c.map_height = entry.height;
+                let mut rng = rand::thread_rng();
+                c.max_players =
+                    crate::map_playlist::lobby_max_players(&entry, &game_mode, &mut rng);
+            }
         } else {
             log::error!("spawn_waiting_lobby: no maps in catalog for lobby {}", id);
         }
@@ -142,33 +163,39 @@ fn spawn_waiting_lobby(
         password,
         host_name,
         banned: std::collections::HashSet::new(),
-        // auto_bots_spawned: false,
+        bot_fill_target: None,
+        bot_fill_mean: 0.0,
+        bot_fill_cooldown: 0.0,
+        pending_bots: Vec::new(),
     });
 }
 
+/// Matchmaking queue depth: exactly ONE joinable lobby at a time. When it
+/// launches (or dies), the next one spawns and rotates to the next game mode,
+/// so over time a single slot cycles through FFA / Teams with a fresh map and
+/// derived capacity each cycle.
 fn ensure_queue_depth(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
-    for mode in &["FFA", "Teams"] {
-        let count = games
-            .iter()
-            .filter(|g| g.joinable() && g.kind == LobbyKind::Matchmaking && g.game_mode == *mode)
-            .count();
-        if count < 4 {
-            for _ in 0..(4 - count) {
-                spawn_waiting_lobby(
-                    games,
-                    next_id,
-                    SpawnLobbyOpts {
-                        game_mode: mode.to_string(),
-                        kind: LobbyKind::Matchmaking,
-                        is_private: false,
-                        config_override: None,
-                        password: None,
-                        host_name: String::new(),
-                    },
-                );
-            }
-        }
+    let has_joinable = games
+        .iter()
+        .any(|g| g.joinable() && g.kind == LobbyKind::Matchmaking);
+    if has_joinable {
+        return;
     }
+    static ROTATION: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    const MODES: &[&str] = &["FFA", "Teams"];
+    let idx = ROTATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst) % MODES.len();
+    spawn_waiting_lobby(
+        games,
+        next_id,
+        SpawnLobbyOpts {
+            game_mode: MODES[idx].to_string(),
+            kind: LobbyKind::Matchmaking,
+            is_private: false,
+            config_override: None,
+            password: None,
+            host_name: String::new(),
+        },
+    );
 }
 
 fn promote_countdown(games: &mut [ServerLobby]) {
@@ -187,109 +214,32 @@ fn promote_countdown(games: &mut [ServerLobby]) {
         }
     }
 
-    // Pass 2: keep one empty beacon counting per game mode so clients see a live timer.
-    // Per-mode check prevents Teams from stealing the FFA beacon slot after a cycle.
-    for mode in &["FFA", "Teams"] {
-        let has_beacon = games.iter().any(|g| {
-            matches!(g.phase, LobbyPhase::CountingDown)
-                && g.kind == LobbyKind::Matchmaking
-                && g.players.is_empty()
-                && g.game_mode == *mode
-        });
-        if !has_beacon {
-            if let Some(lobby) = games.iter_mut().find(|g| {
-                matches!(g.phase, LobbyPhase::Waiting)
-                    && g.kind == LobbyKind::Matchmaking
-                    && g.game_mode == *mode
-            }) {
-                lobby.phase = LobbyPhase::CountingDown;
-                lobby.countdown_secs = LOBBY_COUNTDOWN_SECS;
-                log::info!(
-                    "[LOBBY] {} Matchmaking→CountingDown ({} beacon)",
-                    lobby.id,
-                    mode
-                );
-            }
-        }
-    }
-
-    // Pass 3: backfill CountingDown matchmaking lobbies that have actual human players (DISABLED - Delegated to standalone sow-backfill daemon)
-    /*
-    for g in games.iter_mut() {
-        if matches!(g.phase, LobbyPhase::CountingDown)
+    // Pass 2: promote the single empty Matchmaking waiting lobby to a beacon
+    // so clients see a live timer. With one-lobby rotation there's at most one.
+    let has_beacon = games.iter().any(|g| {
+        matches!(g.phase, LobbyPhase::CountingDown)
             && g.kind == LobbyKind::Matchmaking
-            && !g.auto_bots_spawned
-            && !g.players.is_empty()
-        {
-            g.auto_bots_spawned = true;
-
-            let max_players = g.config.max_players as usize;
-            let current_players = g.players.len();
-
-            let mut rng = rand::thread_rng();
-            use rand::Rng;
-            let pct = rng.gen_range(0.65..0.92);
-            let target_count = ((max_players as f32) * pct).round() as usize;
-
-            if target_count > current_players {
-                let bots_needed = target_count - current_players;
-                if bots_needed > 0 {
-                    spawn_bots_for_lobby(g.id, bots_needed);
-                }
-            }
+            && g.players.is_empty()
+    });
+    if !has_beacon {
+        if let Some(lobby) = games.iter_mut().find(|g| {
+            matches!(g.phase, LobbyPhase::Waiting) && g.kind == LobbyKind::Matchmaking
+        }) {
+            lobby.phase = LobbyPhase::CountingDown;
+            lobby.countdown_secs = LOBBY_COUNTDOWN_SECS;
+            log::info!(
+                "[LOBBY] {} Matchmaking→CountingDown ({} beacon)",
+                lobby.id,
+                lobby.game_mode
+            );
         }
     }
-    */
+
+    // Pass 3: drip fictional humans into Matchmaking lobbies.
+    // Ghost players (is_internal_bot=true) — each client's engine auto-plays them
+    // via execute_ai_think. Zero sockets, zero relay overhead.
+    crate::bot_fill::inject_internal_bots(games);
 }
-
-/*
-fn spawn_bots_for_lobby(lobby_id: u64, bots_needed: usize) {
-    let srv_bin = std::env::current_exe().unwrap_or_default();
-    let srv_dir = srv_bin.parent().unwrap_or_else(|| std::path::Path::new("."));
-    let bot_bin = std::env::var("SOW_BOT_MANAGER_BIN")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| srv_dir.join("bot-manager"));
-
-    let ws_url = std::env::var("SOW_BOT_WS_URL")
-        .unwrap_or_else(|_| "ws://127.0.0.1:25565/ws/".to_string());
-
-    if bot_bin.exists() {
-        log::info!(
-            "[AUTO-BOTS] Spawning {} bots for lobby {} via {:?}",
-            bots_needed,
-            lobby_id,
-            bot_bin
-        );
-        let lobby_str = lobby_id.to_string();
-        let count_str = bots_needed.to_string();
-
-        tokio::spawn(async move {
-            let mut cmd = tokio::process::Command::new(bot_bin);
-            cmd.arg("--url")
-                .arg(ws_url)
-                .arg("--count")
-                .arg(count_str)
-                .arg("--lobby-id")
-                .arg(lobby_str);
-
-            match cmd.spawn() {
-                Ok(mut child) => {
-                    let _ = child.wait().await;
-                    log::info!("[AUTO-BOTS] Bot manager subprocess finished for lobby {}", lobby_id);
-                }
-                Err(e) => {
-                    log::error!("[AUTO-BOTS] Failed to spawn bot manager child process: {}", e);
-                }
-            }
-        });
-    } else {
-        log::warn!(
-            "[AUTO-BOTS] Cannot spawn bots: bot-manager binary not found at {:?}",
-            bot_bin
-        );
-    }
-}
-*/
 
 pub fn primary_lobby_id(games: &[ServerLobby], game_mode: &str) -> Option<u64> {
     let mut joinable_lobbies: Vec<u64> = games
@@ -542,6 +492,7 @@ pub fn join_player(
             database_account_id,
             team,
             ip,
+            is_internal_bot: false,
         });
         return Ok((
             target_id,
@@ -581,13 +532,14 @@ pub fn join_player(
     }
     let max = lobby.config.max_players as usize;
 
-    // Check if player is already in the lobby (reconnection/duplicate join)
+    // Reconnect matches by stable account id ONLY — never by name. Names
+    // collide between human defaults (ANON###) and bot fillers. Both sides
+    // must carry a real Some(account_id); otherwise the player joins fresh.
     if let Some(existing_idx) = lobby.players.iter().position(|p| {
-        if let (Some(a), Some(b)) = (&p.database_account_id, &database_account_id) {
-            a == b
-        } else {
-            p.name == name
-        }
+        matches!(
+            (&p.database_account_id, &database_account_id),
+            (Some(a), Some(b)) if a == b
+        )
     }) {
         log::info!(
             "Player {} already in lobby {}, updating connection (reconnect)",
@@ -658,6 +610,7 @@ pub fn join_player(
         database_account_id,
         team,
         ip,
+        is_internal_bot: false,
     });
 
     if is_new_host {
@@ -905,12 +858,8 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                 LobbyPhase::CountingDown => {
                     lobby.countdown_secs -= TICK_SECS;
                     let cap = lobby.config.max_players as usize;
-                    let has_humans = !lobby.players.is_empty();
-                    if (lobby.countdown_secs <= 0.0 || lobby.players.len() >= cap) && has_humans {
+                    if lobby.countdown_secs <= 0.0 || lobby.players.len() >= cap {
                         start_match(lobby);
-                    } else if lobby.countdown_secs <= 0.0 && !has_humans {
-                        // No human players, just reset the countdown
-                        lobby.countdown_secs = LOBBY_COUNTDOWN_SECS;
                     }
                     false
                 }
@@ -1006,17 +955,20 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                                 lobby.id
                             );
                         }
-                        if lobby.players.is_empty() {
+                        let has_humans = lobby.players.iter().any(|p| !p.is_internal_bot);
+                        if !has_humans {
                             log::warn!(
-                                "[SERVER ORCHESTRATOR] Lobby {} aborted relay spawn: No validated human players remaining (they disconnected or failed map sync).",
+                                "[SERVER ORCHESTRATOR] Lobby {} aborted relay spawn: no validated human players remaining (they disconnected or failed map sync).",
                                 lobby.id
                             );
-                            // If everyone dropped, just remove the lobby
+                            // No humans left — drop the lobby so it doesn't waste a relay worker.
                             true
                         } else {
+                            let humans = lobby.players.iter().filter(|p| !p.is_internal_bot).count();
                             log::info!(
-                                "[SERVER ORCHESTRATOR] Lobby {} marked ReadyForRelay with {} validated human players.",
+                                "[SERVER ORCHESTRATOR] Lobby {} marked ReadyForRelay with {} validated human players ({} total roster).",
                                 lobby.id,
+                                humans,
                                 lobby.players.len()
                             );
                             lobby.phase = LobbyPhase::ReadyForRelay;

@@ -166,7 +166,10 @@ impl MapEditorSession {
             let bytes = std::fs::read(&map_path).map_err(|e| e.to_string())?;
             let header = sow_core::map_file::parse_header(&bytes).map_err(|e| e.to_string())?;
             let slug = sow_core::maps::map_key(&key);
-            items.push((slug, header));
+            let frequency = std::fs::read_to_string(entry.path().join("info.toml"))
+                .map(|blob| sow_core::map_file::parse_frequency_toml(&blob))
+                .unwrap_or(1);
+            items.push((slug, header, frequency));
         }
         let catalog = sow_core::map_file::catalog_from_headers(items);
         let catalog_bytes = sow_core::map_file::encode_catalog(&catalog);

@@ -24,8 +24,11 @@ pub fn run_import(args: ImportArgs) -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| input.file_name().unwrap().to_string_lossy().to_string());
     let slug = sow_core::maps::map_key(&slug);
 
+    // Display name from OpenFront info.json ("Africa", "Europe", ...); fall back to slug.
+    let display_name = read_info_json_name(&input).unwrap_or_else(|| slug.clone());
+
     let map_file = if input.join("image.png").exists() {
-        import_from_png(&input, &slug)?
+        import_from_png(&input, &display_name)?
     } else {
         import_from_bin_or_manifest(&input, &slug)?
     };
@@ -52,23 +55,66 @@ pub fn run_import(args: ImportArgs) -> Result<(), Box<dyn std::error::Error>> {
         write_placeholder_thumbnail(&map_file, &thumb_path)?;
     }
 
+    // Persist the OpenFront `multiplayer_frequency` as info.toml so the server's
+    // catalog scan can build weighted playlists (0 = out of rotation).
+    let frequency = read_info_json_frequency(&input);
+    fs::write(
+        out_dir.join("info.toml"),
+        format!("# Written by sow-tools import-openfront\nfrequency = {frequency}\n"),
+    )?;
+
     refresh_catalog(&args.maps_root)?;
 
     println!(
-        "Imported '{}' → {}/ ({}x{}, {} spawns, {} land tiles)",
+        "Imported '{}' → {}/ ({}x{}, {} spawns, {} land tiles, freq {})",
         slug,
         out_dir.display(),
         map_file.width,
         map_file.height,
         map_file.spawns.len(),
-        map_file.num_land_tiles
+        map_file.num_land_tiles,
+        frequency
     );
     Ok(())
 }
 
+/// `multiplayer_frequency` from an OpenFront `info.json` (absent → 0, matching
+/// OpenFront: omitted/0 keeps the map out of the regular rotation).
+fn read_info_json_frequency(dir: &Path) -> u32 {
+    let Ok(blob) = fs::read_to_string(dir.join("info.json")) else {
+        return 0;
+    };
+    let Ok(info) = serde_json::from_str::<Value>(&blob) else {
+        return 0;
+    };
+    info.get("multiplayer_frequency")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as u32
+}
+
+/// `name` from an OpenFront `info.json` (used as the catalog display name).
+fn read_info_json_name(dir: &Path) -> Option<String> {
+    let blob = fs::read_to_string(dir.join("info.json")).ok()?;
+    let info: Value = serde_json::from_str(&blob).ok()?;
+    info.get("name").and_then(|v| v.as_str()).map(str::to_string)
+}
+
 fn import_from_png(dir: &Path, display_name: &str) -> Result<MapFile, Box<dyn std::error::Error>> {
     let png_path = dir.join("image.png");
-    let img = image::open(&png_path)?;
+    let original = image::open(&png_path)?;
+    let (src_w, src_h) = (original.width(), original.height());
+    // OpenFront source PNGs are huge (up to ~5M tiles). Clamp to the project's
+    // MAX_MAP_PIXELS, preserving aspect, before generating the map.
+    let (target_w, target_h) = clamp_map_dimensions_proportional(
+        src_w,
+        src_h,
+        sow_core::maps::MAX_MAP_PIXELS,
+    );
+    let img = if target_w != src_w || target_h != src_h {
+        original.resize(target_w, target_h, image::imageops::FilterType::Triangle)
+    } else {
+        original
+    };
     let rgba = img.to_rgba8();
     let width = rgba.width();
     let height = rgba.height();
@@ -82,7 +128,17 @@ fn import_from_png(dir: &Path, display_name: &str) -> Result<MapFile, Box<dyn st
     })
     .map_err(|e| format!("generator: {e}"))?;
 
-    let spawns = load_info_json_spawns(dir)?;
+    let mut spawns = load_info_json_spawns(dir)?;
+    // Spawn coordinates come from the native-resolution info.json — scale them
+    // down with the image so they stay on land after clamping.
+    if src_w != width || src_h != height {
+        for s in &mut spawns {
+            let rx = (s.x as f64 * (width as f64 / src_w as f64)).round() as u32;
+            let ry = (s.y as f64 * (height as f64 / src_h as f64)).round() as u32;
+            s.x = rx.min(width.saturating_sub(1));
+            s.y = ry.min(height.saturating_sub(1));
+        }
+    }
 
     Ok(MapFile {
         display_name: display_name.to_string(),
@@ -311,7 +367,10 @@ pub fn refresh_catalog(maps_root: &Path) -> Result<(), Box<dyn std::error::Error
         }
         let bytes = fs::read(&map_path)?;
         let header = map_file::parse_header(&bytes)?;
-        items.push((sow_core::maps::map_key(&key), header));
+        let frequency = fs::read_to_string(entry.path().join("info.toml"))
+            .map(|blob| map_file::parse_frequency_toml(&blob))
+            .unwrap_or(1);
+        items.push((sow_core::maps::map_key(&key), header, frequency));
     }
     let catalog = map_file::catalog_from_headers(items);
     let catalog_bytes = map_file::encode_catalog(&catalog);

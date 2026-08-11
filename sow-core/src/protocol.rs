@@ -315,6 +315,8 @@ pub struct PlayerInfo {
     pub civilization: crate::player::Civilization,
     #[serde(default)]
     pub leader: crate::player::Leader,
+    #[serde(default)]
+    pub is_ai_controlled: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

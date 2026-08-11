@@ -6,6 +6,8 @@ pub struct LobbyCard<'a> {
     texture: Option<&'a egui::TextureHandle>,
     side: Option<f32>,
     width: Option<f32>,
+    /// Display name override (e.g. catalog display name); falls back to map_name.
+    display_name: Option<String>,
 }
 
 impl<'a> LobbyCard<'a> {
@@ -15,6 +17,7 @@ impl<'a> LobbyCard<'a> {
             texture,
             side: None,
             width: None,
+            display_name: None,
         }
     }
 
@@ -26,6 +29,12 @@ impl<'a> LobbyCard<'a> {
 
     pub fn width(mut self, width: f32) -> Self {
         self.width = Some(width);
+        self
+    }
+
+    /// Pretty map name (catalog display name); defaults to the raw slug.
+    pub fn display_name(mut self, display_name: String) -> Self {
+        self.display_name = Some(display_name);
         self
     }
 }
@@ -195,7 +204,11 @@ impl<'a> Widget for LobbyCard<'a> {
         );
 
         // Line 1: map name (left).
-        let map_text = self.lobby.map_name.to_uppercase();
+        let map_text = self
+            .display_name
+            .as_deref()
+            .unwrap_or(&self.lobby.map_name)
+            .to_uppercase();
         sow_ui_kit::theme::paint_premium_glow_text(
             ui.painter(),
             egui::pos2(bottom_rect.min.x + pad, line1_y),

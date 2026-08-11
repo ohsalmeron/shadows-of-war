@@ -390,6 +390,7 @@ fn assemble_release(paths: &Paths, binaries: &Path, version: &str) -> Result<Rel
         &[
             &paths.dist_play,
             binaries,
+            &paths.assets_maps,
             &paths.root.join("sow-dist/deploy/freebsd/rc.d"),
             &paths.root.join("sow-dist/deploy/freebsd/nginx.conf"),
         ],

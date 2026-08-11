@@ -13,7 +13,12 @@ const GEO_TAG_NONE: u8 = 0;
 const GEO_TAG_EQUIRECT: u8 = 1;
 
 pub const CATALOG_MAGIC: &[u8; 4] = b"SOWC";
-pub const CATALOG_VERSION: u16 = 1;
+/// v2 adds `num_land_tiles` + `multiplayer_frequency` per entry (OpenFront-style
+/// weighted rotation and per-map lobby capacity). v1 entries are still parsed
+/// (fields default to 0 / 1) so stale caches never brick a boot.
+pub const CATALOG_VERSION: u16 = 2;
+/// Maximum players a lobby can hold, mirroring OpenFront's MAX_PLAYER_COUNT.
+pub const MAX_PLAYER_CAP: u32 = 125;
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MapSpawn {
@@ -122,6 +127,10 @@ pub struct MapCatalogEntry {
     pub display_name: String,
     pub width: u32,
     pub height: u32,
+    /// Number of land tiles — drives per-lobby capacity (OpenFront formula).
+    pub num_land_tiles: u32,
+    /// Weighted-rotation tickets (OpenFront `multiplayer_frequency`); 0 = out of rotation.
+    pub multiplayer_frequency: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -374,6 +383,8 @@ pub fn encode_catalog(catalog: &MapCatalog) -> Vec<u8> {
         write_string(&mut out, &e.display_name);
         write_u32(&mut out, e.width);
         write_u32(&mut out, e.height);
+        write_u32(&mut out, e.num_land_tiles);
+        write_u32(&mut out, e.multiplayer_frequency);
     }
     out
 }
@@ -387,7 +398,7 @@ pub fn parse_catalog(data: &[u8]) -> Result<MapCatalog, MapFileError> {
     }
     let mut off = 4usize;
     let version = read_u16(data, &mut off).ok_or(MapFileError::TooShort)?;
-    if version != CATALOG_VERSION {
+    if version > CATALOG_VERSION {
         return Err(MapFileError::UnsupportedVersion(version));
     }
     off += 2;
@@ -398,29 +409,59 @@ pub fn parse_catalog(data: &[u8]) -> Result<MapCatalog, MapFileError> {
         let display_name = read_string(data, &mut off)?;
         let width = read_u32(data, &mut off).ok_or(MapFileError::TooShort)?;
         let height = read_u32(data, &mut off).ok_or(MapFileError::TooShort)?;
+        let (num_land_tiles, multiplayer_frequency) = if version >= 2 {
+            (
+                read_u32(data, &mut off).ok_or(MapFileError::TooShort)?,
+                read_u32(data, &mut off).ok_or(MapFileError::TooShort)?,
+            )
+        } else {
+            (0, 1)
+        };
         entries.push(MapCatalogEntry {
             key,
             display_name,
             width,
             height,
+            num_land_tiles,
+            multiplayer_frequency,
         });
     }
     Ok(MapCatalog { entries })
 }
 
 /// Build catalog from map folder keys and parsed headers.
-pub fn catalog_from_headers(items: impl IntoIterator<Item = (String, MapHeader)>) -> MapCatalog {
-    let mut entries: Vec<MapCatalogEntry> = items
+/// Frequency comes from the folder's `info.toml` (written by sow-tools).
+pub fn catalog_from_headers(
+    items: impl IntoIterator<Item = (String, MapHeader, u32)>,
+) -> MapCatalog {    let mut entries: Vec<MapCatalogEntry> = items
         .into_iter()
-        .map(|(key, h)| MapCatalogEntry {
+        .map(|(key, h, frequency)| MapCatalogEntry {
             key,
             display_name: h.display_name,
             width: h.width,
             height: h.height,
+            num_land_tiles: h.num_land_tiles,
+            multiplayer_frequency: frequency,
         })
         .collect();
     entries.sort_by_key(|a| a.display_name.to_lowercase());
     MapCatalog { entries }
+}
+
+/// Parse `frequency` from an `info.toml` blob (OpenFront `multiplayer_frequency`
+/// ticket count for the weighted rotation; 0 = out of rotation). Pure, no I/O —
+/// callers read the file. Missing/unparsable → default 1.
+pub fn parse_frequency_toml(blob: &str) -> u32 {
+    for line in blob.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("frequency") {
+            let rest = rest.trim_start_matches(['=', ' ', '\t']);
+            if let Ok(v) = rest.trim().parse::<u32>() {
+                return v;
+            }
+        }
+    }
+    1
 }
 
 /// Decompress a `map.bin.br` payload (no-op if already decompressed SOWM).
@@ -615,11 +656,23 @@ mod tests {
                 display_name: "North America".to_string(),
                 width: 100,
                 height: 100,
+                num_land_tiles: 5000,
+                multiplayer_frequency: 20,
             }],
         };
         let bytes = encode_catalog(&cat);
         let parsed = parse_catalog(&bytes).unwrap();
         assert_eq!(parsed.entries.len(), 1);
         assert_eq!(parsed.entries[0].key, "world");
+        assert_eq!(parsed.entries[0].num_land_tiles, 5000);
+        assert_eq!(parsed.entries[0].multiplayer_frequency, 20);
+    }
+
+    #[test]
+    fn parse_frequency_toml_ok() {
+        assert_eq!(parse_frequency_toml("frequency = 7\n"), 7);
+        assert_eq!(parse_frequency_toml("frequency=0\n"), 0);
+        assert_eq!(parse_frequency_toml(""), 1);
+        assert_eq!(parse_frequency_toml("frequency = 20\n# comment\n"), 20);
     }
 }

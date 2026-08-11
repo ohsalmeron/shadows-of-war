@@ -25,6 +25,8 @@ CRATES: dict[str, set[Path]] = {
         ROOT / "sow-data" / "src" / "colors" / "premium_colors.rs",
         ROOT / "sow-data" / "src" / "tribes" / "names.rs",
         ROOT / "sow-data" / "src" / "emoji" / "manifest.rs",
+        # Grew past 750 with bot-pool seeding (seed_bot_pool + /internal/bot-pool/seed).
+        ROOT / "sow-data" / "src" / "db.rs",
     },
     "sow-ui": {
         ROOT / "sow-ui" / "src" / "ui" / "hud" / "tabs" / "controls.rs",

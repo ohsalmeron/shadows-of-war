@@ -64,6 +64,11 @@ pub struct Player {
     pub alliance_timers: std::collections::HashMap<PlayerId, u32>,
     #[serde(default)]
     pub disconnected: bool,
+    /// Fictional humans: appear as Human players but the core auto-plays
+    /// them via `execute_ai_think`, deterministically on every client. No
+    /// sockets, no relay involvement — each client's engine simulates them.
+    #[serde(default)]
+    pub is_ai_controlled: bool,
     #[serde(default)]
     pub active_emoji: Option<String>,
     #[serde(default)]
@@ -123,6 +128,7 @@ impl Player {
             alliances: Vec::new(),
             alliance_timers: std::collections::HashMap::new(),
             disconnected: false,
+            is_ai_controlled: false,
             active_emoji: None,
             emoji_timer: 0,
             emoji_pinned: false,
@@ -186,6 +192,7 @@ impl Player {
             alliances: Vec::new(),
             alliance_timers: std::collections::HashMap::new(),
             disconnected: false,
+            is_ai_controlled: false,
             active_emoji: None,
             emoji_timer: 0,
             emoji_pinned: false,
@@ -234,6 +241,7 @@ impl Player {
             alliances: Vec::new(),
             alliance_timers: std::collections::HashMap::new(),
             disconnected: false,
+            is_ai_controlled: false,
             active_emoji: None,
             emoji_timer: 0,
             emoji_pinned: false,

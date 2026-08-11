@@ -10,14 +10,6 @@ name = "test-relay"
 path = "src/test_relay.rs"
 
 [[bin]]
-name = "bot-manager"
-path = "src/bot_manager.rs"
-
-[[bin]]
-name = "generate-tutorial"
-path = "src/bin/generate_tutorial.rs"
-
-[[bin]]
 name = "migrate-maps"
 path = "src/bin/migrate_maps.rs"
 

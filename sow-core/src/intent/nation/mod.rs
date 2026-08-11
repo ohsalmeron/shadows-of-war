@@ -34,55 +34,88 @@ impl SowEngine {
         for p in self.state.players.iter() {
             let is_nation = p.player_type == crate::player::PlayerType::Nation;
             let is_bot = p.player_type == crate::player::PlayerType::Bot;
-            if (!is_nation && !is_bot) || !p.alive {
+            let is_ai_human = p.is_ai_controlled;
+            if (!is_nation && !is_bot && !is_ai_human) || !p.alive {
                 continue;
             }
             let bot_id = p.id;
 
             let profile = get_bot_ai_profile(bot_id, is_nation);
 
-            // Fast defensive reaction if under attack by a non-ally
-            let is_under_attack = p.iq >= 100
-                && self
-                    .attacks
-                    .iter()
-                    .any(|att| att.target_owner == bot_id && !p.alliances.contains(&att.owner_id));
-
-            let interval_base = if is_under_attack {
-                if p.iq >= 130 {
-                    5 // Elite: react in 0.5s - 1.0s (5 - 10 ticks)
-                } else {
-                    10 // Advanced: react in 1.0s - 2.0s (10 - 20 ticks)
+            // Ghosts (is_ai_controlled Humans) use a per-tick probabilistic
+            // act gate, derived purely from (seed, bot_id, tick) — no
+            // persistent state, fully deterministic across lockstep clients.
+            // This recovers the visible, high-variance movement of the old
+            // legacy ghost-entry logic (rolled gen_bool(0.15) per bot
+            // per turn). Per-bot agitation parity gives emergent "some move
+            // more than others" via binomial variance over time.
+            //
+            // MENTAL MODEL (organic): the whole fictional-human stack is
+            // deliberately high-variance and unpredictable — lobby entry
+            // (bot_fill), in-match behavior (this gate), map rotation
+            // (map_playlist). Any change that makes ghosts move "evenly",
+            // on a schedule, or in lockstep is a REGRESSION. Do not smooth.
+            let (do_attack, do_structures) = if is_ai_human {
+                let mut act_rng = WyRand::new(
+                    self.state
+                        .seed
+                        .wrapping_mul(0x9E3779B97F4A7C15)
+                        .wrapping_add(bot_id as u64)
+                        .wrapping_add(tick.wrapping_mul(0xD1B54A32D192ED03)),
+                );
+                let p_act: i32 = if bot_id % 2 == 0 { 20 } else { 10 };
+                if act_rng.next_int(0, 99) >= p_act {
+                    continue;
                 }
+                (
+                    true,
+                    p.iq >= 100 && p.gold >= cheapest_gold_cost(&self.state.config),
+                )
             } else {
-                iq_build_interval_base(p.iq, bot_id)
+                // Original metronomic scheduler for Nations / Tribes.
+                let is_under_attack = p.iq >= 100
+                    && self
+                        .attacks
+                        .iter()
+                        .any(|att| att.target_owner == bot_id && !p.alliances.contains(&att.owner_id));
+
+                let interval_base = if is_under_attack {
+                    if p.iq >= 130 {
+                        5 // Elite: react in 0.5s - 1.0s (5 - 10 ticks)
+                    } else {
+                        10 // Advanced: react in 1.0s - 2.0s (10 - 20 ticks)
+                    }
+                } else {
+                    iq_build_interval_base(p.iq, bot_id)
+                };
+
+                let mut sched_rng = WyRand::new(
+                    self.state
+                        .seed
+                        .wrapping_add(bot_id as u64)
+                        .wrapping_add(interval_base),
+                );
+                let interval = sched_rng
+                    .next_int(interval_base as i32, (interval_base as i32 * 2).max(1))
+                    .max(1) as u64;
+                let offset = sched_rng.next_int(0, interval as i32) as u64;
+
+                let phase = tick % interval;
+                let do_attack = phase == offset;
+
+                let do_structures = if p.iq >= 100 {
+                    let one_third = (offset + interval / 3) % interval;
+                    let two_thirds = (offset + (interval * 2) / 3) % interval;
+                    do_attack || phase == one_third || phase == two_thirds
+                } else {
+                    do_attack
+                };
+
+                if !do_attack && !do_structures {
+                    continue; // Nothing to do this tick for this entity
+                }
+                (do_attack, do_structures)
             };
-
-            let mut sched_rng = WyRand::new(
-                self.state
-                    .seed
-                    .wrapping_add(bot_id as u64)
-                    .wrapping_add(interval_base),
-            );
-            let interval = sched_rng
-                .next_int(interval_base as i32, (interval_base as i32 * 2).max(1))
-                .max(1) as u64;
-            let offset = sched_rng.next_int(0, interval as i32) as u64;
-
-            let phase = tick % interval;
-            let do_attack = phase == offset;
-
-            let do_structures = if p.iq >= 100 {
-                let one_third = (offset + interval / 3) % interval;
-                let two_thirds = (offset + (interval * 2) / 3) % interval;
-                do_attack || phase == one_third || phase == two_thirds
-            } else {
-                do_attack
-            };
-
-            if !do_attack && !do_structures {
-                continue; // Nothing to do this tick for this entity
-            }
 
             if do_structures && p.gold >= cheapest_gold_cost(&self.state.config) {
                 any_structures = true;

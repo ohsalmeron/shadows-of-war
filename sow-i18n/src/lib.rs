@@ -250,22 +250,6 @@ pub struct HudStrings {
     pub confirm_exit_no: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TutorialStrings {
-    pub commander_title: String,
-    pub step_welcome_title: String,
-    pub step_welcome_desc: String,
-    pub step_expansion_title: String,
-    pub step_expansion_desc: String,
-    pub step_combat_title: String,
-    pub step_combat_desc: String,
-    pub step_complete_title: String,
-    pub step_complete_desc: String,
-    pub btn_next: String,
-    pub btn_finish: String,
-    pub btn_skip: String,
-}
-
 #[cfg(feature = "map-editor")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MapEditorStrings {
@@ -387,7 +371,6 @@ pub struct LanguageStrings {
     pub loading_screen: LoadingScreenStrings,
     pub endgame: EndgameStrings,
     pub hud: HudStrings,
-    pub tutorial: TutorialStrings,
     #[cfg(feature = "map-editor")]
     pub map_editor: MapEditorStrings,
     pub credits: CreditsStrings,
@@ -422,7 +405,6 @@ pub fn get(lang: Language) -> &'static LanguageStrings {
                 include_str!("../strings/es/loading_screen.toml"),
                 include_str!("../strings/es/endgame.toml"),
                 include_str!("../strings/es/hud.toml"),
-                include_str!("../strings/es/tutorial.toml"),
                 include_str!("../strings/es/credits.toml"),
             )
         }),
@@ -433,7 +415,6 @@ pub fn get(lang: Language) -> &'static LanguageStrings {
                 include_str!("../strings/en/loading_screen.toml"),
                 include_str!("../strings/en/endgame.toml"),
                 include_str!("../strings/en/hud.toml"),
-                include_str!("../strings/en/tutorial.toml"),
                 include_str!("../strings/en/credits.toml"),
             )
         }),
@@ -450,7 +431,6 @@ pub fn get(lang: Language) -> &'static LanguageStrings {
                 loading_screen_toml: include_str!("../strings/es/loading_screen.toml"),
                 endgame_toml: include_str!("../strings/es/endgame.toml"),
                 hud_toml: include_str!("../strings/es/hud.toml"),
-                tutorial_toml: include_str!("../strings/es/tutorial.toml"),
                 map_editor_toml: include_str!("../strings/es/map_editor.toml"),
                 credits_toml: include_str!("../strings/es/credits.toml"),
             })
@@ -462,7 +442,6 @@ pub fn get(lang: Language) -> &'static LanguageStrings {
                 loading_screen_toml: include_str!("../strings/en/loading_screen.toml"),
                 endgame_toml: include_str!("../strings/en/endgame.toml"),
                 hud_toml: include_str!("../strings/en/hud.toml"),
-                tutorial_toml: include_str!("../strings/en/tutorial.toml"),
                 map_editor_toml: include_str!("../strings/en/map_editor.toml"),
                 credits_toml: include_str!("../strings/en/credits.toml"),
             })
@@ -489,7 +468,6 @@ fn load_language(
     loading_screen_toml: &str,
     endgame_toml: &str,
     hud_toml: &str,
-    tutorial_toml: &str,
     credits_toml: &str,
 ) -> LanguageStrings {
     LanguageStrings {
@@ -499,7 +477,6 @@ fn load_language(
             .expect("Failed to parse loading_screen.toml"),
         endgame: toml::from_str(endgame_toml).expect("Failed to parse endgame.toml"),
         hud: toml::from_str(hud_toml).expect("Failed to parse hud.toml"),
-        tutorial: toml::from_str(tutorial_toml).expect("Failed to parse tutorial.toml"),
         credits: toml::from_str(credits_toml).expect("Failed to parse credits.toml"),
     }
 }
@@ -511,7 +488,6 @@ struct I18nLoadCtx<'a> {
     loading_screen_toml: &'a str,
     endgame_toml: &'a str,
     hud_toml: &'a str,
-    tutorial_toml: &'a str,
     map_editor_toml: &'a str,
     credits_toml: &'a str,
 }
@@ -525,7 +501,6 @@ fn load_language_with_map_editor(ctx: I18nLoadCtx) -> LanguageStrings {
             .expect("Failed to parse loading_screen.toml"),
         endgame: toml::from_str(ctx.endgame_toml).expect("Failed to parse endgame.toml"),
         hud: toml::from_str(ctx.hud_toml).expect("Failed to parse hud.toml"),
-        tutorial: toml::from_str(ctx.tutorial_toml).expect("Failed to parse tutorial.toml"),
         map_editor: toml::from_str(ctx.map_editor_toml).expect("Failed to parse map_editor.toml"),
         credits: toml::from_str(ctx.credits_toml).expect("Failed to parse credits.toml"),
     }
