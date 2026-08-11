@@ -4,6 +4,7 @@ mod map_catalog;
 mod map_playlist;
 
 use futures_util::{SinkExt, StreamExt};
+use hmac::{Hmac, Mac};
 use lobby::{
     JoinPlayerOpts, ServerLobby, build_lobby_broadcast, force_start, is_host_teardown, join_player, kick_player,
     leave_player, lobby_to_info, master_tick, notify_lobby_closed, set_player_team,
@@ -15,8 +16,11 @@ use sow_core::protocol::{
 };
 use std::collections::HashSet;
 use std::env;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
+use rand::{RngCore, rngs::OsRng};
+use sha2::Sha256;
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, broadcast, mpsc};
 use tokio_tungstenite::tungstenite::protocol::Message;
@@ -24,6 +28,7 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 const DEFAULT_RELAY_WORKER_COUNT: usize = 4;
 const RELAY_PORT_MIN: u16 = 25592;
 const RELAY_PORT_MAX: u16 = 26500;
+type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Clone, Debug)]
 struct RelayWorker {
@@ -38,6 +43,76 @@ fn relay_worker_count() -> usize {
         .and_then(|value| value.parse::<usize>().ok())
         .filter(|count| (1..=64).contains(count))
         .unwrap_or(DEFAULT_RELAY_WORKER_COUNT)
+}
+
+fn relay_mgmt_scheme() -> String {
+    match std::env::var("SOW_RELAY_MGMT_SCHEME")
+        .unwrap_or_else(|_| "http".to_string())
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "http" => "http".to_string(),
+        "https" => "https".to_string(),
+        other => {
+            log::warn!("Unsupported SOW_RELAY_MGMT_SCHEME={other}; using http");
+            "http".to_string()
+        }
+    }
+}
+
+fn relay_mgmt_headers(
+    secret: &str,
+    method: &str,
+    path: &str,
+    body: &[u8],
+) -> Result<(String, String, String), String> {
+    if secret.trim().is_empty() {
+        return Err("SOW_RELAY_CONTROL_SECRET missing".to_string());
+    }
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("system clock before UNIX epoch: {e}"))?
+        .as_secs()
+        .to_string();
+    let mut nonce_bytes = [0u8; 16];
+    OsRng.fill_bytes(&mut nonce_bytes);
+    let nonce = hex::encode(nonce_bytes);
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .map_err(|_| "invalid relay control secret".to_string())?;
+    mac.update(method.as_bytes());
+    mac.update(b"\n");
+    mac.update(path.as_bytes());
+    mac.update(b"\n");
+    mac.update(timestamp.as_bytes());
+    mac.update(b"\n");
+    mac.update(nonce.as_bytes());
+    mac.update(b"\n");
+    mac.update(body);
+    Ok((timestamp, nonce, hex::encode(mac.finalize().into_bytes())))
+}
+
+/// Keep the TLS hostname from the management URL for certificate validation,
+/// while allowing the production host to pin DNS resolution to the relay's
+/// management NIC. The game hostname and management route intentionally use
+/// different network interfaces on the two-NIC relay VM.
+fn relay_mgmt_client(mgmt_url: &str) -> Result<reqwest::Client, String> {
+    let mut builder = reqwest::Client::builder();
+    if let Ok(raw_ip) = std::env::var("SOW_RELAY_MGMT_RESOLVE_IP") {
+        let ip = raw_ip
+            .parse::<IpAddr>()
+            .map_err(|e| format!("invalid SOW_RELAY_MGMT_RESOLVE_IP={raw_ip}: {e}"))?;
+        let parsed = reqwest::Url::parse(mgmt_url)
+            .map_err(|e| format!("invalid relay management URL {mgmt_url}: {e}"))?;
+        let host = parsed
+            .host_str()
+            .ok_or_else(|| format!("relay management URL has no host: {mgmt_url}"))?;
+        if host.parse::<IpAddr>().is_err() {
+            builder = builder.resolve(host, SocketAddr::new(ip, 0));
+        }
+    }
+    builder
+        .build()
+        .map_err(|e| format!("build relay management client: {e}"))
 }
 
 /// Parse one worker as either `game_host:legacy_game_port:mgmt_port` or
@@ -80,10 +155,11 @@ fn parse_relay_worker(spec: &str, id: usize) -> Option<RelayWorker> {
     {
         return None;
     }
+    let scheme = relay_mgmt_scheme();
     Some(RelayWorker {
         id,
         host: host.to_string(),
-        mgmt_url: format!("http://{mgmt_host}:{mgmt_port}"),
+        mgmt_url: format!("{scheme}://{mgmt_host}:{mgmt_port}"),
     })
 }
 
@@ -133,7 +209,7 @@ fn relay_workers() -> Vec<RelayWorker> {
     let mgmt_url = std::env::var("SOW_RELAY_MGMT_URL")
         .ok()
         .filter(|url| !url.trim().is_empty())
-        .unwrap_or_else(|| format!("http://{host}:{mgmt_port}"));
+        .unwrap_or_else(|| format!("{}://{host}:{mgmt_port}", relay_mgmt_scheme()));
     vec![RelayWorker {
         id: 0,
         host: host.clone(),
@@ -198,9 +274,24 @@ async fn register_relay(rc: &RelayCandidate, worker: &RelayWorker) -> Result<(),
         "tick_rate_ms": rc.tick_rate_ms,
     });
 
-    let client = reqwest::Client::new();
+    let secret = std::env::var("SOW_RELAY_CONTROL_SECRET")
+        .map_err(|_| "SOW_RELAY_CONTROL_SECRET missing while registering relay".to_string())?;
+    let path = "/internal/lobby/register";
+    let body = serde_json::to_vec(&relay_config)
+        .map_err(|e| format!("serialize relay registration: {e}"))?;
+    let client = relay_mgmt_client(&url)?;
     for attempt in 1..=5 {
-        match client.post(&url).json(&relay_config).send().await {
+        let (timestamp, nonce, signature) = relay_mgmt_headers(&secret, "POST", path, &body)?;
+        match client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .header("X-SOW-Timestamp", timestamp)
+            .header("X-SOW-Nonce", nonce)
+            .header("X-SOW-Signature", signature)
+            .body(body.clone())
+            .send()
+            .await
+        {
             Ok(res) if res.status().is_success() => {
                 log::info!(
                     "[RELAY] Lobby {} accepted by relay ({} OK)",

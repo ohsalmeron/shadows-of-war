@@ -22,6 +22,7 @@
 
 use fstack_bridge::bridge::{self, Ev};
 use futures_util::{SinkExt, StreamExt};
+use hmac::{Hmac, Mac};
 use libc::{c_int, c_void};
 use log::{error, info, warn};
 use redis::Commands;
@@ -33,6 +34,7 @@ use sow_core::protocol::{
     StampedIntent, Turn,
 };
 use rustls::{Certificate, PrivateKey, ServerConfig};
+use sha2::Sha256;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::CString;
 use std::io::BufReader;
@@ -54,6 +56,10 @@ use tokio_tungstenite::tungstenite::Message;
 const DEFAULT_MGMT_PORT: u16 = 8080;
 const DYNAMIC_PORT_MIN: u16 = 1024;
 const DEFAULT_EXPECTED_WORKER_COUNT: u16 = 4;
+const MAX_MGMT_BODY_BYTES: usize = 2 * 1024 * 1024;
+const MGMT_CLOCK_SKEW_SECS: u64 = 30;
+const MGMT_NONCE_TTL_SECS: u64 = 120;
+type HmacSha256 = Hmac<Sha256>;
 
 fn expected_worker_count() -> u16 {
     std::env::var("SOW_RELAY_WORKER_COUNT")
@@ -756,6 +762,14 @@ fn main() {
         eprintln!("SOW_DB_SECRET must be set; refusing insecure default");
         std::process::exit(78);
     }
+    if std::env::var("SOW_RELAY_CONTROL_SECRET")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .is_none()
+    {
+        eprintln!("SOW_RELAY_CONTROL_SECRET must be set; refusing unauthenticated management");
+        std::process::exit(78);
+    }
 
     let prog_args: Vec<CString> = std::env::args()
         .filter(|a| !a.starts_with("--fstack-"))
@@ -775,6 +789,12 @@ fn main() {
         }
         acceptor
     });
+    if std::env::var("SOW_MGMT_TLS_REQUIRED").ok().as_deref() == Some("1")
+        && TLS_ACCEPTOR.get().and_then(|acceptor| acceptor.as_ref()).is_none()
+    {
+        error!("[sow-relay] management TLS is required but the relay certificate is unavailable");
+        std::process::exit(78);
+    }
 
     // TAP dev loop: inject --no-pci + net_tap0 vdev (FSTACK_TAP=1). Empty for the physical VF.
     let mut extra_eal: Vec<&str> = Vec::new();
@@ -863,6 +883,85 @@ fn mgmt_listen() -> String {
     std::env::var("SOW_MGMT_LISTEN").unwrap_or_else(|_| "127.0.0.1".to_string())
 }
 
+type MgmtNonceCache = Arc<Mutex<HashMap<String, u64>>>;
+
+fn mgmt_header<'a>(headers: &'a HashMap<String, String>, name: &str) -> Option<&'a str> {
+    headers.get(&name.to_ascii_lowercase()).map(String::as_str)
+}
+
+async fn verify_mgmt_auth(
+    method: &str,
+    path: &str,
+    body: &[u8],
+    headers: &HashMap<String, String>,
+    nonce_cache: &MgmtNonceCache,
+) -> bool {
+    let Some(secret) = std::env::var("SOW_RELAY_CONTROL_SECRET")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+    else {
+        error!("[mgmt] SOW_RELAY_CONTROL_SECRET is missing");
+        return false;
+    };
+    let Some(timestamp) = mgmt_header(headers, "x-sow-timestamp") else {
+        return false;
+    };
+    let Some(nonce) = mgmt_header(headers, "x-sow-nonce") else {
+        return false;
+    };
+    let Some(signature) = mgmt_header(headers, "x-sow-signature") else {
+        return false;
+    };
+    if nonce.is_empty() || nonce.len() > 128 {
+        return false;
+    }
+    let Ok(timestamp) = timestamp.parse::<u64>() else {
+        return false;
+    };
+    let Ok(now) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) else {
+        return false;
+    };
+    if now.as_secs().abs_diff(timestamp) > MGMT_CLOCK_SKEW_SECS {
+        return false;
+    }
+    let Ok(provided) = hex::decode(signature) else {
+        return false;
+    };
+    let Ok(mut mac) = HmacSha256::new_from_slice(secret.as_bytes()) else {
+        return false;
+    };
+    mac.update(method.as_bytes());
+    mac.update(b"\n");
+    mac.update(path.as_bytes());
+    mac.update(b"\n");
+    mac.update(timestamp.to_string().as_bytes());
+    mac.update(b"\n");
+    mac.update(nonce.as_bytes());
+    mac.update(b"\n");
+    mac.update(body);
+    if mac.verify_slice(&provided).is_err() {
+        return false;
+    }
+
+    let mut cache = nonce_cache.lock().await;
+    let cutoff = now.as_secs().saturating_sub(MGMT_NONCE_TTL_SECS);
+    cache.retain(|_, seen| *seen >= cutoff);
+    if cache.contains_key(nonce) {
+        return false;
+    }
+    if cache.len() >= 4096 {
+        if let Some(oldest) = cache
+            .iter()
+            .min_by_key(|(_, seen)| **seen)
+            .map(|(nonce, _)| nonce.clone())
+        {
+            cache.remove(&oldest);
+        }
+    }
+    cache.insert(nonce.to_string(), now.as_secs());
+    true
+}
+
 async fn bind_game_port(port: u16) -> Result<(), String> {
     if !(DYNAMIC_PORT_MIN..=u16::MAX).contains(&port) {
         return Err(format!("relay port {port} outside dynamic range"));
@@ -921,69 +1020,106 @@ async fn mgmt_http(registry: Registry, mport: u16) {
         }
     };
     info!("[mgmt] http listening on {}:{}", listen, mport);
+    let nonce_cache: MgmtNonceCache = Arc::new(Mutex::new(HashMap::new()));
 
     loop {
-        let (mut sock, _) = match listener.accept().await {
+        let (sock, _) = match listener.accept().await {
             Ok(x) => x,
             Err(_) => continue,
         };
         let reg = registry.clone();
+        let nonce_cache = nonce_cache.clone();
+        let tls_acceptor = TLS_ACCEPTOR.get().and_then(|acceptor| acceptor.clone());
         tokio::spawn(async move {
-            use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-            let mut buf: Vec<u8> = Vec::new();
-            let mut tmp = [0u8; 4096];
-            let header_end;
-            loop {
-                match sock.read(&mut tmp).await {
-                    Ok(0) | Err(_) => return,
-                    Ok(n) => buf.extend_from_slice(&tmp[..n]),
+            if let Some(acceptor) = tls_acceptor {
+                match acceptor.accept(sock).await {
+                    Ok(tls) => mgmt_connection(tls, reg, nonce_cache).await,
+                    Err(e) => warn!("[mgmt] TLS handshake failed: {e}"),
                 }
-                if let Some(i) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
-                    header_end = i + 4;
-                    break;
-                }
-                if buf.len() > 65536 {
-                    return;
-                }
+            } else {
+                mgmt_connection(sock, reg, nonce_cache).await;
             }
-
-            let head = String::from_utf8_lossy(&buf[..header_end]).to_string();
-            let mut lines = head.lines();
-            let mut parts = lines.next().unwrap_or("").split_whitespace();
-            let method = parts.next().unwrap_or("").to_string();
-            let path = parts.next().unwrap_or("").to_string();
-            let clen: usize = head
-                .lines()
-                .skip(1)
-                .find_map(|l| {
-                    let (k, v) = l.split_once(':')?;
-                    if k.trim().eq_ignore_ascii_case("content-length") {
-                        v.trim().parse().ok()
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or(0);
-
-            while buf.len() < header_end + clen && clen > 0 {
-                match sock.read(&mut tmp).await {
-                    Ok(0) | Err(_) => break,
-                    Ok(n) => buf.extend_from_slice(&tmp[..n]),
-                }
-            }
-
-            let body = &buf[header_end..(header_end + clen).min(buf.len())];
-            let (status, resp) = handle_http(&reg, &method, &path, body).await;
-            let resp_body = serde_json::to_string(&resp).unwrap_or_else(|_| "{}".to_string());
-            let out = format!(
-                "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                resp_body.len(),
-                resp_body
-            );
-            let _ = sock.write_all(out.as_bytes()).await;
         });
     }
+}
+
+async fn mgmt_connection<S>(
+    mut sock: S,
+    registry: Registry,
+    nonce_cache: MgmtNonceCache,
+)
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let mut buf: Vec<u8> = Vec::new();
+    let mut tmp = [0u8; 4096];
+    let header_end;
+    loop {
+        match sock.read(&mut tmp).await {
+            Ok(0) | Err(_) => return,
+            Ok(n) => buf.extend_from_slice(&tmp[..n]),
+        }
+        if let Some(i) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+            header_end = i + 4;
+            break;
+        }
+        if buf.len() > 65536 {
+            return;
+        }
+    }
+
+    let head = String::from_utf8_lossy(&buf[..header_end]).to_string();
+    let mut lines = head.lines();
+    let mut parts = lines.next().unwrap_or("").split_whitespace();
+    let method = parts.next().unwrap_or("").to_string();
+    let path = parts.next().unwrap_or("").to_string();
+    let headers: HashMap<String, String> = lines
+        .filter_map(|line| {
+            let (key, value) = line.split_once(':')?;
+            Some((key.trim().to_ascii_lowercase(), value.trim().to_string()))
+        })
+        .collect();
+    let clen: usize = headers
+        .get("content-length")
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(0);
+    if clen > MAX_MGMT_BODY_BYTES {
+        let _ = sock
+            .write_all(b"HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+            .await;
+        return;
+    }
+
+    while buf.len() < header_end + clen && clen > 0 {
+        match sock.read(&mut tmp).await {
+            Ok(0) | Err(_) => return,
+            Ok(n) => buf.extend_from_slice(&tmp[..n]),
+        }
+    }
+    if buf.len() < header_end + clen {
+        return;
+    }
+
+    let body = &buf[header_end..header_end + clen];
+    let authorized = path == "/healthz"
+        || verify_mgmt_auth(&method, &path, body, &headers, &nonce_cache).await;
+    let (status, resp) = if authorized {
+        handle_http(&registry, &method, &path, body).await
+    } else {
+        (
+            "401 Unauthorized",
+            serde_json::json!({ "error": "unauthorized" }),
+        )
+    };
+    let resp_body = serde_json::to_string(&resp).unwrap_or_else(|_| "{}".to_string());
+    let out = format!(
+        "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        resp_body.len(),
+        resp_body
+    );
+    let _ = sock.write_all(out.as_bytes()).await;
 }
 
 async fn handle_http(
@@ -993,6 +1129,7 @@ async fn handle_http(
     body: &[u8],
 ) -> (&'static str, serde_json::Value) {
     match (method, path) {
+        ("GET", "/healthz") => ("200 OK", serde_json::json!({ "ok": true })),
         ("POST", "/internal/lobby/register") => {
             let rb: RegisterBody = match serde_json::from_slice(body) {
                 Ok(b) => b,

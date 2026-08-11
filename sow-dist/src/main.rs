@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, bail};
+use rand::RngCore;
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
@@ -667,11 +668,42 @@ fn load_dotenv(path: &Path) {
     }
 }
 
+/// Create the machine-to-machine relay control secret once, locally, when
+/// the ignored deployment environment does not have one yet.  The value is
+/// persisted only in sow-dist/.env (mode 0600) and is staged to both ends by
+/// ./sow p; it is never included in a command line or pipeline output.
+fn ensure_generated_secret(root: &Path, key: &str) -> Result<()> {
+    if env::var(key)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .is_some()
+    {
+        return Ok(());
+    }
+
+    let mut bytes = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut bytes);
+    let value = hex::encode(bytes);
+    let path = root.join("sow-dist/.env");
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .with_context(|| format!("open {} for generated secret", path.display()))?;
+    file.write_all(format!("\n{key}={value}\n").as_bytes())?;
+    file.sync_all()?;
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
+    unsafe { env::set_var(key, value) };
+    println!("✅ generated and persisted {key} in ignored sow-dist/.env");
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .canonicalize()?;
     load_dotenv(&root.join("sow-dist/.env"));
+    ensure_generated_secret(&root, "SOW_RELAY_CONTROL_SECRET")?;
 
     let paths = Paths::discover()?;
     let args: Vec<String> = env::args().skip(1).collect();

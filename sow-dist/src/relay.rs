@@ -15,6 +15,11 @@ pub(super) fn execute(paths: &Paths) -> Result<()> {
     if db_secret.trim().is_empty() {
         bail!("SOW_DB_SECRET must not be empty");
     }
+    let control_secret = env::var("SOW_RELAY_CONTROL_SECRET")
+        .context("SOW_RELAY_CONTROL_SECRET must be provided via ignored sow-dist/.env")?;
+    if control_secret.trim().is_empty() {
+        bail!("SOW_RELAY_CONTROL_SECRET must not be empty");
+    }
     let worker_count = env_or("SOW_RELAY_WORKER_COUNT", "4")
         .parse::<usize>()
         .context("SOW_RELAY_WORKER_COUNT must be an integer")?;
@@ -92,24 +97,30 @@ EOF\n\
     run("ssh", &[&host, &worker_script], None)?;
 
     let remote_secret = format!("/tmp/sow-db-secret-{}", std::process::id());
+    let remote_control_secret = format!("/tmp/sow-relay-control-secret-{}", std::process::id());
     stage_secret(&host, &db_secret, &remote_secret)?;
+    stage_secret(&host, &control_secret, &remote_control_secret)?;
 
     let drop_in = format!(
-        "set -eu; secret=$(cat {}); rm -f {}; \
+        "set -eu; secret=$(cat {}); control_secret=$(cat {}); rm -f {} {}; \
          sudo mkdir -p /etc/systemd/system/sow-relay@.service.d && \
          sudo tee /etc/systemd/system/sow-relay@.service.d/override.conf >/dev/null <<EOF\n\
          [Service]\n\
          LimitNOFILE=1000000\n\
          Environment=RUST_LOG=info\n\
          Environment=SOW_MGMT_LISTEN=0.0.0.0\n\
+         Environment=SOW_MGMT_TLS_REQUIRED=1\n\
          Environment=SOW_RELAY_WORKER_COUNT={}\n\
          Environment=SOW_DB_URL={}\n\
          Environment=SOW_DB_SECRET=$secret\n\
+         Environment=SOW_RELAY_CONTROL_SECRET=$control_secret\n\
          Environment=SOW_RELAY_TLS_CERT=/usr/local/etc/sow/relay.crt\n\
          Environment=SOW_RELAY_TLS_KEY=/usr/local/etc/sow/relay.key\n\
          EOF",
         shell_quote(&remote_secret),
+        shell_quote(&remote_control_secret),
         shell_quote(&remote_secret),
+        shell_quote(&remote_control_secret),
         worker_count,
         env_or("SOW_DB_URL", "https://shadowsofwar.io"),
     );
@@ -159,7 +170,7 @@ EOF\n\
          ExecStart=/usr/local/sbin/sow-relay-worker %i\n\
          Restart=on-failure\n\
          RestartSec=5\n\
-         ExecStartPre=/bin/sh -c 'test \"%i\" = 0 || until curl -fsS --max-time 1 http://127.0.0.1:8080/internal/lobbies >/dev/null; do sleep 1; done'\n\
+         ExecStartPre=/bin/sh -c 'test \"%i\" = 0 || until curl -kfsS --max-time 1 https://127.0.0.1:8080/healthz >/dev/null; do sleep 1; done'\n\
          [Install]\n\
          WantedBy=sow-relay.service\n\
          EOF",
@@ -173,7 +184,7 @@ EOF\n\
     let restart = format!("sudo systemctl disable --now sow-relay.service 2>/dev/null || true; sudo systemctl stop {unit_stops} 2>/dev/null || true; sudo systemctl daemon-reload; sudo systemctl enable sow-relay.service; sudo systemctl start sow-relay.service; sleep 3; sudo systemctl is-active sow-relay.service {unit_wants}");
     run("ssh", &[&host, &restart], None)?;
 
-    let verify = format!("set -eu; test -s /usr/local/etc/sow/relay.crt; test -s /usr/local/etc/sow/relay.key; for p in {}; do curl -fsS --max-time 5 http://127.0.0.1:$p/internal/lobbies >/dev/null; echo mgmt-$p-ok; done; pgrep -af sow-relay; systemctl show {} -p NRestarts", mgmt_ports.join(" "), unit_wants);
+    let verify = format!("set -eu; test -s /usr/local/etc/sow/relay.crt; test -s /usr/local/etc/sow/relay.key; for p in {}; do curl -kfsS --max-time 5 https://127.0.0.1:$p/healthz >/dev/null; echo mgmt-$p-tls-ok; done; pgrep -af sow-relay; systemctl show {} -p NRestarts", mgmt_ports.join(" "), unit_wants);
     run("ssh", &[&host, &verify], None)?;
 
     println!("✅ relay deployed to {host}");

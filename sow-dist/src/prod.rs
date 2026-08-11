@@ -44,6 +44,11 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
     if db_secret.trim().is_empty() {
         bail!("SOW_DB_SECRET must not be empty");
     }
+    let control_secret = env::var("SOW_RELAY_CONTROL_SECRET")
+        .context("SOW_RELAY_CONTROL_SECRET must be provided via ignored sow-dist/.env")?;
+    if control_secret.trim().is_empty() {
+        bail!("SOW_RELAY_CONTROL_SECRET must not be empty");
+    }
     let version = version(paths, bump)?;
 
     println!("==> Production {version}");
@@ -74,7 +79,7 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
 
     println!("==> 5/7 Upload");
     sync_relay_env(&config)?;
-    sync_prod_secret(&config, &db_secret)?;
+    sync_prod_secrets(&config, &db_secret, &control_secret)?;
     deploy(paths, &config, &release)?;
 
     println!("==> 6/7 Origin verified by activator");
@@ -85,21 +90,25 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
     Ok(())
 }
 
-fn sync_prod_secret(config: &Config, secret: &str) -> Result<()> {
+fn sync_prod_secrets(config: &Config, db_secret: &str, control_secret: &str) -> Result<()> {
     let remote_secret = format!("/tmp/sow-db-secret-{}", std::process::id());
-    stage_secret(&config.prod_host, secret, &remote_secret)?;
+    let remote_control_secret = format!("/tmp/sow-relay-control-secret-{}", std::process::id());
+    stage_secret(&config.prod_host, db_secret, &remote_secret)?;
+    stage_secret(&config.prod_host, control_secret, &remote_control_secret)?;
     let remote = format!(
-        "set -eu; secret_file={}; f=/usr/local/etc/sow/sow.env; t=$(mktemp /tmp/sow.env.XXXXXX); \\
-         trap 'rm -f \"$t\" \"$secret_file\"' EXIT; \\
+        "set -eu; secret_file={}; control_file={}; f=/usr/local/etc/sow/sow.env; t=$(mktemp /tmp/sow.env.XXXXXX); \\
+         trap 'rm -f \"$t\" \"$secret_file\" \"$control_file\"' EXIT; \\
          chmod 600 \"$secret_file\"; \\
          for pid in $(sudo ps -axo pid= -o command= | awk '$2 == \"daemon:\" && index($0, \"/root/shadowsofwar/sow-database\") {{print $1}}'); do sudo kill -TERM \"$pid\"; done; \\
          sleep 1; \\
          for pid in $(sudo ps -axo pid= -o command= | awk '$2 == \"/root/shadowsofwar/sow-database\" {{print $1}}'); do sudo kill -TERM \"$pid\"; done; \\
          if sudo test -f \"$f\"; then sudo grep -v '^SOW_DB_SECRET=' \"$f\" > \"$t\"; else : > \"$t\"; fi; \\
          printf 'SOW_DB_SECRET=' >> \"$t\"; cat \"$secret_file\" >> \"$t\"; printf '\\n' >> \"$t\"; \\
+         printf 'SOW_RELAY_CONTROL_SECRET=' >> \"$t\"; cat \"$control_file\" >> \"$t\"; printf '\\n' >> \"$t\"; \\
          sudo install -o root -g wheel -m 0600 \"$t\" \"$f\"; \\
          sudo service sow_database restart; sudo service sow_database status",
-        shell_quote(&remote_secret)
+        shell_quote(&remote_secret),
+        shell_quote(&remote_control_secret)
     );
     run("ssh", &[&config.prod_host, &remote], None).context("production secret sync failed")
 }
@@ -199,17 +208,28 @@ fn sync_relay_env(config: &Config) -> Result<()> {
         .and_then(|value| value.parse::<usize>().ok())
         .filter(|count| (1..=64).contains(count))
         .unwrap_or_else(|| workers.split(',').filter(|s| !s.trim().is_empty()).count());
+    let mgmt_scheme = env_or("SOW_RELAY_MGMT_SCHEME", "https");
+    if mgmt_scheme != "http" && mgmt_scheme != "https" {
+        bail!("SOW_RELAY_MGMT_SCHEME must be http or https");
+    }
+    let mgmt_resolve_ip = env::var("SOW_RELAY_MGMT_RESOLVE_IP")
+        .context("SOW_RELAY_MGMT_RESOLVE_IP must identify the relay management NIC")?;
+    mgmt_resolve_ip
+        .parse::<std::net::IpAddr>()
+        .with_context(|| format!("invalid SOW_RELAY_MGMT_RESOLVE_IP={mgmt_resolve_ip}"))?;
     let mgmt_url = env::var("SOW_RELAY_MGMT_URL")
         .unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
     let remote = format!(
         "set -eu; f=/usr/local/etc/sow/sow.env; t=$(mktemp /tmp/sow.env.XXXXXX); \\
-         if sudo test -f \"$f\"; then sudo grep -v -E '^(SOW_RELAY_HOST|SOW_RELAY_WORKER_COUNT|SOW_RELAY_WORKERS|SOW_RELAY_PORT|SOW_RELAY_MGMT_URL)=' \"$f\" > \"$t\"; else : > \"$t\"; fi; \\
-         printf '%s\\n' SOW_RELAY_HOST={} SOW_RELAY_WORKER_COUNT={} SOW_RELAY_WORKERS={} SOW_RELAY_PORT=80 SOW_RELAY_MGMT_URL={} >> \"$t\"; \\
+         if sudo test -f \"$f\"; then sudo grep -v -E '^(SOW_RELAY_HOST|SOW_RELAY_WORKER_COUNT|SOW_RELAY_WORKERS|SOW_RELAY_PORT|SOW_RELAY_MGMT_URL|SOW_RELAY_MGMT_SCHEME|SOW_RELAY_MGMT_RESOLVE_IP)=' \"$f\" > \"$t\"; else : > \"$t\"; fi; \\
+         printf '%s\\n' SOW_RELAY_HOST={} SOW_RELAY_WORKER_COUNT={} SOW_RELAY_WORKERS={} SOW_RELAY_PORT=80 SOW_RELAY_MGMT_URL={} SOW_RELAY_MGMT_SCHEME={} SOW_RELAY_MGMT_RESOLVE_IP={} >> \"$t\"; \\
          sudo install -o root -g wheel -m 0600 \"$t\" \"$f\"; rm -f \"$t\"; sudo service sow_server restart; sudo service sow_server status",
         shell_quote(&relay_host),
         worker_count,
         shell_quote(&workers),
         shell_quote(&mgmt_url),
+        shell_quote(&mgmt_scheme),
+        shell_quote(&mgmt_resolve_ip),
     );
     run("ssh", &[&config.prod_host, &remote], None).context("relay catalog sync failed")
 }
