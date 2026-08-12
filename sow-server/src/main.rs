@@ -52,7 +52,10 @@ fn relay_mgmt_scheme() -> String {
         .to_ascii_lowercase()
         .as_str()
     {
-        "http" => "http".to_string(),
+        "http" => {
+            log::error!("SOW_RELAY_MGMT_SCHEME=http is forbidden; using https");
+            "https".to_string()
+        }
         "https" => "https".to_string(),
         other => {
             log::warn!("Unsupported SOW_RELAY_MGMT_SCHEME={other}; using https");
@@ -106,22 +109,48 @@ fn relay_mgmt_headers(
 /// different network interfaces on the two-NIC relay VM.
 fn relay_mgmt_client(mgmt_url: &str) -> Result<reqwest::Client, String> {
     let mut builder = reqwest::Client::builder();
+    let parsed = reqwest::Url::parse(mgmt_url)
+        .map_err(|e| format!("invalid relay management URL {mgmt_url}: {e}"))?;
+    if parsed.scheme() != "https" {
+        return Err(format!("relay management URL must use https: {mgmt_url}"));
+    }
     if let Ok(raw_ip) = std::env::var("SOW_RELAY_MGMT_RESOLVE_IP") {
         let ip = raw_ip
             .parse::<IpAddr>()
             .map_err(|e| format!("invalid SOW_RELAY_MGMT_RESOLVE_IP={raw_ip}: {e}"))?;
-        let parsed = reqwest::Url::parse(mgmt_url)
-            .map_err(|e| format!("invalid relay management URL {mgmt_url}: {e}"))?;
         let host = parsed
             .host_str()
             .ok_or_else(|| format!("relay management URL has no host: {mgmt_url}"))?;
         if host.parse::<IpAddr>().is_err() {
-            builder = builder.resolve(host, SocketAddr::new(ip, 0));
+            let port = parsed.port().unwrap_or(443);
+            builder = builder.resolve(host, SocketAddr::new(ip, port));
         }
     }
     builder
         .build()
         .map_err(|e| format!("build relay management client: {e}"))
+}
+
+fn validate_runtime_security() -> Result<(), String> {
+    let scheme = std::env::var("SOW_RELAY_MGMT_SCHEME")
+        .unwrap_or_else(|_| "https".to_string())
+        .to_ascii_lowercase();
+    if scheme != "https" {
+        return Err("SOW_RELAY_MGMT_SCHEME must be https".to_string());
+    }
+    let tickets = std::env::var("SOW_RELAY_TICKETS_REQUIRED")
+        .unwrap_or_else(|_| "1".to_string());
+    if tickets != "1" {
+        return Err("SOW_RELAY_TICKETS_REQUIRED must be 1".to_string());
+    }
+    if let Ok(url) = std::env::var("SOW_RELAY_MGMT_URL") {
+        let parsed = reqwest::Url::parse(&url)
+            .map_err(|e| format!("invalid SOW_RELAY_MGMT_URL={url}: {e}"))?;
+        if parsed.scheme() != "https" {
+            return Err("SOW_RELAY_MGMT_URL must use https".to_string());
+        }
+    }
+    Ok(())
 }
 
 /// Parse one worker as either `game_host:legacy_game_port:mgmt_port` or
@@ -576,6 +605,10 @@ async fn main() {
         .is_none()
     {
         log::error!("SOW_DB_SECRET must be set; refusing insecure default");
+        return;
+    }
+    if let Err(e) = validate_runtime_security() {
+        log::error!("{e}");
         return;
     }
 

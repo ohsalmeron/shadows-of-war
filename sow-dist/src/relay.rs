@@ -30,6 +30,16 @@ pub(super) fn execute(paths: &Paths) -> Result<()> {
     if tickets_required != "0" && tickets_required != "1" {
         bail!("SOW_RELAY_TICKETS_REQUIRED must be 0 or 1");
     }
+    let db_url = env_or("SOW_DB_URL", "https://shadowsofwar.io");
+    let parsed_db_url = url::Url::parse(&db_url)
+        .with_context(|| format!("invalid SOW_DB_URL={db_url}"))?;
+    if parsed_db_url.scheme() != "https" {
+        bail!("SOW_DB_URL must use https for relay production deploys");
+    }
+    let db_resolve_ip = env_or("SOW_DB_RESOLVE_IP", "74.208.246.177");
+    db_resolve_ip
+        .parse::<std::net::IpAddr>()
+        .with_context(|| format!("invalid SOW_DB_RESOLVE_IP={db_resolve_ip}"))?;
     let secondary_ids = if worker_count > 1 {
         format!("{}", (1..worker_count).map(|id| id.to_string()).collect::<Vec<_>>().join("|"))
     } else {
@@ -117,6 +127,7 @@ EOF\n\
          Environment=SOW_RELAY_WORKER_COUNT={}\n\
          Environment=SOW_RELAY_TICKETS_REQUIRED={}\n\
          Environment=SOW_DB_URL={}\n\
+         Environment=SOW_DB_RESOLVE_IP={}\n\
          Environment=SOW_DB_SECRET=$secret\n\
          Environment=SOW_RELAY_CONTROL_SECRET=$control_secret\n\
          Environment=SOW_RELAY_TLS_CERT=/usr/local/etc/sow/relay.crt\n\
@@ -128,7 +139,8 @@ EOF\n\
         shell_quote(&remote_control_secret),
         worker_count,
         tickets_required,
-        env_or("SOW_DB_URL", "https://shadowsofwar.io"),
+        shell_quote(&db_url),
+        shell_quote(&db_resolve_ip),
     );
     run("ssh", &[&host, &drop_in], None)?;
 

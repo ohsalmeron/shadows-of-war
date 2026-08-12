@@ -5,7 +5,8 @@ const BUILD_HOST: &str = "freebsd";
 const BUILD_ROOT: &str = "/home/bizkit/shadows-of-war";
 const PROD_HOST: &str = "ionos";
 const REMOTE_STAGE: &str = "/home/bizkit/.sow-deploy";
-const PUBLIC_ORIGIN: &str = "http://74.208.246.177";
+const PUBLIC_ORIGIN: &str = "https://shadowsofwar.io";
+const DEFAULT_RELAY_DB_SOURCE_IP: &str = "20.230.49.9";
 
 struct Config {
     build_host: String,
@@ -50,6 +51,7 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
         bail!("SOW_RELAY_CONTROL_SECRET must not be empty");
     }
     let version = version(paths, bump)?;
+    let relay_db_source_ip = relay_db_source_ip()?;
 
     println!("==> Production {version}");
     println!("==> 1/6 Preflight");
@@ -74,7 +76,7 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
     relay::execute(paths).context("F-Stack relay deployment failed")?;
 
     println!("==> 4/7 Release");
-    let release = assemble_release(paths, &binaries, &version)?;
+    let release = assemble_release(paths, &binaries, &version, &relay_db_source_ip)?;
     println!("  {}", release.id);
 
     println!("==> 5/7 Upload");
@@ -115,6 +117,14 @@ fn sync_prod_secrets(config: &Config, db_secret: &str, control_secret: &str) -> 
 
 fn env_or(name: &str, default: &str) -> String {
     env::var(name).unwrap_or_else(|_| default.to_string())
+}
+
+fn relay_db_source_ip() -> Result<String> {
+    let value = env_or("SOW_RELAY_DB_SOURCE_IP", DEFAULT_RELAY_DB_SOURCE_IP);
+    value
+        .parse::<std::net::IpAddr>()
+        .with_context(|| format!("invalid SOW_RELAY_DB_SOURCE_IP={value}"))?;
+    Ok(value)
 }
 
 fn version(paths: &Paths, bump: bool) -> Result<String> {
@@ -411,17 +421,23 @@ fn input_fingerprint(tag: &str, value: &str, inputs: &[&Path]) -> Result<String>
     Ok(format!("{:x}", hash.finalize()))
 }
 
-fn assemble_release(paths: &Paths, binaries: &Path, version: &str) -> Result<Release> {
+fn assemble_release(
+    paths: &Paths,
+    binaries: &Path,
+    version: &str,
+    relay_db_source_ip: &str,
+) -> Result<Release> {
     let revision = output("git", &["rev-parse", "--short=12", "HEAD"])?;
     let dirty = !output("git", &["status", "--porcelain", "--untracked-files=no"])?.is_empty();
     let fingerprint = input_fingerprint(
         "release-v2",
-        &format!("{version}:{revision}:{dirty}"),
+        &format!("{version}:{revision}:{dirty}:{relay_db_source_ip}"),
         &[
             &paths.dist_play,
             binaries,
             &paths.assets_maps,
             &paths.root.join("sow-dist/deploy/freebsd/rc.d"),
+            &paths.root.join("sow-dist/deploy/freebsd/conf.d"),
             &paths.root.join("sow-dist/deploy/freebsd/nginx.conf"),
         ],
     )?;
@@ -472,6 +488,16 @@ fn assemble_release(paths: &Paths, binaries: &Path, version: &str) -> Result<Rel
         paths.root.join("sow-dist/deploy/freebsd/nginx.conf"),
         work.join("ops/nginx.conf"),
     )?;
+    let nginx_site = fs::read_to_string(
+        paths
+            .root
+            .join("sow-dist/deploy/freebsd/conf.d/shadowsofwar.io.conf"),
+    )?
+    .replace("__SOW_RELAY_DB_SOURCE_IP__", relay_db_source_ip);
+    if nginx_site.contains("__SOW_RELAY_DB_SOURCE_IP__") {
+        bail!("nginx relay source IP placeholder was not rendered");
+    }
+    fs::write(work.join("ops/conf.d/shadowsofwar.io.conf"), nginx_site)?;
 
     require_file(&work.join("web/play/index.html"), "web index")?;
     require_file(&work.join("web/game-manifest.json"), "game manifest")?;

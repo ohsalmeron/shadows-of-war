@@ -411,6 +411,7 @@ impl StubState {
                 spawn_y: 0,
                 civilization: *civ,
                 leader: *leader,
+                is_ai_controlled: false,
             })
             .collect();
         if !out.iter().any(|p| p.id == self_id) {
@@ -424,6 +425,7 @@ impl StubState {
                 spawn_y: 0,
                 civilization: sow_core::player::Civilization::Rome,
                 leader: sow_core::player::Leader::Caesar,
+                is_ai_controlled: false,
             });
         }
         out

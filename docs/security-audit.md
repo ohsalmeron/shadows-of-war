@@ -17,6 +17,9 @@ state.
   public IP.
 - Relay workers use the installed `relay.shadowsofwar.io` certificate and the
   relay-to-database path is HTTPS.
+- IONOS `/internal/*` is origin-allowlisted to the relay data IP; the relay
+  bypasses the public Cloudflare edge with pinned DNS resolution while keeping
+  `shadowsofwar.io` as the TLS/SNI hostname.
 - SSH password and keyboard-interactive authentication are disabled.
 
 These controls reduce exposure; they do not replace application authentication
@@ -24,11 +27,8 @@ or least-privilege service isolation.
 
 ## Critical-risk backlog
 
-1. Remaining public `/internal/*` mutation routes must stay unreachable from
-   the public edge; the relay management plane itself now requires HTTPS and
-   HMAC authentication (completed below).
-2. The relay handoff has no signed, expiring player capability; `Ready` is
-   authorized by `lobby_id` + `player_id` alone.
+1. The relay handoff ticket is bearer-only for its 900-second lifetime; it is
+   not one-time and is not bound to an account or source IP.
 3. Public orchestrator and relay connections have no verified per-IP admission
    or handshake rate limit.
 4. Relay workers run as root and relay SSH is reachable from any source allowed
@@ -86,6 +86,21 @@ does not replace platform account authentication; `database_account_id` is
 still a separate follow-up hardening phase and must not be treated as proof of
 identity.
 
+## Phase 3 — private relay-to-database path
+
+The release template now renders nginx `/internal/*` with `allow
+20.230.49.9; deny all;` (the value is configurable as
+`SOW_RELAY_DB_SOURCE_IP`). The relay's database client resolves
+`shadowsofwar.io` directly to `74.208.246.177` using `SOW_DB_RESOLVE_IP`, so
+the request retains normal certificate/SNI validation but cannot arrive via
+Cloudflare. Public requests to `/internal/*` are rejected at nginx before they
+reach sow-database. `/internal/stats` remains a deliberate 404.
+
+Both the relay and server now fail closed at startup if the production
+configuration requests HTTP or disables relay tickets. The relay finalizer
+also refuses an HTTP database URL at runtime, even if it is started outside
+the pipeline.
+
 ## Risk 1 — internal database bearer and transport
 
 ### What the secret is
@@ -122,8 +137,8 @@ Evidence:
 - Relay-to-IONOS database traffic now uses
   `https://shadowsofwar.io`; a post-deploy authenticated probe reached the
   endpoint over HTTPS and returned the expected account-not-found response.
-- nginx still publicly proxies `/internal/`
-  [shadowsofwar.io.conf](/home/bizkit/Github/shadows-of-war/sow-dist/deploy/freebsd/conf.d/shadowsofwar.io.conf:35).
+- nginx proxies `/internal/` only after the source-IP allowlist; the relay
+  reaches it by pinned direct-origin HTTPS rather than through Cloudflare.
 - Exact public `GET /internal/stats` is now denied with HTTP 404 over both HTTP
   and HTTPS; sow-server continues to query the loopback DB endpoint directly.
 - Relay TLS is enabled from the existing certificate for
@@ -149,11 +164,9 @@ HTTPS.
 
 ### Still outstanding
 
-1. Remove public access to the remaining `/internal/*` mutation routes; either
-   keep them behind a private channel or require application authentication.
-2. Authenticate and restrict any
-   operational endpoint that must remain reachable.
-3. Inspect logs for prior use of the retired credential.
+1. Inspect logs for prior use of the retired credential.
+2. Add one-time ticket consumption or a reconnect-specific capability if the
+   threat model requires stolen tickets to be unusable before expiry.
 
 ## Runtime data observations — pre-cleanup baseline
 

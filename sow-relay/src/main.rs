@@ -38,6 +38,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::CString;
 use std::io::BufReader;
+use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::ptr;
@@ -66,6 +67,57 @@ fn tickets_required() -> bool {
         .ok()
         .map(|value| value == "1")
         .unwrap_or(false)
+}
+
+fn strict_runtime_security() -> bool {
+    std::env::var("SOW_MGMT_TLS_REQUIRED").ok().as_deref() == Some("1")
+}
+
+fn configured_db_url() -> Result<String, String> {
+    let db_url = std::env::var("SOW_DB_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
+    let parsed = reqwest::Url::parse(&db_url)
+        .map_err(|e| format!("invalid SOW_DB_URL={db_url}: {e}"))?;
+    if strict_runtime_security() && parsed.scheme() != "https" {
+        return Err("SOW_DB_URL must use https when SOW_MGMT_TLS_REQUIRED=1".to_string());
+    }
+    if let Ok(raw_ip) = std::env::var("SOW_DB_RESOLVE_IP") {
+        raw_ip
+            .parse::<IpAddr>()
+            .map_err(|e| format!("invalid SOW_DB_RESOLVE_IP={raw_ip}: {e}"))?;
+    } else if strict_runtime_security() {
+        return Err("SOW_DB_RESOLVE_IP must be set when SOW_MGMT_TLS_REQUIRED=1".to_string());
+    }
+    Ok(db_url)
+}
+
+fn db_client(db_url: &str) -> Result<reqwest::Client, String> {
+    let parsed = reqwest::Url::parse(db_url)
+        .map_err(|e| format!("invalid database URL {db_url}: {e}"))?;
+    let mut builder = reqwest::Client::builder();
+    if let Ok(raw_ip) = std::env::var("SOW_DB_RESOLVE_IP") {
+        let ip = raw_ip
+            .parse::<IpAddr>()
+            .map_err(|e| format!("invalid SOW_DB_RESOLVE_IP={raw_ip}: {e}"))?;
+        if let Some(host) = parsed.host_str() {
+            if host.parse::<IpAddr>().is_err() {
+                let port = parsed
+                    .port()
+                    .unwrap_or_else(|| if parsed.scheme() == "http" { 80 } else { 443 });
+                builder = builder.resolve(host, SocketAddr::new(ip, port));
+            }
+        }
+    }
+    builder
+        .build()
+        .map_err(|e| format!("build database client: {e}"))
+}
+
+fn validate_runtime_security() -> Result<(), String> {
+    if strict_runtime_security() && !tickets_required() {
+        return Err("SOW_RELAY_TICKETS_REQUIRED must be 1 when SOW_MGMT_TLS_REQUIRED=1".to_string());
+    }
+    configured_db_url().map(|_| ())
 }
 
 fn decode_ticket_digest(value: &str) -> Option<[u8; 32]> {
@@ -593,8 +645,13 @@ fn trigger_match_finalize(match_id: u64, lobby_json: String, journal: Arc<Replay
             return;
         }
 
-        let db_url =
-            std::env::var("SOW_DB_URL").unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
+        let db_url = match configured_db_url() {
+            Ok(url) => url,
+            Err(e) => {
+                error!("Cannot finalize match {match_id}: {e}");
+                return;
+            }
+        };
         let secret = std::env::var("SOW_DB_SECRET")
             .expect("SOW_DB_SECRET validated at relay startup");
         let url = format!("{}/internal/match-finalize", db_url.trim_end_matches('/'));
@@ -607,7 +664,13 @@ fn trigger_match_finalize(match_id: u64, lobby_json: String, journal: Arc<Replay
         };
 
         let mut success = false;
-        let client = reqwest::Client::new();
+        let client = match db_client(&db_url) {
+            Ok(client) => client,
+            Err(e) => {
+                error!("Cannot finalize match {match_id}: {e}");
+                return;
+            }
+        };
 
         // ponytail: Resilient uploading with exponential backoff
         for attempt in 1..=5 {
@@ -805,6 +868,10 @@ fn main() {
         .is_none()
     {
         eprintln!("SOW_RELAY_CONTROL_SECRET must be set; refusing unauthenticated management");
+        std::process::exit(78);
+    }
+    if let Err(e) = validate_runtime_security() {
+        eprintln!("{e}");
         std::process::exit(78);
     }
 
