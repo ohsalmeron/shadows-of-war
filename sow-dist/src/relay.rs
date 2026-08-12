@@ -117,6 +117,8 @@ EOF\n\
 
     let drop_in = format!(
         "set -eu; secret=$(cat {}); control_secret=$(cat {}); rm -f {} {}; \
+         sudo rm -f /etc/systemd/system/sow-relay.service.d/override.conf; \
+         sudo rmdir /etc/systemd/system/sow-relay.service.d 2>/dev/null || true; \
          sudo mkdir -p /etc/systemd/system/sow-relay@.service.d && \
          sudo tee /etc/systemd/system/sow-relay@.service.d/override.conf >/dev/null <<EOF\n\
          [Service]\n\
@@ -132,7 +134,8 @@ EOF\n\
          Environment=SOW_RELAY_CONTROL_SECRET=$control_secret\n\
          Environment=SOW_RELAY_TLS_CERT=/usr/local/etc/sow/relay.crt\n\
          Environment=SOW_RELAY_TLS_KEY=/usr/local/etc/sow/relay.key\n\
-         EOF",
+         EOF\n\
+         sudo chmod 0600 /etc/systemd/system/sow-relay@.service.d/override.conf",
         shell_quote(&remote_secret),
         shell_quote(&remote_control_secret),
         shell_quote(&remote_secret),
@@ -202,7 +205,21 @@ EOF\n\
     let restart = format!("sudo systemctl disable --now sow-relay.service 2>/dev/null || true; sudo systemctl stop {unit_stops} 2>/dev/null || true; sudo systemctl daemon-reload; sudo systemctl enable sow-relay.service; sudo systemctl start sow-relay.service; sleep 3; sudo systemctl is-active sow-relay.service {unit_wants}");
     run("ssh", &[&host, &restart], None)?;
 
-    let verify = format!("set -eu; test -s /usr/local/etc/sow/relay.crt; test -s /usr/local/etc/sow/relay.key; for p in {}; do curl -kfsS --max-time 5 https://127.0.0.1:$p/healthz >/dev/null; echo mgmt-$p-tls-ok; done; pgrep -af sow-relay; systemctl show {} -p NRestarts", mgmt_ports.join(" "), unit_wants);
+    let verify = format!(
+        "set -eu; \
+         test -s /usr/local/etc/sow/relay.crt; \
+         test -s /usr/local/etc/sow/relay.key; \
+         test ! -e /etc/systemd/system/sow-relay.service.d/override.conf; \
+         test \"$(stat -c '%a' /etc/systemd/system/sow-relay@.service.d/override.conf)\" = 600; \
+         if sudo grep -R -l -E 'sow_db_dev_secret_123_change_me_in_prod|SOW_DB_URL=http://' /etc/systemd/system /etc/sow 2>/dev/null | grep -q .; then \
+             echo 'legacy relay secret or HTTP DB URL remains on relay' >&2; exit 78; \
+         fi; \
+         for p in {}; do curl -kfsS --max-time 5 https://127.0.0.1:$p/healthz >/dev/null; echo mgmt-$p-tls-ok; done; \
+         pgrep -af sow-relay; \
+         systemctl show {} -p NRestarts",
+        mgmt_ports.join(" "),
+        unit_wants
+    );
     run("ssh", &[&host, &verify], None)?;
 
     println!("✅ relay deployed to {host}");
