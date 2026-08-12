@@ -34,7 +34,7 @@ use sow_core::protocol::{
     StampedIntent, Turn,
 };
 use rustls::{Certificate, PrivateKey, ServerConfig};
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::CString;
 use std::io::BufReader;
@@ -60,6 +60,35 @@ const MAX_MGMT_BODY_BYTES: usize = 2 * 1024 * 1024;
 const MGMT_CLOCK_SKEW_SECS: u64 = 30;
 const MGMT_NONCE_TTL_SECS: u64 = 120;
 type HmacSha256 = Hmac<Sha256>;
+
+fn tickets_required() -> bool {
+    std::env::var("SOW_RELAY_TICKETS_REQUIRED")
+        .ok()
+        .map(|value| value == "1")
+        .unwrap_or(false)
+}
+
+fn decode_ticket_digest(value: &str) -> Option<[u8; 32]> {
+    let bytes = hex::decode(value).ok()?;
+    bytes.try_into().ok()
+}
+
+fn ticket_matches(ticket: &str, expected: &[u8; 32]) -> bool {
+    let actual = Sha256::digest(ticket.as_bytes());
+    let mut diff = 0u8;
+    for (left, right) in actual.iter().zip(expected.iter()) {
+        diff |= left ^ right;
+    }
+    diff == 0
+}
+
+fn ticket_is_current(expires_at: u64) -> bool {
+    expires_at == 0
+        || std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|now| now.as_secs() <= expires_at)
+            .unwrap_or(false)
+}
 
 fn expected_worker_count() -> u16 {
     std::env::var("SOW_RELAY_WORKER_COUNT")
@@ -724,6 +753,8 @@ impl MatchTracker {
 struct RegisterBody {
     lobby_id: u64,
     relay_port: u16,
+    #[serde(default)]
+    ticket_expires_at: u64,
     tick_number: u64,
     tick_rate_ms: f32,
     active_empty_secs: f32,
@@ -737,12 +768,18 @@ struct PlayerEntry {
     player_id: u16,
     name: String,
     database_account_id: Option<String>,
+    #[serde(default)]
+    relay_ticket_digest: Option<String>,
+    #[serde(default)]
+    is_internal: bool,
 }
 
 struct LobbyState {
     id: u64,
     relay_port: u16,
+    ticket_expires_at: u64,
     valid_players: HashMap<u16, String>,
+    ticket_digests: HashMap<u16, [u8; 32]>,
     clients: Arc<Mutex<HashMap<u16, ClientChannel>>>,
     journal: Arc<ReplayJournal>,
     tracker: Arc<std::sync::Mutex<MatchTracker>>,
@@ -1143,6 +1180,23 @@ async fn handle_http(
             if rb.lobby_id == 0 {
                 return ("400 Bad Request", serde_json::json!({ "error": "lobby_id required" }));
             }
+            if tickets_required() && rb.ticket_expires_at == 0 {
+                return (
+                    "400 Bad Request",
+                    serde_json::json!({ "error": "ticket_expires_at required" }),
+                );
+            }
+            if tickets_required()
+                && rb
+                    .players
+                    .iter()
+                    .any(|player| !player.is_internal && player.relay_ticket_digest.as_deref().and_then(decode_ticket_digest).is_none())
+            {
+                return (
+                    "400 Bad Request",
+                    serde_json::json!({ "error": "relay ticket digest required for every network player" }),
+                );
+            }
             if !(DYNAMIC_PORT_MIN..=u16::MAX).contains(&rb.relay_port) {
                 return (
                     "400 Bad Request",
@@ -1241,11 +1295,27 @@ async fn handle_http(
 }
 
 async fn spawn_lobby(registry: &Registry, body: RegisterBody) -> Arc<LobbyState> {
-    let lobby_json = serde_json::to_string(&body).unwrap_or_default();
+    let mut lobby_value = serde_json::to_value(&body).unwrap_or_default();
+    if let Some(players) = lobby_value.get_mut("players").and_then(|value| value.as_array_mut()) {
+        for player in players {
+            if let Some(object) = player.as_object_mut() {
+                object.remove("relay_ticket_digest");
+            }
+        }
+    }
+    let lobby_json = serde_json::to_string(&lobby_value).unwrap_or_default();
     let mut valid_players: HashMap<u16, String> = HashMap::new();
+    let mut ticket_digests: HashMap<u16, [u8; 32]> = HashMap::new();
     let mut player_accounts: HashMap<u16, String> = HashMap::new();
     for p in &body.players {
         valid_players.insert(p.player_id, p.name.clone());
+        if let Some(digest) = p
+            .relay_ticket_digest
+            .as_deref()
+            .and_then(decode_ticket_digest)
+        {
+            ticket_digests.insert(p.player_id, digest);
+        }
         if let Some(acc) = &p.database_account_id {
             player_accounts.insert(p.player_id, acc.clone());
         }
@@ -1270,7 +1340,9 @@ async fn spawn_lobby(registry: &Registry, body: RegisterBody) -> Arc<LobbyState>
     let state = Arc::new(LobbyState {
         id: body.lobby_id,
         relay_port: body.relay_port,
+        ticket_expires_at: body.ticket_expires_at,
         valid_players,
+        ticket_digests,
         clients,
         journal,
         tracker,
@@ -1679,9 +1751,26 @@ async fn ws_task(
         Ok(Some(Ok(Message::Binary(b)))) => {
             match bincode::deserialize::<ClientMessage>(&b) {
                 Ok(ClientMessage::Ready { lobby_id, player_id }) => {
-                    role = try_ready_register(&registry, lobby_id, player_id, &direct_tx).await;
+                    role = try_ready_register(&registry, lobby_id, player_id, None, &direct_tx).await;
                     info!(
                         "[relay] first-frame Ready lobby={} player={} registered={} fd={}",
+                        lobby_id,
+                        player_id,
+                        role.is_some(),
+                        fd
+                    );
+                }
+                Ok(ClientMessage::ReadyWithTicket { lobby_id, player_id, ticket }) => {
+                    role = try_ready_register(
+                        &registry,
+                        lobby_id,
+                        player_id,
+                        Some(&ticket),
+                        &direct_tx,
+                    )
+                    .await;
+                    info!(
+                        "[relay] first-frame ticket Ready lobby={} player={} registered={} fd={}",
                         lobby_id,
                         player_id,
                         role.is_some(),
@@ -1770,10 +1859,30 @@ async fn ws_task(
                                         // Re-ready (reconnect) mid-session.
                                         if let (Some(lobby), Some(pid)) = (&my_lobby, &my_player_id) {
                                             if lobby.id == l_id && *pid == player_id
+                                                && !tickets_required()
                                                 && lobby.valid_players.contains_key(&player_id)
                                             {
                                                 lobby.clients.lock().await.insert(player_id, ClientChannel { sender: direct_tx.clone(), missed_ticks: 0 });
                                                 info!("[relay] Ready lobby={} player={} fd={}", l_id, player_id, fd);
+                                                let _ = lobby.ev_tx.try_send(RelayEvent::Gameplay {
+                                                    player_id,
+                                                    intent: GameplayIntent::MarkDisconnected { is_disconnected: false },
+                                                });
+                                            }
+                                        }
+                                    }
+                                    ClientMessage::ReadyWithTicket { lobby_id: l_id, player_id, ticket } => {
+                                        if let (Some(lobby), Some(pid)) = (&my_lobby, &my_player_id) {
+                                            if lobby.id == l_id && *pid == player_id
+                                                && lobby.valid_players.contains_key(&player_id)
+                                                && ticket_is_current(lobby.ticket_expires_at)
+                                                && lobby
+                                                    .ticket_digests
+                                                    .get(&player_id)
+                                                    .is_some_and(|expected| ticket_matches(&ticket, expected))
+                                            {
+                                                lobby.clients.lock().await.insert(player_id, ClientChannel { sender: direct_tx.clone(), missed_ticks: 0 });
+                                                info!("[relay] ticket Ready lobby={} player={} fd={}", l_id, player_id, fd);
                                                 let _ = lobby.ev_tx.try_send(RelayEvent::Gameplay {
                                                     player_id,
                                                     intent: GameplayIntent::MarkDisconnected { is_disconnected: false },
@@ -1913,6 +2022,7 @@ async fn try_ready_register(
     registry: &Registry,
     lobby_id: u64,
     player_id: u16,
+    ticket: Option<&str>,
     direct_tx: &mpsc::Sender<Arc<Vec<u8>>>,
 ) -> Option<Role> {
     let lobby = {
@@ -1929,6 +2039,27 @@ async fn try_ready_register(
     if !lobby.valid_players.contains_key(&player_id) {
         warn!("[relay] invalid Ready lobby={} player={} (not a valid player)", lobby_id, player_id);
         return None;
+    }
+    match ticket {
+        Some(ticket) => {
+            if !ticket_is_current(lobby.ticket_expires_at) {
+                warn!("[relay] expired relay ticket lobby={} player={}", lobby_id, player_id);
+                return None;
+            }
+            let valid = lobby
+                .ticket_digests
+                .get(&player_id)
+                .is_some_and(|expected| ticket_matches(ticket, expected));
+            if !valid {
+                warn!("[relay] invalid relay ticket lobby={} player={}", lobby_id, player_id);
+                return None;
+            }
+        }
+        None if tickets_required() => {
+            warn!("[relay] missing relay ticket lobby={} player={}", lobby_id, player_id);
+            return None;
+        }
+        None => {}
     }
 
     lobby
@@ -2034,7 +2165,8 @@ fn lobby_info(state: &Arc<LobbyState>) -> LobbyInfo {
 
 #[cfg(test)]
 mod dispatcher_tests {
-    use super::{try_ready_register, Registry};
+    use super::{ticket_matches, try_ready_register, Registry};
+    use sha2::{Digest, Sha256};
     use std::collections::HashMap;
     use std::sync::Arc;
     use tokio::sync::{mpsc, RwLock};
@@ -2043,6 +2175,15 @@ mod dispatcher_tests {
     async fn rejects_ready_for_lobby_not_owned_by_worker() {
         let registry: Registry = Arc::new(RwLock::new(HashMap::new()));
         let (tx, _rx) = mpsc::channel(1);
-        assert!(try_ready_register(&registry, 42, 7, &tx).await.is_none());
+        assert!(try_ready_register(&registry, 42, 7, None, &tx).await.is_none());
+    }
+
+    #[test]
+    fn ticket_digest_rejects_tampering() {
+        let ticket = "0123456789abcdef0123456789abcdef";
+        let digest = Sha256::digest(ticket.as_bytes());
+        let expected: [u8; 32] = digest.into();
+        assert!(ticket_matches(ticket, &expected));
+        assert!(!ticket_matches("0123456789abcdef0123456789abcde0", &expected));
     }
 }

@@ -19,3 +19,6 @@ bytemuck = { workspace = true }
 libm = { workspace = true }
 brotli = { workspace = true }
 sow-data = { workspace = true }
+
+[dev-dependencies]
+bincode = { workspace = true }

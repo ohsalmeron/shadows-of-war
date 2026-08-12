@@ -3,6 +3,24 @@ use crate::get_build_version;
 use sow_ui_kit::ClientPhase;
 
 impl SowApp {
+    pub(crate) fn make_ready_message(
+        &self,
+        lobby_id: u64,
+        player_id: u16,
+    ) -> sow_core::protocol::ClientMessage {
+        match self.sim.relay_ticket.clone() {
+            Some(ticket) => sow_core::protocol::ClientMessage::ReadyWithTicket {
+                lobby_id,
+                player_id,
+                ticket,
+            },
+            None => sow_core::protocol::ClientMessage::Ready {
+                lobby_id,
+                player_id,
+            },
+        }
+    }
+
     pub(crate) fn make_join_message(
         &self,
         target_lobby_id: Option<u64>,
@@ -57,6 +75,7 @@ impl SowApp {
         self.ui.app.hud_state.sync_state = None;
         self.sim.my_lobby_id = None;
         self.sim.my_player_id = None;
+        self.sim.relay_ticket = None;
         if use_loader {
             self.ui.app.phase = ClientPhase::Splash;
             let lang = self.ui.app.settings_state.language;

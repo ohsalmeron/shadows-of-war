@@ -3896,6 +3896,7 @@ dependencies = [
 name = "sow-core"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "bitfield",
  "brotli",
  "bytemuck",
@@ -3942,6 +3943,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tower-http",
+ "url",
  "walkdir",
  "wasm-bindgen-cli-support",
 ]

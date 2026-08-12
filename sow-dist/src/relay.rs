@@ -26,6 +26,10 @@ pub(super) fn execute(paths: &Paths) -> Result<()> {
     if !(1..=64).contains(&worker_count) {
         bail!("SOW_RELAY_WORKER_COUNT must be between 1 and 64");
     }
+    let tickets_required = env_or("SOW_RELAY_TICKETS_REQUIRED", "1");
+    if tickets_required != "0" && tickets_required != "1" {
+        bail!("SOW_RELAY_TICKETS_REQUIRED must be 0 or 1");
+    }
     let secondary_ids = if worker_count > 1 {
         format!("{}", (1..worker_count).map(|id| id.to_string()).collect::<Vec<_>>().join("|"))
     } else {
@@ -111,6 +115,7 @@ EOF\n\
          Environment=SOW_MGMT_LISTEN=0.0.0.0\n\
          Environment=SOW_MGMT_TLS_REQUIRED=1\n\
          Environment=SOW_RELAY_WORKER_COUNT={}\n\
+         Environment=SOW_RELAY_TICKETS_REQUIRED={}\n\
          Environment=SOW_DB_URL={}\n\
          Environment=SOW_DB_SECRET=$secret\n\
          Environment=SOW_RELAY_CONTROL_SECRET=$control_secret\n\
@@ -122,6 +127,7 @@ EOF\n\
         shell_quote(&remote_secret),
         shell_quote(&remote_control_secret),
         worker_count,
+        tickets_required,
         env_or("SOW_DB_URL", "https://shadowsofwar.io"),
     );
     run("ssh", &[&host, &drop_in], None)?;

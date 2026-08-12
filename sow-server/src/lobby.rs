@@ -54,18 +54,16 @@ pub struct ServerLobby {
     pub host_name: String,
     /// Identities (account id, or `name:<name>` fallback) banned from this lobby.
     pub banned: std::collections::HashSet<String>,
-    /// Internal bot fill (fictional humans, ORGANIC staged entry — see
-    /// `bot_fill/mod.rs` MENTAL MODEL: random fill %, random per-lobby drip
-    /// mean, exponential inter-arrival, never predictable, never a pattern).
+    /// Internal bot fill (fictional humans, ORGANIC entry — see
+    /// `bot_fill/mod.rs` MENTAL MODEL: each ghost independently picks a random
+    /// moment during the countdown. No mean, no drip, no perceptible rate —
+    /// clusters and silences emerge from pure independence).
     /// `bot_fill_target`: total ghost count to reach (rolled once per lobby).
-    /// `bot_fill_mean`: this lobby's random drip mean in seconds (1–8s).
-    /// `bot_fill_cooldown`: seconds until the next ghost drips in.
-    /// `pending_bots`: reserved pool identities still waiting to join (names
-    /// are reserved up-front only for uniqueness — timing stays chaotic).
+    /// `pending_bots`: reserved identities still waiting, as
+    /// `(account_id, display_name, join_at_elapsed)` and sorted ASCENDING by
+    /// `join_at_elapsed` (seconds into the countdown when this ghost shows up).
     pub bot_fill_target: Option<usize>,
-    pub bot_fill_mean: f32,
-    pub bot_fill_cooldown: f32,
-    pub pending_bots: Vec<(String, String)>,
+    pub pending_bots: Vec<(String, String, f32)>,
 }
 
 /// Stable identity for ban tracking: prefer the account id, fall back to name.
@@ -164,8 +162,6 @@ fn spawn_waiting_lobby(
         host_name,
         banned: std::collections::HashSet::new(),
         bot_fill_target: None,
-        bot_fill_mean: 0.0,
-        bot_fill_cooldown: 0.0,
         pending_bots: Vec::new(),
     });
 }

@@ -224,6 +224,7 @@ impl SowApp {
                 turn_queue,
                 my_player_id,
                 my_lobby_id,
+                relay_ticket: None,
                 map_w,
                 map_h,
                 offline_tick_timer: 0.0,

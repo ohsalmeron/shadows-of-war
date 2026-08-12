@@ -20,7 +20,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 use rand::{RngCore, rngs::OsRng};
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, broadcast, mpsc};
 use tokio_tungstenite::tungstenite::protocol::Message;
@@ -28,6 +28,7 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 const DEFAULT_RELAY_WORKER_COUNT: usize = 4;
 const RELAY_PORT_MIN: u16 = 25592;
 const RELAY_PORT_MAX: u16 = 26500;
+const RELAY_TICKET_TTL_SECS: u64 = 900;
 type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Clone, Debug)]
@@ -47,17 +48,25 @@ fn relay_worker_count() -> usize {
 
 fn relay_mgmt_scheme() -> String {
     match std::env::var("SOW_RELAY_MGMT_SCHEME")
-        .unwrap_or_else(|_| "http".to_string())
+        .unwrap_or_else(|_| "https".to_string())
         .to_ascii_lowercase()
         .as_str()
     {
         "http" => "http".to_string(),
         "https" => "https".to_string(),
         other => {
-            log::warn!("Unsupported SOW_RELAY_MGMT_SCHEME={other}; using http");
-            "http".to_string()
+            log::warn!("Unsupported SOW_RELAY_MGMT_SCHEME={other}; using https");
+            "https".to_string()
         }
     }
+}
+
+fn new_relay_ticket() -> (String, String) {
+    let mut raw = [0u8; 32];
+    OsRng.fill_bytes(&mut raw);
+    let ticket = hex::encode(raw);
+    let digest = hex::encode(Sha256::digest(ticket.as_bytes()));
+    (ticket, digest)
 }
 
 fn relay_mgmt_headers(
@@ -268,9 +277,10 @@ async fn register_relay(rc: &RelayCandidate, worker: &RelayWorker) -> Result<(),
     let relay_config = serde_json::json!({
         "lobby_id": rc.lobby_id,
         "relay_port": rc.relay_port,
+        "ticket_expires_at": rc.ticket_expires_at,
         "tick_number": 0,
         "active_empty_secs": active_empty_secs,
-        "players": rc.players_json,
+        "players": rc.relay_players_json,
         "tick_rate_ms": rc.tick_rate_ms,
     });
 
@@ -543,13 +553,15 @@ enum ServerEvent {
 struct RelayCandidate {
     lobby_id: u64,
     relay_port: u16,
+    ticket_expires_at: u64,
     worker_index: usize,
     active_empty_secs: f32,
     tick_rate_ms: f32,
     config: GameConfig,
     seed: u64,
     start_players: Vec<PlayerInfo>,
-    players_json: Vec<serde_json::Value>,
+    relay_players_json: Vec<serde_json::Value>,
+    player_tickets: std::collections::HashMap<u16, String>,
     player_ids: Vec<String>,
     players_tx: Vec<(u16, mpsc::Sender<Vec<u8>>)>,
 }
@@ -680,6 +692,17 @@ async fn main() {
                                 relay_port: Some(rc.relay_port),
                                 relay_host: Some(worker.host.clone()),
                             };
+                            if let Some(ticket) = rc.player_tickets.get(player_id) {
+                                if let Ok(ticket_json) = bincode::serialize(
+                                    &sow_core::protocol::ServerMessage::RelayTicket {
+                                        lobby_id: rc.lobby_id,
+                                        player_id: *player_id,
+                                        ticket: ticket.clone(),
+                                    },
+                                ) {
+                                    let _ = tx.try_send(ticket_json);
+                                }
+                            }
                             if let Ok(start_json) = bincode::serialize(
                                 &sow_core::protocol::ServerMessage::Start(Box::new(start_msg)),
                             ) {
@@ -738,7 +761,8 @@ async fn main() {
                                     continue;
                                 };
                                 let lobby = games.remove(i);
-                                let mut players_json = Vec::new();
+                                let mut relay_players_json = Vec::new();
+                                let mut player_tickets = std::collections::HashMap::new();
                                 let mut start_players = Vec::new();
                                 let mut player_ids = Vec::new();
                                 let mut players_tx = Vec::new();
@@ -759,11 +783,19 @@ async fn main() {
                                         leader: p.leader,
                                         is_ai_controlled: p.is_internal_bot,
                                     });
-                                    players_json.push(serde_json::json!({
+                                    let relay_ticket_digest = if p.is_internal_bot {
+                                        None
+                                    } else {
+                                        let (ticket, digest) = new_relay_ticket();
+                                        player_tickets.insert(p.player_id, ticket);
+                                        Some(digest)
+                                    };
+                                    relay_players_json.push(serde_json::json!({
                                         "player_id": p.player_id,
                                         "name": p.name,
                                         "database_account_id": p.database_account_id,
                                         "is_internal": p.is_internal_bot,
+                                        "relay_ticket_digest": relay_ticket_digest,
                                     }));
                                     if let Some(acc_id) = &p.database_account_id {
                                         player_ids.push(acc_id.clone());
@@ -776,13 +808,19 @@ async fn main() {
                                 ready_candidates.push(RelayCandidate {
                                     lobby_id: lobby.id,
                                     relay_port,
+                                    ticket_expires_at: std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default()
+                                        .as_secs()
+                                        .saturating_add(RELAY_TICKET_TTL_SECS),
                                     worker_index: relay_port as usize % relay_worker_count,
                                     active_empty_secs: lobby.active_empty_secs,
                                     tick_rate_ms: lobby.config.tick_rate_ms,
                                     config: lobby.config.clone(),
                                     seed: lobby.seed,
                                     start_players,
-                                    players_json,
+                                    relay_players_json,
+                                    player_tickets,
                                     player_ids,
                                     players_tx,
                                 });
@@ -1090,6 +1128,10 @@ async fn main() {
                                                     }
                                                 }
                                             }
+                                            sow_core::protocol::ClientMessage::ReadyWithTicket { .. } => {
+                                                // Relay tickets are valid only on the direct relay
+                                                // connection, never on the orchestrator socket.
+                                            }
                                             sow_core::protocol::ClientMessage::MapDownloadProgress { lobby_id, player_id, progress } => {
                                                 if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id) {
                                                     if lobby_id == l_id && player_id == p_id {
@@ -1351,7 +1393,7 @@ mod relay_worker_tests {
         let worker = parse_relay_worker("relay-a.example:83:8083", 2).expect("valid worker");
         assert_eq!(worker.id, 2);
         assert_eq!(worker.host, "relay-a.example");
-        assert_eq!(worker.mgmt_url, "http://relay-a.example:8083");
+        assert_eq!(worker.mgmt_url, "https://relay-a.example:8083");
     }
 
     #[test]
@@ -1359,7 +1401,7 @@ mod relay_worker_tests {
         let worker = parse_relay_worker("data.example:80:mgmt.example:8080", 0)
             .expect("valid worker");
         assert_eq!(worker.host, "data.example");
-        assert_eq!(worker.mgmt_url, "http://mgmt.example:8080");
+        assert_eq!(worker.mgmt_url, "https://mgmt.example:8080");
     }
 
     #[test]

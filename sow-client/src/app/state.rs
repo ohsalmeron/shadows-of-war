@@ -69,6 +69,8 @@ pub struct SimState {
     pub turn_queue: std::collections::VecDeque<sow_core::protocol::Turn>,
     pub my_player_id: Option<u16>,
     pub my_lobby_id: Option<u64>,
+    /// Short-lived capability used only for the direct relay Ready frame.
+    pub relay_ticket: Option<String>,
     pub map_w: u32,
     pub map_h: u32,
     pub offline_tick_timer: f32,

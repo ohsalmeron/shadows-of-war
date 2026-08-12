@@ -36,6 +36,7 @@ impl SowApp {
         self.sim.last_synced_cost_tick = None;
         self.sim.my_lobby_id = None;
         self.sim.my_player_id = None;
+        self.sim.relay_ticket = None;
         self.ui.app.hud_state.spawn_timer_secs = None;
         self.ui.app.hud_state.sync_state = None;
         self.ui.app.main_menu_state.wait_timer_secs = 0.0;
@@ -429,10 +430,7 @@ impl SowApp {
                                 if let (Some(lid), Some(pid)) =
                                     (self.sim.my_lobby_id, self.sim.my_player_id)
                                 {
-                                    let ready_msg = sow_core::protocol::ClientMessage::Ready {
-                                        lobby_id: lid,
-                                        player_id: pid,
-                                    };
+                                    let ready_msg = self.make_ready_message(lid, pid);
                                     let json = bincode::serialize(&ready_msg).unwrap();
                                     c.send(json);
                                 }

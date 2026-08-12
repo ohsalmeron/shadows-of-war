@@ -14,6 +14,7 @@ anyhow = "1"
 brotli = { workspace = true }
 minifier = { workspace = true }
 serde_json = { workspace = true }
+url = { workspace = true }
 sha2 = "0.10"
 rand = { workspace = true }
 hex = { workspace = true }

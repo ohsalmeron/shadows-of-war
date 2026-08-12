@@ -160,6 +160,14 @@ pub enum ClientMessage {
         lobby_id: u64,
         player_id: u16,
     },
+    /// First relay frame for an authenticated game session.  Kept as a new
+    /// enum variant so legacy orchestrator `Ready` frames remain compatible
+    /// during the ticket rollout.
+    ReadyWithTicket {
+        lobby_id: u64,
+        player_id: u16,
+        ticket: String,
+    },
     ForceStart {
         lobby_id: u64,
         player_id: u16,
@@ -210,6 +218,13 @@ pub enum ServerMessage {
     SyncState(ServerSyncStateMessage),
     Pong { client_time: f64 },
     VersionUpdate { version: String },
+    /// Separate capability frame keeps the existing Start struct wire shape
+    /// compatible with cached clients during the ticket rollout.
+    RelayTicket {
+        lobby_id: u64,
+        player_id: u16,
+        ticket: String,
+    },
 }
 
 /// Classifies a lobby so every code path can branch on it explicitly instead of
@@ -539,4 +554,67 @@ pub struct SimSnapshot {
     pub total_land_tiles: u32,
     pub sea_lanes: std::sync::Arc<Vec<crate::sea_lane::SeaLane>>,
     pub debug_mem_info: String,
+}
+
+#[cfg(test)]
+mod protocol_compat_tests {
+    use super::{ServerStartMessage, Turn};
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize, Deserialize)]
+    struct LegacyStartMessage {
+        config: crate::game_config::GameConfig,
+        my_player_id: Option<u16>,
+        lobby_id: Option<u64>,
+        seed: u64,
+        players: Vec<super::PlayerInfo>,
+        missed_turns: Vec<Turn>,
+        map_data: Option<Vec<u8>>,
+        relay_port: Option<u16>,
+        relay_host: Option<String>,
+    }
+
+    fn current_start() -> ServerStartMessage {
+        ServerStartMessage {
+            config: crate::game_config::GameConfig::default(),
+            my_player_id: Some(1),
+            lobby_id: Some(42),
+            seed: 7,
+            players: Vec::new(),
+            missed_turns: Vec::new(),
+            map_data: None,
+            relay_port: Some(25592),
+            relay_host: Some("relay.example".to_string()),
+        }
+    }
+
+    #[test]
+    fn new_start_is_decodable_by_legacy_shape() {
+        let current = current_start();
+        let bytes = bincode::serialize(&current).expect("serialize current start");
+        let legacy: LegacyStartMessage =
+            bincode::deserialize(&bytes).expect("legacy decoder accepts trailing ticket");
+        assert_eq!(legacy.lobby_id, Some(42));
+        assert_eq!(legacy.relay_port, Some(25592));
+    }
+
+    #[test]
+    fn start_wire_shape_roundtrips_without_ticket_field() {
+        let current = current_start();
+        let legacy = LegacyStartMessage {
+            config: current.config,
+            my_player_id: current.my_player_id,
+            lobby_id: current.lobby_id,
+            seed: current.seed,
+            players: current.players,
+            missed_turns: current.missed_turns,
+            map_data: current.map_data,
+            relay_port: current.relay_port,
+            relay_host: current.relay_host,
+        };
+        let bytes = bincode::serialize(&legacy).expect("serialize legacy start");
+        let decoded: ServerStartMessage =
+            bincode::deserialize(&bytes).expect("start roundtrip");
+        assert_eq!(decoded.lobby_id, Some(42));
+    }
 }

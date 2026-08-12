@@ -48,6 +48,17 @@ impl SowApp {
                     };
 
                     match server_msg {
+                        ServerMessage::RelayTicket {
+                            lobby_id,
+                            player_id,
+                            ticket,
+                        } => {
+                            if self.sim.my_lobby_id == Some(lobby_id)
+                                && self.sim.my_player_id == Some(player_id)
+                            {
+                                self.sim.relay_ticket = Some(ticket);
+                            }
+                        }
                         ServerMessage::Start(start_msg) => {
                             log::info!(
                                 "[CLIENT NET] 🎮 Received ServerStartMessage! lobby_id={:?}, player_id={:?}, relay_port={:?}, relay_host={:?}",
@@ -259,6 +270,7 @@ impl SowApp {
                             self.ui.app.hud_state.sync_state = None;
                             self.sim.my_lobby_id = None;
                             self.sim.my_player_id = None;
+                            self.sim.relay_ticket = None;
 
                             if let Some(rematch_id) = closed.rematch_lobby_id {
                                 log::info!("Rematch lobby {} offered", rematch_id);
@@ -361,10 +373,9 @@ impl SowApp {
                                     .unwrap(),
                                 );
                                 c.send(
-                                    bincode::serialize(&sow_core::protocol::ClientMessage::Ready {
-                                        lobby_id: ack.lobby_id,
-                                        player_id: ack.player_id,
-                                    })
+                                    bincode::serialize(
+                                        &self.make_ready_message(ack.lobby_id, ack.player_id),
+                                    )
                                     .unwrap(),
                                 );
                             } else {

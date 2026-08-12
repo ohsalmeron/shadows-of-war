@@ -13,25 +13,29 @@
 //! guess how many ghosts there are, or when the next one joins.
 //!
 //! What "organic" looks like in practice:
-//!   - every entry is an INDEPENDENT random event with WIDE variance
-//!   - bursts of 2-3 ghosts back-to-back are normal
-//!   - silences of 30-60+ seconds are normal
-//!   - a lobby filling in ~15s is normal; a lobby half-full for minutes
-//!     is normal; a lobby stuck at 70% forever is normal
+//!   - each ghost INDEPENDENTLY picks a random moment somewhere across the
+//!     whole countdown window (second 0 to the last second). No mean, no
+//!     drip, no "next after this one"
+//!   - bursts (several ghosts landing on the same moment) are normal —
+//!     that's what independent placement produces
+//!   - silences (nobody for several seconds) are normal — same reason
+//!   - a lobby can fill in the first 2s, in the last 2s, spread out, or
+//!     never get past half. Nobody can guess the rhythm because there IS none
 //!   - the fill percentage is random per lobby (min/max bounds only)
-//!   - the drip mean is random per lobby (wide bounds only)
-//!   - the inter-arrival time follows an exponential distribution: short
-//!     gaps are common, long gaps happen, a "beat" NEVER exists
+//!   - there is NO perceptible rate. If a human watching can tap a tempo,
+//!     it's broken
 //!
 //! REGRESSION WARNINGS (for future agents):
+//!   - reintroducing a per-lobby mean, a drip cooldown, an inter-arrival
+//!     distribution with a central tendency, or ANY sequential "next entry
+//!     depends on the previous" structure = REGRESSION. That recreates the
+//!     perceptible heartbeat this module exists to kill
 //!   - adding a fixed interval, constant pace, linear ramp, deterministic
 //!     schedule, or "smoother" distribution = REGRESSION, not a fix
 //!   - "fixing" randomness that looks random = REGRESSION
 //!   - "helping" by making entry consistent = REGRESSION
 //!   - replacing randomness with anything an observer could predict =
-//!     REGRESSION. The legacy daemon this replaces was pure chaos:
-//!     random fill %, random entry times, never the same profile twice.
-//!     That chaos is the spec.
+//!     REGRESSION.
 //!
 //! Identities come exclusively from the persistent bot-account pool seeded
 //! at boot (`BotPool`) — real `database_account_id`s, stats accumulation,
@@ -41,7 +45,7 @@
 
 pub mod names;
 
-use crate::lobby::{LobbyPhase, PlayerConnection, ServerLobby, TICK_SECS};
+use crate::lobby::{LobbyPhase, LOBBY_COUNTDOWN_SECS, PlayerConnection, ServerLobby};
 use rand::Rng;
 use std::env;
 use std::sync::OnceLock;
@@ -137,26 +141,30 @@ impl BotPool {
     }
 }
 
-// ── Organic staged drip ───────────────────────────────────────────────────
+// ── Independent-moment placement ──────────────────────────────────────────
 
-/// Per-tick staged injection of fictional humans. Called from
-/// `promote_countdown` every tick (10 Hz).
+/// Per-tick injection of fictional humans. Called from `promote_countdown`
+/// every tick (10 Hz).
 ///
 /// MENTAL MODEL (organic — read the module header before changing this):
 ///  1. First sighting of a lobby: roll a random fill percentage
-///     (`SOW_BOT_FILL_MIN`..`SOW_BOT_FILL_MAX` of max_players) AND a random
-///     drip mean for THIS lobby (1–8s). Every lobby gets its own numbers —
-///     no two lobbies ever fill alike.
-///  2. Identities are reserved up-front ONLY so display names stay unique
-///     within the lobby. This says nothing about timing.
-///  3. Every drip is an independent event: draw the next cooldown from an
-///     EXPONENTIAL distribution around the lobby's mean. Exponential means
-///     bursts (short gaps are the most likely outcome) and occasional long
-///     silences (the tail) — the exact profile nobody can predict. With real
-///     humans present the mean shrinks (activity attracts activity) but the
-///     chaos stays: still random per event.
-///  4. When the reserved batch runs out, the lobby stops filling. A lobby
-///     can legitimately sit half-full forever. That is correct.
+///     (`SOW_BOT_FILL_MIN`..`SOW_BOT_FILL_MAX` of max_players). Every lobby
+///     gets its own count — no two lobbies ever fill alike.
+///  2. Each reserved ghost INDEPENDENTLY picks a random moment
+///     (`join_at_elapsed`, uniform over the whole countdown window) to show
+///     up. There is NO mean, NO drip clock, NO "next entry depends on the
+///     previous one". Timing is a set of independent points on a line, not a
+///     sequence. That is what kills any perceptible rate.
+///  3. Leave room for humans: target is a TOTAL (humans + bots). Humans
+///     present → fewer bots needed → trim the pending queue. Already-met
+///     ghosts stay; the lobby keeps the ghosts that were going to show up
+///     soonest.
+///  4. Each tick: every pending ghost whose `join_at_elapsed` has been
+///     reached enters NOW. Several can land on the same tick (a burst); none
+///     can land for many ticks (a silence). Both are correct and intended —
+///     that is literally independent placement.
+///  5. When the reserved batch runs out, the lobby stops filling. A lobby can
+///     legitimately sit half-full forever. That is correct.
 pub fn inject_internal_bots(games: &mut [ServerLobby]) {
     let min_pct = env::var("SOW_BOT_FILL_MIN")
         .ok()
@@ -181,8 +189,8 @@ pub fn inject_internal_bots(games: &mut [ServerLobby]) {
         let humans = g.players.iter().filter(|p| !p.is_internal_bot).count();
         let bots = g.players.iter().filter(|p| p.is_internal_bot).count();
 
-        // ── First sighting: this lobby gets its OWN random profile. ────────
-        // Random fill % (TOTAL target) AND a random drip mean (1–8s).
+        // ── First sighting: this lobby gets its OWN count, and every ghost
+        //    independently picks when (across the whole countdown) it shows. ─
         if g.bot_fill_target.is_none() {
             let mut rng = rand::thread_rng();
             let pct = rng.gen_range(min_pct..=max_pct);
@@ -197,22 +205,29 @@ pub fn inject_internal_bots(games: &mut [ServerLobby]) {
                     Vec::new()
                 }
             };
+            // Each ghost picks its own moment, uniform over [0, countdown].
+            // Independent draws → clusters and silences emerge naturally; no
+            // mean exists for a watcher to tap a tempo to.
+            let mut pending: Vec<(String, String, f32)> = identities
+                .into_iter()
+                .map(|e| {
+                    let t = rng.gen_range(0.0..=LOBBY_COUNTDOWN_SECS);
+                    (e.account_id, e.display_name, t)
+                })
+                .collect();
+            pending.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
             log::info!(
-                "[BOT_FILL] Lobby {}: target {} of {} ({:.0}%), {} identities reserved",
-                g.id, target, max, pct * 100.0, identities.len()
+                "[BOT_FILL] Lobby {}: target {} of {} ({:.0}%), {} ghosts each on their own clock",
+                g.id, target, max, pct * 100.0, pending.len()
             );
             g.bot_fill_target = Some(target);
-            g.bot_fill_mean = rng.gen_range(1.0..8.0);
-            g.bot_fill_cooldown = drip_cooldown(g.bot_fill_mean, &mut rng);
-            g.pending_bots = identities
-                .into_iter()
-                .map(|e| (e.account_id, e.display_name))
-                .collect();
+            g.pending_bots = pending;
         }
 
         // ── Leave room for humans: bots yield to real players. ────────────
         // Target is a TOTAL (humans + bots). Humans present → fewer bots
-        // needed. Trim the pending queue so a human always has room to join.
+        // needed. Trim the tail of the pending queue (latest-arriving ghosts
+        // first) so a human always has room to join.
         let target = g.bot_fill_target.unwrap_or(0);
         let bots_desired = target.saturating_sub(humans);
         let bots_needed_now = bots_desired.saturating_sub(bots);
@@ -220,94 +235,89 @@ pub fn inject_internal_bots(games: &mut [ServerLobby]) {
             g.pending_bots.truncate(bots_needed_now);
         }
 
-        // ── Drip clock: one independent event at a time, always random. ───
-        if g.bot_fill_cooldown > 0.0 {
-            g.bot_fill_cooldown -= TICK_SECS;
+        // ── Who's due? Every ghost whose independent moment has arrived. ──
+        // Sorted ascending by join_at_elapsed, so partition_point + drain
+        // pops exactly the due ones in O(log n) + O(due). Nothing is drawn
+        // here — the moments were all decided at lobby birth.
+        let elapsed = (LOBBY_COUNTDOWN_SECS - g.countdown_secs).max(0.0);
+        let split = g
+            .pending_bots
+            .partition_point(|(_, _, t)| *t <= elapsed);
+        if split == 0 {
             continue;
         }
+        let due: Vec<(String, String, f32)> = g.pending_bots.drain(..split).collect();
+        let _ = bots; // already counted above; silence unused-after-move
 
-        let Some((account_id, display_name)) = g.pending_bots.pop() else {
-            continue;
-        };
-        // Re-draw the NEXT cooldown from the exponential every single event.
-        // Two lobbies never drip alike; one lobby never drips in a pattern.
         let mut rng = rand::thread_rng();
-        g.bot_fill_cooldown = drip_cooldown(g.bot_fill_mean, &mut rng);
-
-        let leader = Leader::ALL[rng.gen_range(0..Leader::ALL.len())];
-        let civilization = leader.civilization();
-        let player_id = g
-            .players
-            .iter()
-            .map(|p| p.player_id)
-            .max()
-            .unwrap_or(0)
-            .saturating_add(1);
-
-        let (dummy_tx, _dummy_rx) = mpsc::channel::<Vec<u8>>(8);
-
-        // Teams: drop the ghost into whichever team is smaller (Red on a tie),
-        // mirroring join_player.
-        let team = if g.game_mode == "Teams" {
-            let reds = g
+        let mut pushed = false;
+        for (account_id, display_name, _t) in due {
+            let leader = Leader::ALL[rng.gen_range(0..Leader::ALL.len())];
+            let civilization = leader.civilization();
+            let player_id = g
                 .players
                 .iter()
-                .filter(|p| p.team == Some(Team::Red))
-                .count();
-            let blues = g
-                .players
-                .iter()
-                .filter(|p| p.team == Some(Team::Blue))
-                .count();
-            Some(if blues < reds { Team::Blue } else { Team::Red })
-        } else {
-            None
-        };
+                .map(|p| p.player_id)
+                .max()
+                .unwrap_or(0)
+                .saturating_add(1);
 
-        let database_account_id = if account_id.is_empty() {
-            None
-        } else {
-            Some(account_id)
-        };
+            let (dummy_tx, _dummy_rx) = mpsc::channel::<Vec<u8>>(8);
 
-        g.players.push(PlayerConnection {
-            name: display_name,
-            clan_tag: String::new(),
-            player_id,
-            tx: dummy_tx,
-            download_progress: 100,
-            civilization,
-            leader,
-            database_account_id,
-            team,
-            ip: "127.0.0.1".to_string(),
-            is_internal_bot: true,
-        });
-        g.ready_players.insert(player_id);
-        crate::lobby::sync_host_lobby_to_members(g);
-        log::debug!(
-            "[BOT_FILL] Lobby {}: ghost {player_id} ({}) joined ({}/{} target)",
-            g.id,
-            g.players.last().map(|p| p.name.as_str()).unwrap_or("?"),
-            g.players.len(),
-            g.bot_fill_target.unwrap_or(0)
-        );
+            // Teams: drop the ghost into whichever team is smaller (Red on a tie),
+            // mirroring join_player.
+            let team = if g.game_mode == "Teams" {
+                let reds = g
+                    .players
+                    .iter()
+                    .filter(|p| p.team == Some(Team::Red))
+                    .count();
+                let blues = g
+                    .players
+                    .iter()
+                    .filter(|p| p.team == Some(Team::Blue))
+                    .count();
+                Some(if blues < reds { Team::Blue } else { Team::Red })
+            } else {
+                None
+            };
+
+            let database_account_id = if account_id.is_empty() {
+                None
+            } else {
+                Some(account_id)
+            };
+
+            g.players.push(PlayerConnection {
+                name: display_name,
+                clan_tag: String::new(),
+                player_id,
+                tx: dummy_tx,
+                download_progress: 100,
+                civilization,
+                leader,
+                database_account_id,
+                team,
+                ip: "127.0.0.1".to_string(),
+                is_internal_bot: true,
+            });
+            g.ready_players.insert(player_id);
+            log::debug!(
+                "[BOT_FILL] Lobby {}: ghost {player_id} ({}) joined at {:.1}s ({}/{} target)",
+                g.id,
+                g.players.last().map(|p| p.name.as_str()).unwrap_or("?"),
+                elapsed,
+                g.players.len(),
+                g.bot_fill_target.unwrap_or(0)
+            );
+            pushed = true;
+        }
+
+        // One sync per tick, not per ghost: a burst (several due on the same
+        // tick) lands as a single roster update so the UI shows them arriving
+        // together — exactly the "varios de golpe" that is correct here.
+        if pushed {
+            crate::lobby::sync_host_lobby_to_members(g);
+        }
     }
-}
-
-/// Organic inter-arrival time between ghost drips.
-///
-/// Exponential sample around the lobby's random mean (`bot_fill_mean`, rolled
-/// per lobby at 1–8s). Always random, never conditioned on anything. Clamped
-/// wide (0.15–45s) so a single draw can never stall a lobby forever nor empty
-/// the batch in one tick.
-///
-/// MENTAL MODEL: the exponential is the POINT. Short gaps are common (bursts),
-/// long gaps happen (silences), and no observer can predict the next one. A
-/// uniform range (like the old 0.1–1.5s) is a metronome in disguise — do NOT
-/// "simplify" back to it.
-fn drip_cooldown(mean: f32, rng: &mut impl Rng) -> f32 {
-    // Inverse-CDF of Exp(mean): -ln(1 - u) * mean, u ~ U(0,1).
-    let u = rng.gen_range(f32::EPSILON..1.0);
-    (-(1.0 - u).ln() * mean.max(0.1)).clamp(0.15, 45.0)
 }

@@ -208,9 +208,13 @@ fn sync_relay_env(config: &Config) -> Result<()> {
         .and_then(|value| value.parse::<usize>().ok())
         .filter(|count| (1..=64).contains(count))
         .unwrap_or_else(|| workers.split(',').filter(|s| !s.trim().is_empty()).count());
-    let mgmt_scheme = env_or("SOW_RELAY_MGMT_SCHEME", "https");
-    if mgmt_scheme != "http" && mgmt_scheme != "https" {
-        bail!("SOW_RELAY_MGMT_SCHEME must be http or https");
+    let mgmt_scheme = env_or("SOW_RELAY_MGMT_SCHEME", "https").to_ascii_lowercase();
+    if mgmt_scheme != "https" {
+        bail!("SOW_RELAY_MGMT_SCHEME must be https for production deploys");
+    }
+    let tickets_required = env_or("SOW_RELAY_TICKETS_REQUIRED", "1");
+    if tickets_required != "0" && tickets_required != "1" {
+        bail!("SOW_RELAY_TICKETS_REQUIRED must be 0 or 1");
     }
     let mgmt_resolve_ip = env::var("SOW_RELAY_MGMT_RESOLVE_IP")
         .context("SOW_RELAY_MGMT_RESOLVE_IP must identify the relay management NIC")?;
@@ -218,11 +222,16 @@ fn sync_relay_env(config: &Config) -> Result<()> {
         .parse::<std::net::IpAddr>()
         .with_context(|| format!("invalid SOW_RELAY_MGMT_RESOLVE_IP={mgmt_resolve_ip}"))?;
     let mgmt_url = env::var("SOW_RELAY_MGMT_URL")
-        .unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
+        .unwrap_or_else(|_| "https://127.0.0.1:8080".to_string());
+    let parsed_mgmt_url = url::Url::parse(&mgmt_url)
+        .with_context(|| format!("invalid SOW_RELAY_MGMT_URL={mgmt_url}"))?;
+    if parsed_mgmt_url.scheme() != "https" {
+        bail!("SOW_RELAY_MGMT_URL must use https for production deploys");
+    }
     let remote = format!(
         "set -eu; f=/usr/local/etc/sow/sow.env; t=$(mktemp /tmp/sow.env.XXXXXX); \\
-         if sudo test -f \"$f\"; then sudo grep -v -E '^(SOW_RELAY_HOST|SOW_RELAY_WORKER_COUNT|SOW_RELAY_WORKERS|SOW_RELAY_PORT|SOW_RELAY_MGMT_URL|SOW_RELAY_MGMT_SCHEME|SOW_RELAY_MGMT_RESOLVE_IP)=' \"$f\" > \"$t\"; else : > \"$t\"; fi; \\
-         printf '%s\\n' SOW_RELAY_HOST={} SOW_RELAY_WORKER_COUNT={} SOW_RELAY_WORKERS={} SOW_RELAY_PORT=80 SOW_RELAY_MGMT_URL={} SOW_RELAY_MGMT_SCHEME={} SOW_RELAY_MGMT_RESOLVE_IP={} >> \"$t\"; \\
+         if sudo test -f \"$f\"; then sudo grep -v -E '^(SOW_RELAY_HOST|SOW_RELAY_WORKER_COUNT|SOW_RELAY_WORKERS|SOW_RELAY_PORT|SOW_RELAY_MGMT_URL|SOW_RELAY_MGMT_SCHEME|SOW_RELAY_MGMT_RESOLVE_IP|SOW_RELAY_TICKETS_REQUIRED)=' \"$f\" > \"$t\"; else : > \"$t\"; fi; \\
+         printf '%s\\n' SOW_RELAY_HOST={} SOW_RELAY_WORKER_COUNT={} SOW_RELAY_WORKERS={} SOW_RELAY_PORT=80 SOW_RELAY_MGMT_URL={} SOW_RELAY_MGMT_SCHEME={} SOW_RELAY_MGMT_RESOLVE_IP={} SOW_RELAY_TICKETS_REQUIRED={} >> \"$t\"; \\
          sudo install -o root -g wheel -m 0600 \"$t\" \"$f\"; rm -f \"$t\"; sudo service sow_server restart; sudo service sow_server status",
         shell_quote(&relay_host),
         worker_count,
@@ -230,6 +239,7 @@ fn sync_relay_env(config: &Config) -> Result<()> {
         shell_quote(&mgmt_url),
         shell_quote(&mgmt_scheme),
         shell_quote(&mgmt_resolve_ip),
+        shell_quote(&tickets_required),
     );
     run("ssh", &[&config.prod_host, &remote], None).context("relay catalog sync failed")
 }

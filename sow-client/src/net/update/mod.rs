@@ -55,11 +55,7 @@ impl SowApp {
                         {
                             log::info!("Sent Ready to Relay server on reconnect/playing!");
                             client.send(
-                                bincode::serialize(&sow_core::protocol::ClientMessage::Ready {
-                                    lobby_id: lid,
-                                    player_id: pid,
-                                })
-                                .unwrap(),
+                                bincode::serialize(&self.make_ready_message(lid, pid)).unwrap(),
                             );
                         }
                     } else if self.net.pending_lobby_rejoin {

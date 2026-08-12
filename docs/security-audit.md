@@ -65,6 +65,27 @@ No infrastructure changes were made outside `./sow p`. A real lobby then
 registered successfully with worker 0 on dynamic port `25592` after this fix,
 verifying the positive signed registration path end-to-end.
 
+## Phase 2 — player relay capability
+
+The source now carries a per-player, per-match random relay ticket with a
+900-second admission expiry.  The
+ticket is sent in a separate `RelayTicket` frame immediately before the
+player's existing `Start` message; the relay registration receives only its
+SHA-256 digest.  The relay compares the presented ticket in constant time
+before accepting `ReadyWithTicket`.  Ticket material is not included in the
+persisted lobby summary or logs.
+
+`ReadyWithTicket` is a new protocol variant; the legacy `Ready` variant remains
+available only while `SOW_RELAY_TICKETS_REQUIRED=0`.  Production deployment
+defaults that flag to `1`, and `./sow p` rejects any production management
+scheme other than HTTPS.  This keeps the rollout reproducible and prevents a
+configuration fallback from silently returning the control plane to HTTP.
+
+The ticket protects relay admission and cross-lobby/player impersonation.  It
+does not replace platform account authentication; `database_account_id` is
+still a separate follow-up hardening phase and must not be treated as proof of
+identity.
+
 ## Risk 1 — internal database bearer and transport
 
 ### What the secret is
