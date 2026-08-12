@@ -168,6 +168,13 @@ pub enum ClientMessage {
         player_id: u16,
         ticket: String,
     },
+    /// First frame on a relay reconnect. The relay rotates this capability
+    /// after every accepted reconnect; it is never sent to the orchestrator.
+    ReconnectWithTicket {
+        lobby_id: u64,
+        player_id: u16,
+        ticket: String,
+    },
     ForceStart {
         lobby_id: u64,
         player_id: u16,
@@ -221,6 +228,12 @@ pub enum ServerMessage {
     /// Separate capability frame keeps the existing Start struct wire shape
     /// compatible with cached clients during the ticket rollout.
     RelayTicket {
+        lobby_id: u64,
+        player_id: u16,
+        ticket: String,
+    },
+    /// Capability returned by the relay for the next reconnect only.
+    RelayReconnectTicket {
         lobby_id: u64,
         player_id: u16,
         ticket: String,

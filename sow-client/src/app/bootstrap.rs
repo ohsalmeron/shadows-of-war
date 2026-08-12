@@ -225,6 +225,7 @@ impl SowApp {
                 my_player_id,
                 my_lobby_id,
                 relay_ticket: None,
+                relay_reconnect_ticket: None,
                 map_w,
                 map_h,
                 offline_tick_timer: 0.0,

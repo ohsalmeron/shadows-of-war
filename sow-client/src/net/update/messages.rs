@@ -57,6 +57,18 @@ impl SowApp {
                                 && self.sim.my_player_id == Some(player_id)
                             {
                                 self.sim.relay_ticket = Some(ticket);
+                                self.sim.relay_reconnect_ticket = None;
+                            }
+                        }
+                        ServerMessage::RelayReconnectTicket {
+                            lobby_id,
+                            player_id,
+                            ticket,
+                        } => {
+                            if self.sim.my_lobby_id == Some(lobby_id)
+                                && self.sim.my_player_id == Some(player_id)
+                            {
+                                self.sim.relay_reconnect_ticket = Some(ticket);
                             }
                         }
                         ServerMessage::Start(start_msg) => {
@@ -271,6 +283,7 @@ impl SowApp {
                             self.sim.my_lobby_id = None;
                             self.sim.my_player_id = None;
                             self.sim.relay_ticket = None;
+                            self.sim.relay_reconnect_ticket = None;
 
                             if let Some(rematch_id) = closed.rematch_lobby_id {
                                 log::info!("Rematch lobby {} offered", rematch_id);

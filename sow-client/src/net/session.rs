@@ -21,6 +21,33 @@ impl SowApp {
         }
     }
 
+    pub(crate) fn make_initial_relay_ready_message(
+        &self,
+        lobby_id: u64,
+        player_id: u16,
+    ) -> sow_core::protocol::ClientMessage {
+        self.make_ready_message(lobby_id, player_id)
+    }
+
+    pub(crate) fn make_reconnect_message(
+        &self,
+        lobby_id: u64,
+        player_id: u16,
+    ) -> sow_core::protocol::ClientMessage {
+        if let Some(ticket) = self.sim.relay_reconnect_ticket.clone() {
+            sow_core::protocol::ClientMessage::ReconnectWithTicket {
+                lobby_id,
+                player_id,
+                ticket,
+            }
+        } else {
+            // A reconnect can race the relay's capability frame. Keep the
+            // initial ticket as a compatibility fallback; production logs the
+            // replay if that race loses, rather than silently authenticating.
+            self.make_ready_message(lobby_id, player_id)
+        }
+    }
+
     pub(crate) fn make_join_message(
         &self,
         target_lobby_id: Option<u64>,
@@ -76,6 +103,7 @@ impl SowApp {
         self.sim.my_lobby_id = None;
         self.sim.my_player_id = None;
         self.sim.relay_ticket = None;
+        self.sim.relay_reconnect_ticket = None;
         if use_loader {
             self.ui.app.phase = ClientPhase::Splash;
             let lang = self.ui.app.settings_state.language;

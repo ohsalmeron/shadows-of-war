@@ -17,6 +17,7 @@ use sow_core::protocol::{
 use std::collections::HashSet;
 use std::env;
 use std::net::{IpAddr, SocketAddr};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use rand::{RngCore, rngs::OsRng};
@@ -29,7 +30,14 @@ const DEFAULT_RELAY_WORKER_COUNT: usize = 4;
 const RELAY_PORT_MIN: u16 = 25592;
 const RELAY_PORT_MAX: u16 = 26500;
 const RELAY_TICKET_TTL_SECS: u64 = 900;
+const RELAY_HANDOFF_SEND_TIMEOUT_SECS: u64 = 10;
 type HmacSha256 = Hmac<Sha256>;
+
+static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
+
+fn next_session_id() -> u64 {
+    NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed)
+}
 
 #[derive(Clone, Debug)]
 struct RelayWorker {
@@ -362,6 +370,28 @@ async fn register_relay(rc: &RelayCandidate, worker: &RelayWorker) -> Result<(),
     Err(format!("relay registration failed for lobby {}", rc.lobby_id))
 }
 
+/// Deliver the capability before Start, preserving wire order and refusing to
+/// silently continue when the client's bounded handoff queue is unavailable.
+async fn send_relay_handoff_frame(
+    tx: &mpsc::Sender<Vec<u8>>,
+    frame: Vec<u8>,
+    lobby_id: u64,
+    player_id: u16,
+    label: &str,
+) -> Result<(), String> {
+    tokio::time::timeout(
+        Duration::from_secs(RELAY_HANDOFF_SEND_TIMEOUT_SECS),
+        tx.send(frame),
+    )
+    .await
+    .map_err(|_| {
+        format!(
+            "timed out sending {label} for lobby {lobby_id} player {player_id}"
+        )
+    })?
+    .map_err(|_| format!("client channel closed before {label} for lobby {lobby_id} player {player_id}"))
+}
+
 /// Register the account-backed match before the relay is exposed to clients.
 /// This ordering prevents a fast match from finalizing before Valkey contains
 /// its player list, which otherwise loses statistics as `Match not registered`.
@@ -545,6 +575,7 @@ enum ServerEvent {
         host_config: Option<Box<sow_core::game_config::GameConfig>>,
         password: Option<String>,
         ip: String,
+        session_id: u64,
     },
 
     Leave {
@@ -725,21 +756,49 @@ async fn main() {
                                 relay_port: Some(rc.relay_port),
                                 relay_host: Some(worker.host.clone()),
                             };
-                            if let Some(ticket) = rc.player_tickets.get(player_id) {
-                                if let Ok(ticket_json) = bincode::serialize(
+                            let handoff_result = async {
+                                let ticket = rc.player_tickets.get(player_id).ok_or_else(|| {
+                                    format!(
+                                        "missing relay ticket for network player {} in lobby {}",
+                                        player_id, rc.lobby_id
+                                    )
+                                })?;
+                                let ticket_json = bincode::serialize(
                                     &sow_core::protocol::ServerMessage::RelayTicket {
                                         lobby_id: rc.lobby_id,
                                         player_id: *player_id,
                                         ticket: ticket.clone(),
                                     },
-                                ) {
-                                    let _ = tx.try_send(ticket_json);
-                                }
+                                )
+                                .map_err(|e| format!("serialize relay ticket: {e}"))?;
+                                send_relay_handoff_frame(
+                                    tx,
+                                    ticket_json,
+                                    rc.lobby_id,
+                                    *player_id,
+                                    "RelayTicket",
+                                )
+                                .await?;
+
+                                let start_json = bincode::serialize(
+                                    &sow_core::protocol::ServerMessage::Start(Box::new(start_msg)),
+                                )
+                                .map_err(|e| format!("serialize Start: {e}"))?;
+                                send_relay_handoff_frame(
+                                    tx,
+                                    start_json,
+                                    rc.lobby_id,
+                                    *player_id,
+                                    "Start",
+                                )
+                                .await
                             }
-                            if let Ok(start_json) = bincode::serialize(
-                                &sow_core::protocol::ServerMessage::Start(Box::new(start_msg)),
-                            ) {
-                                let _ = tx.try_send(start_json);
+                            .await;
+                            if let Err(e) = handoff_result {
+                                log::error!(
+                                    "[RELAY] lobby {} player {} handoff failed; Start not sent: {}",
+                                    rc.lobby_id, player_id, e
+                                );
                             }
                         }
                     }
@@ -793,13 +852,27 @@ async fn main() {
                                     i += 1;
                                     continue;
                                 };
-                                let lobby = games.remove(i);
+                                let mut lobby = games.remove(i);
                                 let mut relay_players_json = Vec::new();
                                 let mut player_tickets = std::collections::HashMap::new();
                                 let mut start_players = Vec::new();
                                 let mut player_ids = Vec::new();
                                 let mut players_tx = Vec::new();
                                 for p in &lobby.players {
+                                    let origin = if p.is_internal_bot {
+                                        "internal_bot"
+                                    } else {
+                                        "external_network"
+                                    };
+                                    log::info!(
+                                        "[MATCH_AUDIT_PLAYER] lobby={} player={} origin={} ip={} session_id={:?} relay_ticket_expected={}",
+                                        lobby.id,
+                                        p.player_id,
+                                        origin,
+                                        p.ip,
+                                        p.session_id,
+                                        !p.is_internal_bot
+                                    );
                                     // Every network participant must be present in Start so each
                                     // lockstep client can register the same player ids. Internal
                                     // backfillers go as Human + is_ai_controlled — the core
@@ -828,6 +901,7 @@ async fn main() {
                                         "name": p.name,
                                         "database_account_id": p.database_account_id,
                                         "is_internal": p.is_internal_bot,
+                                        "session_id": p.session_id,
                                         "relay_ticket_digest": relay_ticket_digest,
                                     }));
                                     if let Some(acc_id) = &p.database_account_id {
@@ -837,6 +911,34 @@ async fn main() {
                                     if !p.is_internal_bot {
                                         players_tx.push((p.player_id, p.tx.clone()));
                                     }
+                                }
+                                let roster_total = lobby.players.len();
+                                let internal_bot_count = lobby
+                                    .players
+                                    .iter()
+                                    .filter(|p| p.is_internal_bot)
+                                    .count();
+                                let validated_external_count = roster_total - internal_bot_count;
+                                log::info!(
+                                    "[MATCH_AUDIT] lobby={} roster_total={} internal_bot_count={} validated_external_count={} relay_ticket_count={}",
+                                    lobby.id,
+                                    roster_total,
+                                    internal_bot_count,
+                                    validated_external_count,
+                                    player_tickets.len()
+                                );
+                                // HumansVsNations autobalance: the AI nation side
+                                // must match the human side so the match is fair.
+                                // nation_count is set here (server-authoritative)
+                                // so every client's deterministic engine spawns
+                                // exactly that many Blue nations.
+                                if lobby.config.game_mode == "HumansVsNations" {
+                                    let human_side_players = lobby.players.len() as u32;
+                                    lobby.config.nation_count = human_side_players;
+                                    log::info!(
+                                        "[HVN] Lobby {} autobalanced: human_side_players={} vs nations={}",
+                                        lobby.id, human_side_players, human_side_players
+                                    );
                                 }
                                 ready_candidates.push(RelayCandidate {
                                     lobby_id: lobby.id,
@@ -899,8 +1001,8 @@ async fn main() {
                     let mut games = games_clone.lock().await;
                     let mut nid = next_id_clone.lock().await;
                     match event {
-                        ServerEvent::Join { client_tx, name, clan_tag, civilization, leader, target_lobby_id, host_private, build_version, database_account_id, host_config, password, ip } => {
-                            log::info!("Player {} (clan: {}, ip: {}) joining with version: {}", name, clan_tag, ip, build_version);
+                        ServerEvent::Join { client_tx, name, clan_tag, civilization, leader, target_lobby_id, host_private, build_version, database_account_id, host_config, password, ip, session_id } => {
+                            log::info!("Player {} (clan: {}, ip: {}, session_id: {}) joining with version: {}", name, clan_tag, ip, session_id, build_version);
                             match join_player(&mut games, &mut nid, JoinPlayerOpts {
                                 name,
                                 clan_tag,
@@ -913,6 +1015,7 @@ async fn main() {
                                 host_config,
                                 password,
                                 ip,
+                                session_id: Some(session_id),
                             }) {
                                 Ok((lobby_id, player_id, map_name, is_private)) => {
                                     let lobby_info = games.iter().find(|g| g.id == lobby_id).map(lobby_to_info);
@@ -1048,6 +1151,7 @@ async fn main() {
         let ev_tx = event_tx.clone();
         let games_state_conn = Arc::clone(&games_state);
         tokio::spawn(async move {
+            let session_id = next_session_id();
             let ip_cell = Arc::new(std::sync::Mutex::new(addr.ip().to_string()));
             let ip_cell_clone = Arc::clone(&ip_cell);
             let ws_stream = match tokio_tungstenite::accept_hdr_async(stream, move |req: &tokio_tungstenite::tungstenite::handshake::server::Request, response: tokio_tungstenite::tungstenite::handshake::server::Response| {
@@ -1080,7 +1184,7 @@ async fn main() {
                 addr.ip().to_string()
             };
             let (mut write, mut read) = ws_stream.split();
-            log::info!("Client connected from IP: {}", ip_str);
+            log::info!("Client connected from IP: {} session_id={}", ip_str, session_id);
 
             let (direct_tx, mut direct_rx) = mpsc::channel::<Vec<u8>>(4096);
 
@@ -1136,6 +1240,7 @@ async fn main() {
                                                     host_config,
                                                     password,
                                                     ip: ip_str.clone(),
+                                                    session_id,
                                                 }).await;
                                             }
                                             sow_core::protocol::ClientMessage::Gameplay { .. } => {
@@ -1164,6 +1269,10 @@ async fn main() {
                                             sow_core::protocol::ClientMessage::ReadyWithTicket { .. } => {
                                                 // Relay tickets are valid only on the direct relay
                                                 // connection, never on the orchestrator socket.
+                                            }
+                                            sow_core::protocol::ClientMessage::ReconnectWithTicket { .. } => {
+                                                // Reconnect capabilities are valid only on the direct
+                                                // relay connection, never on the orchestrator socket.
                                             }
                                             sow_core::protocol::ClientMessage::MapDownloadProgress { lobby_id, player_id, progress } => {
                                                 if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id) {
@@ -1418,8 +1527,10 @@ async fn catalog_json_handler() -> impl axum::response::IntoResponse {
 
 #[cfg(test)]
 mod relay_worker_tests {
-    use super::{parse_relay_worker, RelayPortAllocator, RELAY_PORT_MAX, RELAY_PORT_MIN,
-        DEFAULT_RELAY_WORKER_COUNT};
+    use super::{
+        parse_relay_worker, send_relay_handoff_frame, RelayPortAllocator,
+        DEFAULT_RELAY_WORKER_COUNT, RELAY_PORT_MAX, RELAY_PORT_MIN,
+    };
 
     #[test]
     fn parses_host_game_and_management_ports() {
@@ -1456,5 +1567,21 @@ mod relay_worker_tests {
         assert!(parse_relay_worker("relay-a.example:not-a-port:8080", 0).is_none());
         assert!(parse_relay_worker("http://relay-a.example:80:8080", 0).is_none());
         assert!(parse_relay_worker("[::1]:80:8080", 0).is_none());
+    }
+
+    #[tokio::test]
+    async fn handoff_frames_are_delivered_in_order() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        send_relay_handoff_frame(&tx, b"ticket".to_vec(), 7, 2, "RelayTicket")
+            .await
+            .expect("ticket delivery");
+        let ticket = rx.recv().await.expect("ticket frame");
+        assert_eq!(ticket, b"ticket");
+
+        send_relay_handoff_frame(&tx, b"start".to_vec(), 7, 2, "Start")
+            .await
+            .expect("start delivery");
+        let start = rx.recv().await.expect("start frame");
+        assert_eq!(start, b"start");
     }
 }

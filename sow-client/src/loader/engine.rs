@@ -37,6 +37,7 @@ impl SowApp {
         self.sim.my_lobby_id = None;
         self.sim.my_player_id = None;
         self.sim.relay_ticket = None;
+        self.sim.relay_reconnect_ticket = None;
         self.ui.app.hud_state.spawn_timer_secs = None;
         self.ui.app.hud_state.sync_state = None;
         self.ui.app.main_menu_state.wait_timer_secs = 0.0;
@@ -430,7 +431,7 @@ impl SowApp {
                                 if let (Some(lid), Some(pid)) =
                                     (self.sim.my_lobby_id, self.sim.my_player_id)
                                 {
-                                    let ready_msg = self.make_ready_message(lid, pid);
+                                    let ready_msg = self.make_initial_relay_ready_message(lid, pid);
                                     let json = bincode::serialize(&ready_msg).unwrap();
                                     c.send(json);
                                 }

@@ -71,6 +71,8 @@ pub struct SimState {
     pub my_lobby_id: Option<u64>,
     /// Short-lived capability used only for the direct relay Ready frame.
     pub relay_ticket: Option<String>,
+    /// Rotating capability returned by the relay for the next reconnect.
+    pub relay_reconnect_ticket: Option<String>,
     pub map_w: u32,
     pub map_h: u32,
     pub offline_tick_timer: f32,
