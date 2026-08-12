@@ -56,6 +56,7 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
     println!("==> Production {version}");
     println!("==> 1/6 Preflight");
     preflight(&config)?;
+    reject_untracked_source_files(paths)?;
 
     println!("==> 2/6 Web + FreeBSD backend (parallel)");
     let binaries = std::thread::scope(|scope| {
@@ -89,6 +90,36 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
     verify_public(paths, &config, &release)?;
 
     println!("✅ Production {} ready as {}", release.version, release.id);
+    Ok(())
+}
+
+/// Refuse to copy untracked files into build or relay worktrees. Production
+/// releases may be built from tracked-but-dirty source during development, but
+/// an untracked artifact has no reviewable or reproducible provenance.
+fn reject_untracked_source_files(paths: &Paths) -> Result<()> {
+    let status = Command::new("git")
+        .args(["status", "--porcelain=v1", "--untracked-files=all"])
+        .current_dir(&paths.root)
+        .output()
+        .context("inspect source tree hygiene")?;
+    if !status.status.success() {
+        bail!(
+            "git status failed while checking source hygiene: {}",
+            String::from_utf8_lossy(&status.stderr).trim()
+        );
+    }
+    let status_text = String::from_utf8_lossy(&status.stdout);
+    let untracked: Vec<String> = status_text
+        .lines()
+        .filter(|line| line.starts_with("?? "))
+        .map(|line| line[3..].to_string())
+        .collect();
+    if !untracked.is_empty() {
+        bail!(
+            "untracked source files are not allowed in ./sow p:\n{}\nCommit or remove them before deploying",
+            untracked.join("\n")
+        );
+    }
     Ok(())
 }
 
@@ -310,6 +341,12 @@ fn build_freebsd(paths: &Paths, config: &Config) -> Result<PathBuf> {
         .all(|name| local.join(name).is_file());
 
     if binaries_ready && fs::read_to_string(&cache).is_ok_and(|value| value.trim() == fingerprint) {
+        let cleanup = format!(
+            "set -eu; rm -f {root}/scripts/audit-connections.sh {root}/docs/connection-audit-contract.md; rmdir {root}/scripts 2>/dev/null || true",
+            root = shell_quote(&config.build_root),
+        );
+        run("ssh", &[&config.build_host, &cleanup], None)
+            .context("clean stale untracked audit artifacts on FreeBSD build VM")?;
         println!("==> FreeBSD backend unchanged — reusing binaries");
         return Ok(local);
     }

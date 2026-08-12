@@ -759,7 +759,7 @@ fn main() -> Result<()> {
         "native" | "n" | "" => cmd_native(&paths),
         "status" | "st" => status::execute(),
         _ => {
-            eprintln!("Usage: ./sow [l|p|status|native]");
+            eprintln!("Usage: ./sow [l|p|r|status|native]");
             std::process::exit(1);
         }
     }
