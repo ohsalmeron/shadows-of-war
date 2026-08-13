@@ -16,7 +16,7 @@ pub mod tribes;
 
 pub use colors::{NamedColor, PREMIUM_COLORS};
 #[cfg(feature = "server")]
-pub use db::{AccountSummary, LinkedIdentity, PlayerAccount, PlayerDb, PlayerProfile};
+pub use db::{LinkedIdentity, PlayerAccount, PlayerDb, PlayerProfile};
 pub use emoji::{ATLAS_HEIGHT, ATLAS_WIDTH, AtlasRect, lookup};
 pub use leaders::{Civilization, Leader, leader_for_civilization};
 #[cfg(feature = "server")]

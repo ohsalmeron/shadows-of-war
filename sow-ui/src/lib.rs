@@ -34,9 +34,6 @@ pub enum UiAction {
     #[cfg(any(feature = "dev", debug_assertions))]
     ToggleDevSidebar,
     StartPrivateLobby(u64),
-    ResolveLinkConflict {
-        keep_account_id: String,
-    },
     PortalShowAuthPrompt,
     OpenCreateGame,
     CreateGame {

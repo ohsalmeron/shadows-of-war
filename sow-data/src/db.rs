@@ -1,8 +1,7 @@
 use crate::metadata_db::PLAYERS_TABLE;
-use log::{error, info, warn};
+use log::{error, info};
 use redis::{AsyncCommands, Client};
 use serde::{Deserialize, Serialize};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 const ANALYTICS_UNIQUE: &str = "sow:analytics:unique_users";
 const ANALYTICS_ACTIVE_PREFIX: &str = "sow:analytics:active:";
@@ -20,6 +19,7 @@ const XP_PER_PLAYER: u32 = 15;
 const XP_PER_EMPIRE: u32 = 8;
 const XP_PER_TRIBE: u32 = 2;
 const XP_PER_ASSIST: u32 = 5;
+const ACCOUNT_ID_HEX_LEN: usize = 32;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default)]
 pub struct SessionDefeats {
@@ -119,7 +119,7 @@ pub struct PlayerAccount {
     pub id: String, // Stable canonical internal account ID
     pub profile: PlayerProfile,
     pub linked_identities: Vec<LinkedIdentity>,
-    /// Account kind. Defaults to Human for legacy accounts (serde default).
+    /// Account kind. Missing kind fields in older records deserialize as Human.
     /// Bots are accounts with `kind = Bot` — they have profiles, accumulate
     /// stats, and serve as the persistent identity pool for internal fillers.
     #[serde(default)]
@@ -131,53 +131,17 @@ pub struct PlayerAccount {
 /// Distinguishes real players from persistent bot accounts. Bots are
 /// full-fledged accounts (they have stats, profiles) — they just aren't
 /// driven by a human. Used for stat filtering, leaderboards, display.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum AccountKind {
+    #[default]
     Human,
     Bot,
 }
 
-impl Default for AccountKind {
-    fn default() -> Self {
-        Self::Human
-    }
-}
-
 #[derive(Serialize, Deserialize, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct LinkedIdentity {
-    pub provider: String, // "crazygames", "poki", "steam", "playgames", "gamecenter", "local", "bot"
+    pub provider: String, // "crazygames" for verified players or "bot" for server fillers
     pub external_id: String, // Stable unique ID from the platform
-}
-
-#[derive(Serialize, Clone, Debug)]
-pub struct AccountSummary {
-    pub id: String,
-    pub level: u32,
-    pub xp: u32,
-    pub wins: u32,
-    pub matches_played: u32,
-}
-
-impl From<&PlayerAccount> for AccountSummary {
-    fn from(a: &PlayerAccount) -> Self {
-        Self {
-            id: a.id.clone(),
-            level: a.profile.level,
-            xp: a.profile.xp,
-            wins: a.profile.wins,
-            matches_played: a.profile.matches_played,
-        }
-    }
-}
-
-#[derive(Serialize, Clone, Debug)]
-pub enum LinkOutcome {
-    Linked(PlayerAccount),
-    Conflict {
-        existing_account_id: String,
-        existing: AccountSummary,
-        current: AccountSummary,
-    },
 }
 
 #[derive(Clone)]
@@ -212,16 +176,16 @@ impl PlayerDb {
     }
 
     pub fn save_player_account_to_redb(&self, account: &PlayerAccount) {
-        if let Some(ref db) = self.metadata_db {
-            if let Ok(write_txn) = db.begin_write() {
-                if let Ok(mut table) = write_txn.open_table(PLAYERS_TABLE) {
-                    if let Ok(json) = serde_json::to_string(account) {
-                        let _ = table.insert(account.id.as_str(), json.as_bytes());
-                    }
+        if let Some(ref db) = self.metadata_db
+            && let Ok(write_txn) = db.begin_write()
+        {
+            if let Ok(mut table) = write_txn.open_table(PLAYERS_TABLE)
+                && let Ok(json) = serde_json::to_string(account)
+            {
+                let _ = table.insert(account.id.as_str(), json.as_bytes());
                 }
                 let _ = write_txn.commit();
             }
-        }
     }
 
     /// Key format for looking up canonical account ID by platform identity
@@ -246,16 +210,6 @@ impl PlayerDb {
         Ok(serde_json::from_str(&acc_json)?)
     }
 
-    async fn save_account(
-        con: &mut redis::aio::MultiplexedConnection,
-        account: &PlayerAccount,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let acc_key = Self::account_key(&account.id);
-        let json = serde_json::to_string(account)?;
-        con.set::<_, _, ()>(&acc_key, json).await?;
-        Ok(())
-    }
-
     async fn record_analytics(
         con: &mut redis::aio::MultiplexedConnection,
         account_id: &str,
@@ -275,7 +229,6 @@ impl PlayerDb {
         &self,
         provider: String,
         external_id: String,
-        _fallback_name: String,
     ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
         let mut con = self.get_connection().await?;
         let id_key = Self::identity_key(&provider, &external_id);
@@ -301,8 +254,7 @@ impl PlayerDb {
         };
 
         // Bot identities (provider == "bot") are marked at creation. All
-        // other providers — including legacy accounts without a `kind` field
-        // in storage — default to Human via serde.
+        // Provider identities are human accounts unless explicitly seeded as bots.
         let kind = if identity.provider == "bot" {
             AccountKind::Bot
         } else {
@@ -336,6 +288,50 @@ impl PlayerDb {
         );
         self.save_player_account_to_redb(&new_account);
         Ok(new_account)
+    }
+
+    /// Load or create an anonymous account using the canonical account ID.
+    /// New anonymous accounts do not create a provider identity index.
+    pub async fn get_or_create_anonymous(
+        &self,
+        account_id: Option<&str>,
+    ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
+        let mut con = self.get_connection().await?;
+
+        if let Some(account_id) = account_id.map(str::trim).filter(|id| !id.is_empty()) {
+            if !is_valid_account_id(account_id) {
+                return Err("account_id must be exactly 32 hexadecimal characters".into());
+            }
+            return Self::load_account(&mut con, account_id).await;
+        }
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        loop {
+            let random_id = format!("{:032x}", rand::random::<u128>());
+            let account = PlayerAccount {
+                id: random_id.clone(),
+                profile: PlayerProfile::default(),
+                linked_identities: Vec::new(),
+                kind: AccountKind::Human,
+                created_at: now,
+                updated_at: now,
+            };
+            let acc_key = Self::account_key(&random_id);
+            let acc_json = serde_json::to_string(&account)?;
+
+            // SETNX makes the canonical account key collision-safe without a
+            // second identity mapping or a distributed lock.
+            if con.set_nx::<_, _, bool>(&acc_key, acc_json).await? {
+                let _: () = Self::record_analytics(&mut con, &random_id, true).await?;
+                self.save_player_account_to_redb(&account);
+                info!("Created anonymous account {}", account.id);
+                return Ok(account);
+            }
+        }
     }
 
     /// Seed the persistent bot-account pool. For each external_id, performs
@@ -613,195 +609,20 @@ impl PlayerDb {
         }
     }
 
-    /// Link a new identity to an existing account (internal; errors on conflict).
-    pub async fn link_identity(
-        &self,
-        account_id: &str,
-        provider: String,
-        external_id: String,
-    ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
-        let mut con = self.get_connection().await?;
-        let account =
-            Self::link_identity_inner(&mut con, account_id, provider, external_id).await?;
-        self.save_player_account_to_redb(&account);
-        Ok(account)
-    }
+}
 
-    /// Client-facing link attempt; returns conflict metadata when identity maps elsewhere.
-    pub async fn try_link_identity(
-        &self,
-        account_id: &str,
-        provider: String,
-        external_id: String,
-    ) -> Result<LinkOutcome, Box<dyn std::error::Error + Send + Sync>> {
-        let mut con = self.get_connection().await?;
-        let id_key = Self::identity_key(&provider, &external_id);
+fn is_valid_account_id(value: &str) -> bool {
+    value.len() == ACCOUNT_ID_HEX_LEN && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
 
-        if let Some(linked_id) = con.get::<_, Option<String>>(&id_key).await? {
-            if linked_id == account_id {
-                let account = Self::load_account(&mut con, account_id).await?;
-                return Ok(LinkOutcome::Linked(account));
-            }
-            let existing = Self::load_account(&mut con, &linked_id).await?;
-            let current = Self::load_account(&mut con, account_id).await?;
-            return Ok(LinkOutcome::Conflict {
-                existing_account_id: linked_id,
-                existing: AccountSummary::from(&existing),
-                current: AccountSummary::from(&current),
-            });
-        }
+#[cfg(test)]
+mod tests {
+    use super::is_valid_account_id;
 
-        let account =
-            Self::link_identity_inner(&mut con, account_id, provider, external_id).await?;
-        self.save_player_account_to_redb(&account);
-        Ok(LinkOutcome::Linked(account))
-    }
-
-    /// Resolve an identity link conflict by keeping one canonical account.
-    pub async fn resolve_link_conflict(
-        &self,
-        current_account_id: &str,
-        keep_account_id: &str,
-        provider: String,
-        external_id: String,
-    ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
-        let mut con = self.get_connection().await?;
-        let id_key = Self::identity_key(&provider, &external_id);
-        let mapped: Option<String> = con.get(&id_key).await?;
-
-        if keep_account_id != current_account_id && mapped.as_deref() != Some(keep_account_id) {
-            return Err("keep_account_id must be current or the existing mapped account".into());
-        }
-
-        let account = if keep_account_id == current_account_id {
-            if let Some(other_id) = mapped
-                && other_id != current_account_id
-            {
-                Self::unlink_identity_from_account(&mut con, &other_id, &provider, &external_id)
-                    .await?;
-                Self::delete_account_if_orphan(&mut con, &other_id, &self.metadata_db).await?;
-            }
-            Self::link_identity_inner(&mut con, current_account_id, provider, external_id).await?
-        } else {
-            Self::transfer_local_identities(&mut con, current_account_id, keep_account_id).await?;
-            Self::delete_account_if_orphan(&mut con, current_account_id, &self.metadata_db).await?;
-            Self::load_account(&mut con, keep_account_id).await?
-        };
-
-        self.save_player_account_to_redb(&account);
-        Ok(account)
-    }
-
-    async fn link_identity_inner(
-        con: &mut redis::aio::MultiplexedConnection,
-        account_id: &str,
-        provider: String,
-        external_id: String,
-    ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
-        let id_key = Self::identity_key(&provider, &external_id);
-
-        if let Some(linked_id) = con.get::<_, Option<String>>(&id_key).await?
-            && linked_id != account_id
-        {
-            return Err("Identity already linked to another account".into());
-        }
-
-        let mut account = Self::load_account(con, account_id).await?;
-        let identity = LinkedIdentity {
-            provider,
-            external_id,
-        };
-
-        if !account.linked_identities.contains(&identity) {
-            account.linked_identities.push(identity);
-            account.updated_at = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
-
-            let acc_key = Self::account_key(account_id);
-            let updated_json = serde_json::to_string(&account)?;
-
-            redis::pipe()
-                .set(&acc_key, updated_json)
-                .set(&id_key, account_id)
-                .query_async::<()>(con)
-                .await?;
-        }
-
-        Ok(account)
-    }
-
-    async fn unlink_identity_from_account(
-        con: &mut redis::aio::MultiplexedConnection,
-        account_id: &str,
-        provider: &str,
-        external_id: &str,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let id_key = Self::identity_key(provider, external_id);
-        let mut account = Self::load_account(con, account_id).await?;
-        account
-            .linked_identities
-            .retain(|i| !(i.provider == provider && i.external_id == external_id));
-        account.updated_at = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        Self::save_account(con, &account).await?;
-        let _: () = con.del(&id_key).await?;
-        Ok(())
-    }
-
-    async fn transfer_local_identities(
-        con: &mut redis::aio::MultiplexedConnection,
-        from_id: &str,
-        to_id: &str,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let from = Self::load_account(con, from_id).await?;
-        let locals: Vec<LinkedIdentity> = from
-            .linked_identities
-            .iter()
-            .filter(|i| i.provider == "local")
-            .cloned()
-            .collect();
-        for identity in locals {
-            Self::unlink_identity_from_account(
-                con,
-                from_id,
-                &identity.provider,
-                &identity.external_id,
-            )
-            .await?;
-            let _ = Self::link_identity_inner(con, to_id, identity.provider, identity.external_id)
-                .await;
-        }
-        Ok(())
-    }
-
-    async fn delete_account_if_orphan(
-        con: &mut redis::aio::MultiplexedConnection,
-        account_id: &str,
-        metadata_db: &Option<std::sync::Arc<redb::Database>>,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let account = match Self::load_account(con, account_id).await {
-            Ok(a) => a,
-            Err(_) => return Ok(()),
-        };
-        if !account.linked_identities.is_empty() {
-            return Ok(());
-        }
-        let acc_key = Self::account_key(account_id);
-        let _: () = con.del(&acc_key).await?;
-        warn!("Deleted orphan account {account_id}");
-
-        if let Some(db) = metadata_db {
-            if let Ok(write_txn) = db.begin_write() {
-                if let Ok(mut table) = write_txn.open_table(PLAYERS_TABLE) {
-                    let _ = table.remove(account_id);
-                }
-                let _ = write_txn.commit();
-            }
-        }
-        Ok(())
+    #[test]
+    fn validates_canonical_account_ids() {
+        assert!(is_valid_account_id("0123456789abcdef0123456789abcdef"));
+        assert!(!is_valid_account_id("guest_0123456789abcdef0123456789abcdef"));
+        assert!(!is_valid_account_id("not-an-account"));
     }
 }

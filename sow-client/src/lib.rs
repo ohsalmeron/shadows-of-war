@@ -26,8 +26,8 @@ fn get_build_version() -> String {
 }
 
 mod asset_config;
+mod anonymous_identity;
 mod config;
-mod guest_id;
 
 pub use asset_config::AssetConfig;
 

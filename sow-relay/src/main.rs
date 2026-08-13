@@ -2,20 +2,22 @@
 //!
 //! Each lobby owns one dynamic TCP port in 1024..=65535. The destination port
 //! modulo the number of F-Stack queues selects the owning worker. Lobbies are
-//! registered by sow-server via that worker's kernel management HTTP port:
+//! registered by sow-server via that worker's kernel management port (HTTPS in
+//! production):
 //!
 //!     POST /internal/lobby/register   {lobby_id, tick_number, tick_rate_ms,
 //!                                      active_empty_secs, players, config?}
 //!     GET  /internal/lobbies          active lobby roster (ops/validation)
 //!
-//! `SOW_RELAY_BASE_MGMT_PORT` (legacy `SOW_RELAY_MGMT_PORT` remains accepted)
+//! `SOW_RELAY_BASE_MGMT_PORT` selects the first management port; worker IDs
+//! increment it for subsequent workers.
 //! selects the management port; game listeners are created dynamically when
 //! the owning worker accepts a lobby registration.
 //!
 //! Connections arrive via RSS on the game port. The first frame decides the
-//! role: `ClientMessage::Ready` → relay player routed to its registered lobby;
-//! silence for ORCHESTRATOR_GRACE_SECS → orchestrator WS (LobbiesBroadcast
-//! feed for the backfill daemon / ops tooling).
+//! role: a ticketed Ready frame → relay player routed to its registered lobby;
+//! silence for ORCHESTRATOR_GRACE_SECS → the optional orchestration/operations
+//! WS (LobbiesBroadcast feed for bot/backfill compatibility and tooling).
 //!
 //! The per-lobby game loop (ticks, intents, missed-tick drop, MatchTracker,
 //! finalize upload) is the sow-relay logic, now keyed by registry lookup.
@@ -402,7 +404,6 @@ fn load_tls_acceptor() -> Option<TlsAcceptor> {
 
 fn base_mgmt_port() -> u16 {
     std::env::var("SOW_RELAY_BASE_MGMT_PORT")
-        .or_else(|_| std::env::var("SOW_RELAY_MGMT_PORT"))
         .ok()
         .and_then(|p| p.parse().ok())
         .unwrap_or(DEFAULT_MGMT_PORT)
@@ -420,10 +421,7 @@ fn relay_host() -> String {
             return host.trim().to_string();
         }
     }
-    let addr = std::env::var("SOW_RELAY_ADDR").unwrap_or_else(|_| "127.0.0.1:80".to_string());
-    addr.rsplit_once(':')
-        .map(|(host, _)| host.to_string())
-        .unwrap_or(addr)
+    "127.0.0.1".to_string()
 }
 
 fn relay_addr(port: u16) -> String {
@@ -457,7 +455,8 @@ unsafe extern "C" fn relay_packet_dispatcher(
 }
 
 /// Seconds without any frame before a connection is classified as the
-/// orchestrator WS (backfill daemon sends nothing, players Ready within ~2s).
+/// orchestration/operations WS (the optional bot/backfill client sends nothing,
+/// while players send their admission frame within ~2s).
 const ORCHESTRATOR_GRACE_SECS: u64 = 3;
 
 /// Max consecutive missed ticks before dropping a slow client.
@@ -2111,8 +2110,9 @@ async fn ws_task(
     let (mut write, mut read) = ws.split();
     let (direct_tx, mut direct_rx) = mpsc::channel::<Arc<Vec<u8>>>(PER_CLIENT_CHANNEL);
 
-    // First frame decides the role. The backfill daemon (orchestrator) sends
-    // nothing: classify it after a short grace period.
+    // First frame decides the role. The optional bot/backfill orchestrator (or
+    // an operations client) sends nothing: classify it after a short grace
+    // period.
     let role: Option<Role>;
     match tokio::time::timeout(
         Duration::from_secs(ORCHESTRATOR_GRACE_SECS),
@@ -2214,7 +2214,8 @@ async fn ws_task(
             return;
         }
         Err(_) => {
-            // Nothing in the grace window → orchestrator (backfill daemon) WS.
+            // Nothing in the grace window → optional orchestration/operations
+            // WS (the bot/backfill compatibility client uses this feed).
             orchestrator_task(&mut write, &mut read, &registry).await;
             return;
         }
@@ -2583,8 +2584,8 @@ async fn try_register_with_admission(
     Some(Role::RelayPlayer { lobby, player_id })
 }
 
-/// Orchestrator connection: periodic LobbiesBroadcast of registered lobbies,
-/// so the backfill daemon keeps spawning until slots fill.
+/// Optional orchestration connection: periodic `LobbiesBroadcast` of registered
+/// lobbies for bot/backfill compatibility and operations tooling.
 async fn orchestrator_task(
     write: &mut futures_util::stream::SplitSink<
         tokio_tungstenite::WebSocketStream<MaybeTlsConn>,

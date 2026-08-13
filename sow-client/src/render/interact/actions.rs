@@ -245,9 +245,6 @@ impl SowApp {
                         }
                     }
                 }
-                UiAction::ResolveLinkConflict { keep_account_id } => {
-                    self.resolve_link_conflict(keep_account_id);
-                }
                 UiAction::PortalShowAuthPrompt => {
                     crate::store_portals::show_auth_prompt();
                 }

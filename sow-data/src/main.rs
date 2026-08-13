@@ -1,5 +1,5 @@
-use sow_data::db::{LinkOutcome, PlayerDb, PlayerProfile};
-use sow_data::{crazygames, db};
+use sow_data::db::{PlayerDb, PlayerProfile};
+use sow_data::crazygames;
 
 use axum::{
     Json, Router,
@@ -28,7 +28,11 @@ struct AppState {
 struct ProfileQuery {
     provider: String,
     external_id: String,
-    fallback_name: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct AnonymousProfileRequest {
+    account_id: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -62,44 +66,9 @@ struct BotPoolSeedResponse {
     account_ids: Vec<String>,
 }
 
-#[derive(Deserialize)]
-struct LinkRequest {
-    account_id: String,
-    provider: String,
-    external_id: String,
-}
-
-#[derive(Deserialize)]
-struct ProfileLinkRequest {
-    account_id: String,
-    target_provider: String,
-    target_external_id: String,
-}
-
-#[derive(Deserialize)]
-struct ProfileLinkResolveRequest {
-    account_id: String,
-    keep_account_id: String,
-    target_provider: String,
-    target_external_id: String,
-}
-
 #[derive(Serialize)]
 struct ErrorResponse {
     error: String,
-}
-
-#[derive(Serialize)]
-struct ProfileLinkResponse {
-    status: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    account: Option<db::PlayerAccount>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    existing_account_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    existing: Option<db::AccountSummary>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    current: Option<db::AccountSummary>,
 }
 
 #[tokio::main]
@@ -151,10 +120,10 @@ async fn main() {
     let redb_path =
         std::env::var("SOW_REDB_PATH").unwrap_or_else(|_| "sow_metadata.redb".to_string());
     info!("Opening persistent REDB database at {}", redb_path);
-    if let Some(dir) = std::path::Path::new(&redb_path).parent() {
-        if !dir.as_os_str().is_empty() {
-            std::fs::create_dir_all(dir).expect("Failed to create REDB data directory");
-        }
+    if let Some(dir) = std::path::Path::new(&redb_path).parent()
+        && !dir.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(dir).expect("Failed to create REDB data directory");
     }
     let redb_db =
         sow_data::init_database(&redb_path).expect("Failed to initialize REDB metadata database");
@@ -191,13 +160,12 @@ async fn main() {
 
     // Define router
     let app = Router::new()
+        .route("/healthz", get(handle_healthz))
         .route("/profile", get(handle_get_profile))
-        .route("/profile/link", post(handle_profile_link))
-        .route("/profile/link/resolve", post(handle_profile_link_resolve))
+        .route("/profile/anonymous", post(handle_anonymous_profile))
         .route("/match/start", post(handle_match_start))
         .route("/internal/match-finalize", post(handle_match_finalize))
         .route("/internal/save", post(handle_direct_save))
-        .route("/internal/link", post(handle_link_identity))
         .route("/internal/stats", get(handle_internal_stats))
         .route("/internal/bot-pool/seed", post(handle_bot_pool_seed))
         .layer(DefaultBodyLimit::max(MAX_REPLAY_REQUEST_BYTES))
@@ -214,6 +182,36 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
+}
+
+/// Liveness probe for the pipeline and service supervisor. It deliberately
+/// performs no profile lookup and emits no authentication warning.
+async fn handle_healthz() -> impl IntoResponse {
+    (StatusCode::OK, Json(serde_json::json!({ "ok": true })))
+}
+
+/// POST /profile/anonymous — load the canonical anonymous account ID or issue
+/// one for a new browser profile.
+async fn handle_anonymous_profile(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<AnonymousProfileRequest>,
+) -> impl IntoResponse {
+    match state
+        .db
+        .get_or_create_anonymous(payload.account_id.as_deref())
+        .await
+    {
+        Ok(account) => (StatusCode::OK, Json(account)).into_response(),
+        Err(error) => {
+            let message = error.to_string();
+            let status = if message.contains("account_id must") {
+                StatusCode::BAD_REQUEST
+            } else {
+                StatusCode::NOT_FOUND
+            };
+            (status, Json(ErrorResponse { error: message })).into_response()
+        }
+    }
 }
 
 fn platform_auth_token(headers: &HeaderMap) -> Option<String> {
@@ -240,10 +238,7 @@ async fn resolve_external_id(
         }
         return Ok(verified_id);
     }
-    if external_id.is_empty() {
-        return Err("external_id cannot be empty".into());
-    }
-    Ok(external_id.to_string())
+    Err("unsupported provider; anonymous clients must use /profile/anonymous".into())
 }
 
 /// Verify if the request has the correct Authorization bearer secret
@@ -265,7 +260,6 @@ async fn handle_get_profile(
 ) -> impl IntoResponse {
     let provider = query.provider.trim();
     let external_id = query.external_id.trim();
-    let fallback_name = query.fallback_name.unwrap_or_else(|| "Player".to_string());
     let auth_token = platform_auth_token(&headers);
 
     if provider.is_empty() {
@@ -290,7 +284,7 @@ async fn handle_get_profile(
 
     match state
         .db
-        .get_or_create(provider.to_string(), resolved_external_id, fallback_name)
+        .get_or_create(provider.to_string(), resolved_external_id)
         .await
     {
         Ok(account) => (StatusCode::OK, Json(account)).into_response(),
@@ -372,17 +366,17 @@ async fn handle_match_finalize(
         let file_path =
             std::path::Path::new(&replay_dir).join(format!("{}.replay", payload.match_id));
 
-        if let Some(parent) = file_path.parent() {
-            if let Err(e) = tokio::fs::create_dir_all(parent).await {
-                error!("Failed to create replay directory {:?}: {}", parent, e);
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "replay directory unavailable".to_string(),
-                    }),
-                )
-                    .into_response();
-            }
+        if let Some(parent) = file_path.parent()
+            && let Err(e) = tokio::fs::create_dir_all(parent).await
+        {
+            error!("Failed to create replay directory {:?}: {}", parent, e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "replay directory unavailable".to_string(),
+                }),
+            )
+                .into_response();
         }
 
         let temp_path = file_path.with_extension("replay.tmp");
@@ -424,17 +418,17 @@ async fn handle_match_finalize(
         let meta_path =
             std::path::Path::new(&replay_dir).join(format!("{}.json", payload.match_id));
 
-        if let Some(parent) = meta_path.parent() {
-            if let Err(e) = tokio::fs::create_dir_all(parent).await {
-                error!("Failed to create metadata directory {:?}: {}", parent, e);
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "metadata directory unavailable".to_string(),
-                    }),
-                )
-                    .into_response();
-            }
+        if let Some(parent) = meta_path.parent()
+            && let Err(e) = tokio::fs::create_dir_all(parent).await
+        {
+            error!("Failed to create metadata directory {:?}: {}", parent, e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "metadata directory unavailable".to_string(),
+                }),
+            )
+                .into_response();
         }
 
         let temp_path = meta_path.with_extension("json.tmp");
@@ -543,161 +537,6 @@ async fn handle_direct_save(
         Ok(account) => (StatusCode::OK, Json(account)).into_response(),
         Err(e) => (
             StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-            .into_response(),
-    }
-}
-
-/// POST /profile/link — attach a platform identity to the active account.
-async fn handle_profile_link(
-    State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-    Json(payload): Json<ProfileLinkRequest>,
-) -> impl IntoResponse {
-    let target_provider = payload.target_provider.trim();
-    let target_external_id = payload.target_external_id.trim();
-    let auth_token = platform_auth_token(&headers);
-    let resolved_external_id =
-        match resolve_external_id(target_provider, target_external_id, auth_token.as_deref()).await
-        {
-            Ok(id) => id,
-            Err(e) => {
-                warn!("Platform auth failed for /profile/link: {e}");
-                return (StatusCode::UNAUTHORIZED, Json(ErrorResponse { error: e }))
-                    .into_response();
-            }
-        };
-
-    match state
-        .db
-        .try_link_identity(
-            &payload.account_id,
-            target_provider.to_string(),
-            resolved_external_id,
-        )
-        .await
-    {
-        Ok(LinkOutcome::Linked(account)) => {
-            state.db.submit_crazygames_score(&account).await;
-            (
-                StatusCode::OK,
-                Json(ProfileLinkResponse {
-                    status: "linked".into(),
-                    account: Some(account),
-                    existing_account_id: None,
-                    existing: None,
-                    current: None,
-                }),
-            )
-                .into_response()
-        }
-        Ok(LinkOutcome::Conflict {
-            existing_account_id,
-            existing,
-            current,
-        }) => (
-            StatusCode::OK,
-            Json(ProfileLinkResponse {
-                status: "conflict".into(),
-                account: None,
-                existing_account_id: Some(existing_account_id),
-                existing: Some(existing),
-                current: Some(current),
-            }),
-        )
-            .into_response(),
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-            .into_response(),
-    }
-}
-
-/// POST /profile/link/resolve — pick which account keeps progress after a conflict.
-async fn handle_profile_link_resolve(
-    State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-    Json(payload): Json<ProfileLinkResolveRequest>,
-) -> impl IntoResponse {
-    let target_provider = payload.target_provider.trim();
-    let target_external_id = payload.target_external_id.trim();
-    let auth_token = platform_auth_token(&headers);
-    let resolved_external_id =
-        match resolve_external_id(target_provider, target_external_id, auth_token.as_deref()).await
-        {
-            Ok(id) => id,
-            Err(e) => {
-                warn!("Platform auth failed for /profile/link/resolve: {e}");
-                return (StatusCode::UNAUTHORIZED, Json(ErrorResponse { error: e }))
-                    .into_response();
-            }
-        };
-
-    match state
-        .db
-        .resolve_link_conflict(
-            &payload.account_id,
-            &payload.keep_account_id,
-            target_provider.to_string(),
-            resolved_external_id,
-        )
-        .await
-    {
-        Ok(account) => {
-            state.db.submit_crazygames_score(&account).await;
-            (
-                StatusCode::OK,
-                Json(ProfileLinkResponse {
-                    status: "resolved".into(),
-                    account: Some(account),
-                    existing_account_id: None,
-                    existing: None,
-                    current: None,
-                }),
-            )
-                .into_response()
-        }
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-            .into_response(),
-    }
-}
-
-/// POST /internal/link handler (authenticated server-to-server only)
-async fn handle_link_identity(
-    State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-    Json(payload): Json<LinkRequest>,
-) -> impl IntoResponse {
-    if !verify_internal_auth(&headers, &state.secret_token) {
-        warn!("Unauthorized access attempt to /internal/link");
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Unauthorized".to_string(),
-            }),
-        )
-            .into_response();
-    }
-
-    match state
-        .db
-        .link_identity(&payload.account_id, payload.provider, payload.external_id)
-        .await
-    {
-        Ok(account) => (StatusCode::OK, Json(account)).into_response(),
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
                 error: e.to_string(),
             }),

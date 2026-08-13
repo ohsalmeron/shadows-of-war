@@ -97,13 +97,6 @@ pub struct MainMenuStrings {
     pub join_private_btn: String,
     pub no_public_games: String,
     pub wrong_password: String,
-    pub link_conflict_title: String,
-    pub link_conflict_body: String,
-    pub link_conflict_guest_label: String,
-    pub link_conflict_platform_label: String,
-    pub link_conflict_level: String,
-    pub link_conflict_keep_guest: String,
-    pub link_conflict_keep_platform: String,
     pub sign_in: String,
     // Host moderation + lobby removal notices
     pub kick_btn: String,

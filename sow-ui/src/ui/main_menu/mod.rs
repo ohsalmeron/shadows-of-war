@@ -30,16 +30,6 @@ pub enum LobbyNotice {
     Banned,
 }
 
-#[derive(Clone, Debug)]
-pub struct UiLinkConflictInfo {
-    pub current_account_id: String,
-    pub existing_account_id: String,
-    pub current_level: u32,
-    pub existing_level: u32,
-    pub target_provider: String,
-    pub target_external_id: String,
-}
-
 pub struct MainMenuState {
     pub is_connected: bool,
     pub is_connecting: bool,
@@ -79,7 +69,6 @@ pub struct MainMenuState {
     pub selected_civilization: sow_core::player::Civilization,
     pub error_message: Option<String>,
     pub leader_backdrop: crate::widgets::LeaderBackdropTransition,
-    pub active_conflict: Option<UiLinkConflictInfo>,
     /// Local player's id in the joined lobby — lets the host roster skip its own entry.
     pub my_player_id: Option<u16>,
     /// Active lobby notice (host left / kicked / banned) and the frame time it appeared.
@@ -146,7 +135,6 @@ impl Default for MainMenuState {
             cached_map_key: None,
             map_download_progress: 0,
             show_leader_picker: false,
-            active_conflict: None,
             leader_backdrop: crate::widgets::LeaderBackdropTransition::new(leader),
             error_message: None,
             my_player_id: None,
@@ -630,10 +618,6 @@ pub fn draw(
             });
     } else {
         draw_home(root_ui, state, asset_loader, lang, &mut action);
-    }
-
-    if let Some(conflict) = state.active_conflict.clone() {
-        modals::draw_link_conflict_modal(root_ui, &mut action, &conflict, lang, compact);
     }
 
     modals::draw_connecting_indicator(root_ui.ctx(), state, lang, compact);

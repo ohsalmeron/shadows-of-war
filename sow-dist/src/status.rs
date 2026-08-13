@@ -1,16 +1,24 @@
 use super::*;
-use std::thread;
 
 pub(super) fn execute() -> Result<()> {
-    let prod_host = env::var("SOW_PROD_HOST").unwrap_or_else(|_| "sow".into());
+    let prod_host = env::var("SOW_PROD_HOST").unwrap_or_else(|_| "ionos".into());
+    let relay_host = env::var("SOW_RELAY_HOST_SSH").unwrap_or_else(|_| "relay".into());
 
-    let azure = collect_azure(&prod_host);
+    let production = collect_production(&prod_host);
+    let relay = collect_relay(&relay_host);
     let local = collect_local();
 
     println!("─── SOW MONITOR ───────────────────────────────────────────");
     println!();
-    println!("Azure ({prod_host})");
-    for line in &azure.lines {
+    println!("IONOS production ({prod_host})");
+    for line in &production.lines {
+        if !line.is_empty() {
+            println!("  {line}");
+        }
+    }
+    println!();
+    println!("Azure F-Stack relay ({relay_host})");
+    for line in &relay.lines {
         if !line.is_empty() {
             println!("  {line}");
         }
@@ -23,11 +31,11 @@ pub(super) fn execute() -> Result<()> {
 }
 
 #[derive(Default)]
-struct AzureInfo {
+struct HostInfo {
     lines: Vec<String>,
 }
 
-const AZURE_PY_SCRIPT: &str = r#"import subprocess
+const PRODUCTION_PY_SCRIPT: &str = r#"import subprocess
 
 try:
     cp_time = subprocess.check_output(["sysctl", "-n", "kern.cp_time"]).decode().split()
@@ -69,72 +77,16 @@ except Exception:
     valkey_ops, valkey_mem = "?", "?"
 
 try:
-    ps_out = subprocess.check_output(["ps", "aux"]).decode()
-    relays = []
-    for line in ps_out.splitlines():
-        if "sow-relay --port" in line:
-            parts = line.split()
-            pid = parts[1]
-            try:
-                port_idx = parts.index("--port") + 1
-                port = int(parts[port_idx])
-                relays.append((pid, port))
-            except Exception:
-                pass
-except Exception:
-    relays = []
-
-try:
     netstat_out = subprocess.check_output(["netstat", "-an"]).decode()
-    port_socket_counts = {}
     total_tcp_sockets = 0
-    worker_bot_sockets = 0
-    worker_ips = {"74.208.246.177", "20.187.76.160", "185.166.215.112", "13.70.37.120"}
-
     for line in netstat_out.splitlines():
         if "ESTABLISHED" in line and "tcp" in line:
             total_tcp_sockets += 1
-            parts = line.split()
-            if len(parts) >= 5:
-                local_addr = parts[3]
-                foreign_addr = parts[4]
-                port_str = local_addr.rpartition(".")[2] if "." in local_addr else local_addr.rpartition(":")[2]
-                if port_str.isdigit():
-                    p = int(port_str)
-                    if 25590 <= p <= 26500:
-                        port_socket_counts[p] = port_socket_counts.get(p, 0) + 1
-                
-                foreign_ip = foreign_addr.rpartition(".")[0] if "." in foreign_addr else foreign_addr.rpartition(":")[0]
-                if foreign_ip in worker_ips:
-                    worker_bot_sockets += 1
 except Exception:
-    port_socket_counts = {}
     total_tcp_sockets = 0
-    worker_bot_sockets = 0
-
-total_relay_procs = len(relays)
-healthy_relays = 0
-zombie_relays = 0
-counts = []
-
-for pid, port in relays:
-    c = port_socket_counts.get(port, 0)
-    if c > 0:
-        healthy_relays += 1
-        counts.append(c)
-    else:
-        zombie_relays += 1
-
-in_game_players = sum(counts)
-min_p = min(counts) if counts else 0
-max_p = max(counts) if counts else 0
-avg_p = sum(counts) / len(counts) if counts else 0.0
 
 print(f"CPU: {cpu_str}  RAM: {mem_str}  ZFS: {zfs_str}  Errors: {errors_str}")
-print(f"Relays: {total_relay_procs} Total ({healthy_relays} Healthy, {zombie_relays} Zombie/Empty) | In-Game Relay WS: {in_game_players} (Total System TCP: {total_tcp_sockets})")
-print(f"Players per Relay: Min {min_p} | Max {max_p} | Avg {avg_p:.1f} players/relay")
-print(f"In-Game Active Players: {in_game_players} (connected to {healthy_relays} live relays)")
-print(f"Worker Connections to Server: {worker_bot_sockets} ESTABLISHED sockets | Valkey: {valkey_ops} ops/s, {valkey_mem}")
+print(f"Established TCP sockets: {total_tcp_sockets} | Valkey: {valkey_ops} ops/s, {valkey_mem}")
 "#;
 
 
@@ -196,14 +148,40 @@ fn run_b64_py(host: &str, code: &str) -> Option<String> {
     }
 }
 
-fn collect_azure(host: &str) -> AzureInfo {
-    if let Some(res) = run_b64_py(host, AZURE_PY_SCRIPT) {
+fn collect_production(host: &str) -> HostInfo {
+    if let Some(res) = run_b64_py(host, PRODUCTION_PY_SCRIPT) {
         let lines = res.lines().map(String::from).collect();
-        AzureInfo { lines }
+        HostInfo { lines }
     } else {
-        AzureInfo {
+        HostInfo {
             lines: vec!["UNREACHABLE".to_string()],
         }
+    }
+}
+
+fn collect_relay(host: &str) -> HostInfo {
+    let remote_cmd = concat!(
+        "systemctl is-active sow-relay@0 sow-relay@1 sow-relay@2 sow-relay@3; ",
+        "for p in 8080 8081 8082 8083; do ",
+        "curl -kfsS --max-time 3 https://127.0.0.1:$p/healthz >/dev/null ",
+        "&& printf 'mgmt-%s=ok\\n' $p || printf 'mgmt-%s=failed\\n' $p; done"
+    );
+    let output = Command::new("ssh")
+        .args([
+            "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", host,
+            remote_cmd,
+        ])
+        .output();
+    match output {
+        Ok(o) if o.status.success() => HostInfo {
+            lines: String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .map(String::from)
+                .collect(),
+        },
+        _ => HostInfo {
+            lines: vec!["UNREACHABLE".to_string()],
+        },
     }
 }
 

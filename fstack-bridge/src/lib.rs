@@ -6,6 +6,11 @@
 //! Scale horizontally = N processes (one per RSS queue/core), launched with distinct
 //! `--proc-id`, exactly like F-Stack's own examples.
 
+// F-Stack exposes process-global mutable C state and the bridge confines all
+// access to the single `ff_run` thread.  The references below are the explicit
+// ABI boundary; replacing them requires redesigning the F-Stack integration.
+#![allow(static_mut_refs)]
+
 pub mod bridge;
 pub mod ffi;
 pub mod packet;

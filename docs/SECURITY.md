@@ -21,7 +21,7 @@ If you discover a security vulnerability, please do not open a public issue. Ins
 ## Scope & Priorities
 
 ### What We Care About Most
-* **Authentication Bypass / Impersonation**: Forgery or exploitation of JWT tokens, or hijacking player profile linkage endpoints (`/profile/link`).
+* **Authentication Bypass / Impersonation**: Forgery of a CrazyGames token or misuse of a canonical anonymous account ID.
 * **Database / State Manipulation**: Unauthorized command injection or arbitrary key modification in our Valkey/Redis instance.
 * **Server Crash Vectors**: Resource exhaustion or panic triggers on the `sow-relay` or `sow-database` endpoints.
 * **Remote Code Execution (RCE)**: Deserialization flaws or memory safety vulnerabilities during custom map loading (`sow-map`) or asset manifest resolution.

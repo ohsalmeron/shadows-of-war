@@ -161,7 +161,12 @@ impl SowApp {
                 },
                 color: self.ui.app.main_menu_state.selected_leader.filler_rgb(),
                 player_type: sow_core::player::PlayerType::Human,
-                team: config.player_team,
+                team: config
+                    .player_team
+                    .or_else(|| match config.game_mode.as_str() {
+                        "Teams" | "HumansVsNations" => Some(sow_core::protocol::Team::Red),
+                        _ => None,
+                    }),
                 spawn_x: 0,
                 spawn_y: 0,
                 civilization: self.ui.app.main_menu_state.selected_civilization,

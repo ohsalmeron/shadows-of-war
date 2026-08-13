@@ -435,7 +435,6 @@ impl SowApp {
                     if is_crazygames {
                         crate::store_portals::submit_leaderboard_score(self.progress.xp);
                     }
-                    self.maybe_link_platform_identity();
                     #[cfg(target_arch = "wasm32")]
                     {
                         self.boot_db_settled = true;
@@ -446,34 +445,6 @@ impl SowApp {
                     #[cfg(target_arch = "wasm32")]
                     {
                         self.boot_db_settled = true;
-                    }
-                }
-                crate::player_progress::DbEvent::LinkConflict(info) => {
-                    log::warn!(
-                        "Platform link conflict: local L{} vs existing L{}",
-                        info.current_level,
-                        info.existing_level
-                    );
-                    self.ui.app.main_menu_state.active_conflict =
-                        Some(sow_ui::ui::main_menu::UiLinkConflictInfo {
-                            current_account_id: info.current_account_id,
-                            existing_account_id: info.existing_account_id,
-                            current_level: info.current_level,
-                            existing_level: info.existing_level,
-                            target_provider: info.target_provider,
-                            target_external_id: info.target_external_id,
-                        });
-                }
-                crate::player_progress::DbEvent::LinkResolved {
-                    progress,
-                    account_id,
-                    provider,
-                } => {
-                    let old_level = self.progress.level;
-                    self.apply_cloud_profile(progress, account_id, provider);
-                    self.ui.app.main_menu_state.active_conflict = None;
-                    if self.progress.level > old_level {
-                        crate::store_portals::happytime();
                     }
                 }
             }

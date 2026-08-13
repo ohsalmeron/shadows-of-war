@@ -27,7 +27,7 @@ Shadows of War is a "full-stack" Rust video game, designed for absolute performa
 
 ### Simulation & Networking
 *   **Deterministic Engine (`sow-core`):** The game logic compiles to `wasm32-unknown-unknown` and uses strict integer math and custom RNG to guarantee lockstep synchronization across all clients.
-*   **Relay Server (`sow-relay`):** A lightweight `tokio-tungstenite` WebSocket relay that broadcasts player intents without having to run heavy server-side physics.
+*   **Relay Server (`sow-relay`):** A lightweight F-Stack/DPDK worker with Tokio, rustls and `tokio-tungstenite` that terminates direct TLS WebSockets and broadcasts player intents without running heavy server-side physics.
 *   **Backend (`sow-database`):** An `axum` REST API backed by **Valkey/Redis** for player profiles, matchmaking, and leaderboards.
 
 ### Procedural Audio (`sow-audio`)
@@ -105,8 +105,9 @@ Because the game logic and renderer are built on generic, standard Rust abstract
 
 `./sow p` is the only production deployment path. It builds the web client,
 runs the FreeBSD server tests, builds the native server/database/relay
-binaries, assembles one checksummed release, activates it on `sow`, and rolls
-back automatically if origin verification fails. Web and backend work run in
+binaries, assembles one checksummed release, and activates the release through
+the current IONOS orchestrator plus Azure F-Stack relay targets. It rolls back
+automatically if origin verification fails. Web and backend work run in
 parallel; unchanged artifacts are reused and only affected services restart.
 
 ```bash

@@ -1,4 +1,11 @@
-//! M3-FaseB — multi-lobby game relay over the bridge + mgmt HTTP register.
+//! HISTORICAL SPIKE — M3-FaseB multi-lobby relay over the bridge.
+//!
+//! This example is retained for F-Stack experiments only; it is not the live
+//! relay and must not be used as a production topology or protocol reference.
+//! Production uses `sow-relay`: direct `wss://relay.shadowsofwar.io:<dynamic>`
+//! connections, four queue-owned workers, authenticated management HTTPS, and
+//! ticketed Ready/Reconnect frames. The legacy stub, fixed :80 port, and
+//! unticketed Ready flow below are intentionally not current behavior.
 //!
 //! One process handles every lobby assigned to it (no per-match processes):
 //!

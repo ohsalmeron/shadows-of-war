@@ -1,4 +1,4 @@
-// build.rs — replicate the M3 link order for the monolithic relay binary.
+// build.rs — replicate the M3 link order for the single F-Stack relay worker.
 //
 // fstack-bridge emits its link flags as `rustc-link-lib` (so they reach this
 // dependent crate), but the proven M3 order (relay_full example) put every

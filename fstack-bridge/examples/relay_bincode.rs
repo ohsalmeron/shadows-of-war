@@ -1,5 +1,7 @@
 //! M3-FaseA — bincode protocol over the bridge WebSocket (real sow-core types).
 //!
+//! HISTORICAL SPIKE ONLY: this fixed-port, unticketed client is not the live
+//! relay protocol. Production uses dynamic TLS ports and relay tickets.
 //! Replaces the raw echo of `echo_ws` with the real game protocol: each binary
 //! WS frame is `bincode::deserialize::<ClientMessage>`, and `Ready` is answered
 //! with `ServerMessage::Start` (bincode-serialized). The bridge `Conn` is

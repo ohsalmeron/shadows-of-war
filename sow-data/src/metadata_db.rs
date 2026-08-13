@@ -32,10 +32,10 @@ pub struct GeoEntityRecord {
 /// Automatically initialize and build the redb metadata database file if it does not exist
 pub fn init_database<P: AsRef<Path>>(path: P) -> Result<Database, Box<dyn std::error::Error>> {
     let exists = path.as_ref().exists();
-    if let Some(parent) = path.as_ref().parent() {
-        if !parent.exists() {
-            std::fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = path.as_ref().parent()
+        && !parent.exists()
+    {
+        std::fs::create_dir_all(parent)?;
     }
     let db = Database::create(path)?;
     if !exists {

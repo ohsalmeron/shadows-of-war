@@ -6,6 +6,8 @@
 the controlled data reset; the cleanup checkpoint records the resulting zero
 state.
 
+**Current deployed release:** `0.1.2-1d2ea5072dca` via `./sow p`.
+
 ## Confirmed protections
 
 - IONOS has separate FreeBSD jails for `sow-server`, `sow-database`, Valkey,
@@ -13,6 +15,9 @@ state.
 - PF is enabled with a default inbound block rule.
 - IONOS Valkey is loopback-bound and has protected mode enabled.
 - IONOS `sow-server` and its map listener are loopback-bound.
+- `sow-database` exposes a loopback-only `/healthz` liveness route; the
+  pipeline uses it instead of a profile request, so readiness checks do not
+  create authentication-warning noise or mutate player state.
 - Azure relay management ports `8080..8083` are NSG-allowlisted to the IONOS
   public IP.
 - Relay workers use the installed `relay.shadowsofwar.io` certificate and the
@@ -30,15 +35,25 @@ or least-privilege service isolation.
 
 ## Critical-risk backlog
 
-1. Non-CrazyGames profile requests accept any non-empty `external_id`; local
-   guest identities are anonymous and are not proof of account ownership.
-2. Azure SSH/22 is currently allowed from any source by the NSG, and the VNet
+1. Azure SSH/22 is currently allowed from any source by the NSG, and the VNet
    has no attached Azure DDoS Protection plan.  Game ports are intentionally
    public and require a separate flood-mitigation decision.
 
+Anonymous identity is now one canonical browser/native `account_id` issued by
+`POST /profile/anonymous`.  CrazyGames is the only external provider accepted
+by `GET /profile`, and its ID is verified from the platform token.  The old
+guest-ID migration and all profile-link/conflict routes were removed; they are
+not compatibility paths.
+
+The canonical anonymous ID is a progress lookup key, not a secret or an
+authentication credential.  Likewise, `Join.database_account_id` is supplied
+by the client and is used for roster/reconnect/ban correlation only.  Relay
+authentication is the separate short-lived per-match ticket; no account ID
+should be treated as authorization proof.
+
 ## Phase 1 — relay management control plane
 
-Deployment release: `0.1.2-6aeee128e836` (deployed by `./sow p`).
+Deployment release: `0.1.2-1d2ea5072dca` (current release, deployed by `./sow p`).
 
 The IONOS server now signs every relay-management mutation with a dedicated
 `SOW_RELAY_CONTROL_SECRET`.  The signature covers the HTTP method, exact path,
@@ -182,7 +197,8 @@ rendering output and report only hashes, lengths, modes, or match counts.
 
 ## Phase 4 — admission control and handshake bounds
 
-Deployment release: `0.1.2-85a825781227` (deployed and verified by `./sow p`).
+The admission-control changes are included in current release
+`0.1.2-1d2ea5072dca` (deployed and verified by `./sow p`).
 
 The relay now applies admission before a socket is registered with Tokio or
 enters TLS/WebSocket processing. Each worker enforces a global cap of 32,768
@@ -211,18 +227,17 @@ remote release build completed successfully.
 
 ## Remaining security plan
 
-1. **Identity phase:** define which providers may create anonymous accounts,
-   require provider verification where an identity is claimed, and test
-   profile/link/conflict routes for takeover and replay.  Preserve anonymous
-   play only if its limits and ownership semantics are explicit.
-2. **Infrastructure exposure phase:** encode an approved SSH source restriction
+1. **Infrastructure exposure phase:** encode an approved SSH source restriction
    in the reproducible Azure deployment path, verify recovery access first, and
    separately decide whether Azure DDoS Protection or another mitigation is
    justified for the public game-port range.
-3. **Auditability gate:** add read-only audit commands that emit counts and
+2. **Auditability gate:** add read-only audit commands that emit counts and
    redacted status only, then re-run the entire checklist after each phase.
 
-## Runtime data observations — pre-cleanup baseline
+## Runtime data observations — historical pre-cleanup baseline
+
+The following records describe the old implementation and are retained only as
+audit evidence.  They are not part of the current identity contract.
 
 - IONOS Valkey currently contains 78 account records: 77 with provider
   `local` (anonymous guest identities such as `guest_<hex>`) and one `test`

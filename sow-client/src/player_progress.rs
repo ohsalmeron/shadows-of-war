@@ -42,16 +42,6 @@ pub struct PlayerProgress {
 }
 
 #[derive(Clone, Debug)]
-pub struct LinkConflictInfo {
-    pub current_account_id: String,
-    pub existing_account_id: String,
-    pub current_level: u32,
-    pub existing_level: u32,
-    pub target_provider: String,
-    pub target_external_id: String,
-}
-
-#[derive(Clone, Debug)]
 pub enum DbEvent {
     ProfileLoaded {
         progress: PlayerProgress,
@@ -59,12 +49,6 @@ pub enum DbEvent {
         provider: String,
     },
     LoadFailed,
-    LinkConflict(LinkConflictInfo),
-    LinkResolved {
-        progress: PlayerProgress,
-        account_id: String,
-        provider: String,
-    },
 }
 
 impl PlayerProgress {

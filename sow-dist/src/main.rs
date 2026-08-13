@@ -349,7 +349,7 @@ fn build_index(
         .replace("__ASSETS_UI_BASE__", "/assets/cdn/ui/")
         .replace(
             "href=\"./sow.svg\"",
-            &if cg {
+            if cg {
                 "href=\"sow.svg\""
             } else {
                 "href=\"../sow.svg\""
@@ -357,7 +357,7 @@ fn build_index(
         )
         .replace(
             "href=\"./favicon.ico\"",
-            &if cg {
+            if cg {
                 "href=\"favicon.ico\""
             } else {
                 "href=\"../favicon.ico\""
@@ -365,7 +365,7 @@ fn build_index(
         )
         .replace(
             "src=\"./loader.js\"",
-            &if cg {
+            if cg {
                 "src=\"loader.js\""
             } else {
                 "src=\"../loader.js\""
@@ -373,7 +373,7 @@ fn build_index(
         )
         .replace(
             "src=\"./sdk/store_portals.js\"",
-            &if cg {
+            if cg {
                 "src=\"sdk/store_portals.js\""
             } else {
                 "src=\"../sdk/store_portals.js\""
@@ -381,7 +381,7 @@ fn build_index(
         )
         .replace(
             "register('./sw.js', { scope: './' })",
-            &if cg {
+            if cg {
                 "register('sw.js', { scope: '/' })"
             } else {
                 "register('../sw.js', { scope: '../' })"
@@ -597,6 +597,10 @@ fn package_cg(play_dir: &Path, out: &Path, paths: &Paths) -> Result<()> {
         }
     }
 
+    if jh.is_empty() || wh.is_empty() {
+        bail!("CrazyGames package is missing hashed client artifacts");
+    }
+
     // Patch index.html: inject SDK, replace PORTAL slots
     let idx = out.join("play/index.html");
     let html = fs::read_to_string(&idx)?;
@@ -610,10 +614,25 @@ fn package_cg(play_dir: &Path, out: &Path, paths: &Paths) -> Result<()> {
         }
     }
     let mut html_out = lines.join("\n");
-    // Fix JS/WASM references to .br
-    html_out = html_out.replace("sow_client.js", "sow_client.js.br");
-    html_out = html_out.replace("sow_client_bg.wasm", "sow_client_bg.wasm.br");
+    // The cloned play bundle uses content-hashed names, while the
+    // CrazyGames package deliberately exposes stable .br names.  Rewrite
+    // every HTML reference after the rename; otherwise the upload contains
+    // valid files that the entrypoint can never load.
+    html_out = html_out.replace(
+        &format!("sow_client_{jh}.js"),
+        "sow_client.js.br",
+    );
+    html_out = html_out.replace(
+        &format!("sow_client_{wh}_bg.wasm"),
+        "sow_client_bg.wasm.br",
+    );
     fs::write(&idx, html_out)?;
+
+    let manifest_path = out.join("game-manifest.json");
+    let manifest = fs::read_to_string(&manifest_path)?
+        .replace(&format!("sow_client_{jh}.js"), "sow_client.js.br")
+        .replace(&format!("sow_client_{wh}_bg.wasm"), "sow_client_bg.wasm.br");
+    fs::write(manifest_path, manifest)?;
 
     // Remove uncompressed wasm/js (keep only .br)
     for e in fs::read_dir(out)? {
@@ -651,17 +670,17 @@ fn cmd_native(paths: &Paths) -> Result<()> {
 }
 
 fn load_dotenv(path: &Path) {
-    if path.is_file() {
-        if let Ok(c) = fs::read_to_string(path) {
-            for line in c.lines() {
-                let line = line.trim();
-                if line.is_empty() || line.starts_with('#') {
-                    continue;
-                }
-                if let Some(eq) = line.find('=') {
-                    unsafe {
-                        env::set_var(line[..eq].trim(), line[eq + 1..].trim().trim_matches('"'));
-                    }
+    if path.is_file()
+        && let Ok(c) = fs::read_to_string(path)
+    {
+        for line in c.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if let Some(eq) = line.find('=') {
+                unsafe {
+                    env::set_var(line[..eq].trim(), line[eq + 1..].trim().trim_matches('"'));
                 }
             }
         }

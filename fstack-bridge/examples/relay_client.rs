@@ -1,4 +1,8 @@
-//! M3-FaseA — bincode protocol client test.
+//! HISTORICAL SPIKE — bincode protocol client test.
+//!
+//! This example targets the retired fixed-port, unticketed relay experiment.
+//! It is not a production client; current clients receive a dynamic TLS relay
+//! port and use `ReadyWithTicket`/`ReconnectWithTicket`.
 //!
 //! Connects to the relay_bincode server over the data PIP, sends a real
 //! `ClientMessage::Ready { lobby_id: 42, player_id: 7 }` (bincode-serialized,

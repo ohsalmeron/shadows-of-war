@@ -157,11 +157,9 @@ pub fn is_lobby_modal_embed() -> bool {
 }
 
 pub fn should_fetch_cloud_profile() -> bool {
-    if !is_portal_embed() {
-        return true;
-    }
-    let identity = load_identity("Player");
-    identity.provider == "crazygames" && identity.auth_token.as_ref().is_some_and(|t| !t.is_empty())
+    // Anonymous browsers also receive a canonical account ID.  Portal
+    // embedding is not a reason to silently fall back to local-only stats.
+    true
 }
 
 pub fn load_portal_progress() -> Option<crate::player_progress::PlayerProgress> {
@@ -227,15 +225,6 @@ pub fn load_identity(fallback_name: &str) -> PlatformIdentity {
         }
     }
     PlatformIdentity::self_hosted(fallback_name.to_string())
-}
-
-/// Provider + external_id for sow-database (platform login or persistent local guest).
-pub fn database_identity(fallback_name: &str) -> (String, String) {
-    let identity = load_identity(fallback_name);
-    if let Some(ext_id) = identity.external_id.filter(|s| !s.is_empty()) {
-        return (identity.provider.to_string(), ext_id);
-    }
-    ("local".into(), crate::guest_id::load_or_create())
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -374,25 +363,6 @@ pub fn poll_auth_changed() -> bool {
         call_window_hook("SOW_portalClearAuthChanged");
     }
     changed
-}
-
-pub fn show_account_link_prompt() {
-    call_window_hook("SOW_portalShowAccountLinkPrompt");
-}
-
-pub fn poll_account_link_prompt_response() -> Option<String> {
-    #[cfg(target_arch = "wasm32")]
-    {
-        get_window_value("SOW_LINK_PROMPT_RESPONSE").and_then(|v| v.as_string())
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        None
-    }
-}
-
-pub fn clear_account_link_prompt_response() {
-    call_window_hook("SOW_portalClearAccountLinkPrompt");
 }
 
 pub fn is_signed_in_crazygames() -> bool {

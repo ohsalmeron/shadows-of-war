@@ -1,5 +1,5 @@
 //! Master lobby: dynamic queue, single countdown promotion,
-//! broadcasts only joinable lobbies, Active GC when no humans remain.
+//! broadcasts only joinable lobbies, Active GC when no external players remain.
 
 use sow_core::game_config::GameConfig;
 use sow_core::protocol::{LobbyInfo, LobbyKind, Team};
@@ -43,7 +43,7 @@ pub struct ServerLobby {
     pub phase: LobbyPhase,
     /// Remaining seconds while CountingDown.
     pub countdown_secs: f32,
-    /// Counts down while Active and there are zero humans in `players`.
+    /// Counts down while Active and there are zero external players in `players`.
     pub active_empty_secs: f32,
     pub players: Vec<PlayerConnection>,
     pub ready_players: std::collections::HashSet<u16>,
@@ -74,6 +74,22 @@ fn ban_identity(database_account_id: &Option<String>, name: &str) -> String {
     database_account_id
         .clone()
         .unwrap_or_else(|| format!("name:{name}"))
+}
+
+/// Server-authoritative display-name normalization.  Names are presentation
+/// data only; they are never used as the player's account identity.
+pub fn normalize_player_name(input: &str) -> String {
+    let name: String = input
+        .trim()
+        .chars()
+        .filter(|character| !character.is_control())
+        .take(16)
+        .collect();
+    if name.is_empty() {
+        "ANON".to_string()
+    } else {
+        name
+    }
 }
 
 impl ServerLobby {
@@ -291,7 +307,7 @@ pub fn join_player(
     next_id: &mut u64,
     opts: JoinPlayerOpts,
 ) -> Result<(u64, u16, String, bool), String> {
-    let name = opts.name;
+    let name = normalize_player_name(&opts.name);
     let clan_tag = opts.clan_tag;
     let civilization = opts.civilization;
     let leader = opts.leader;
@@ -783,10 +799,12 @@ fn start_match(lobby: &mut ServerLobby) {
 
     lobby.active_empty_secs = 30.0;
     log::info!(
-        "Lobby {} is Loading (seed {}, {} humans)",
+        "Lobby {} is Loading (seed {}, roster={} external={} internal_bots={})",
         lobby.id,
         lobby.seed,
-        lobby.players.len()
+        lobby.players.len(),
+        lobby.players.iter().filter(|p| !p.is_internal_bot).count(),
+        lobby.players.iter().filter(|p| p.is_internal_bot).count()
     );
 }
 
@@ -967,20 +985,22 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                                 lobby.id
                             );
                         }
-                        let has_humans = lobby.players.iter().any(|p| !p.is_internal_bot);
-                        if !has_humans {
+                        let has_external_players =
+                            lobby.players.iter().any(|p| !p.is_internal_bot);
+                        if !has_external_players {
                             log::warn!(
-                                "[SERVER ORCHESTRATOR] Lobby {} aborted relay spawn: no validated human players remaining (they disconnected or failed map sync).",
+                                "[SERVER ORCHESTRATOR] Lobby {} aborted relay spawn: no validated external players remaining (they disconnected or failed map sync).",
                                 lobby.id
                             );
-                            // No humans left — drop the lobby so it doesn't waste a relay worker.
+                            // No external players left — drop the lobby so it doesn't waste a relay worker.
                             true
                         } else {
-                            let humans = lobby.players.iter().filter(|p| !p.is_internal_bot).count();
+                            let external_players =
+                                lobby.players.iter().filter(|p| !p.is_internal_bot).count();
                             log::info!(
-                                "[SERVER ORCHESTRATOR] Lobby {} marked ReadyForRelay with {} validated human players ({} total roster).",
+                                "[SERVER ORCHESTRATOR] Lobby {} marked ReadyForRelay with {} validated external players ({} total roster).",
                                 lobby.id,
-                                humans,
+                                external_players,
                                 lobby.players.len()
                             );
                             lobby.phase = LobbyPhase::ReadyForRelay;
@@ -1108,4 +1128,16 @@ pub fn build_lobby_broadcast(games: &[ServerLobby]) -> Vec<LobbyInfo> {
         .collect();
     infos.sort_by_key(|l| l.id);
     infos
+}
+
+#[cfg(test)]
+mod name_tests {
+    use super::normalize_player_name;
+
+    #[test]
+    fn names_are_bounded_and_control_free() {
+        assert_eq!(normalize_player_name("  A\nB  "), "AB");
+        assert_eq!(normalize_player_name("0123456789abcdefghi"), "0123456789abcdef");
+        assert_eq!(normalize_player_name("\n\t"), "ANON");
+    }
 }

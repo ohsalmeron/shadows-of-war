@@ -63,7 +63,7 @@ if let Some(host) = relay_host {
 
 There is deliberately NO branch for "secure page" anymore. The relay terminates
 TLS on every game port, so WASM and native clients use the same URL shape.
-History: commit 25c1af1 introduced an `is_secure` branch that routed browsers
+Historical retired path: commit 25c1af1 introduced an `is_secure` branch that routed browsers
 through `wss://shadowsofwar.io/relay/{port}/ws/` → nginx on IONOS → Azure,
 turning IONOS into a middleman for every game packet (~300ms vs ~67ms). The
 fix (this doc's era) removed the branch and gave the relay its own TLS.
@@ -90,17 +90,23 @@ fix (this doc's era) removed the branch and gave the relay its own TLS.
    `/usr/local/etc/sow/relay.{crt,key}`
 4. restarts workers, verifies mgmt :8080-8083
 
-`sow-dist/src/prod.rs` `sync_relay_env` writes `SOW_RELAY_HOST`/`SOW_RELAY_WORKERS`
-into IONOS `/usr/local/etc/sow/sow.env` and restarts sow-server. The worker
-`host` field is what players receive as `relay_host` — it MUST be the TLS
-hostname, not the IP.
+`sow-dist/src/prod.rs` `sync_relay_env` writes
+`SOW_RELAY_HOST`/`SOW_RELAY_WORKERS` into IONOS
+`/usr/local/etc/sow/sow.env`. It does not restart the server while merely
+synchronizing configuration; the final activation step waits for database
+readiness and then performs the controlled service restart. The worker `host`
+field is what players receive as `relay_host` — it MUST be the TLS hostname,
+not the IP.
 
 ## Operations
 
-- Relay health: `curl http://127.0.0.1:8080/internal/lobbies` on the VM
-  (or :8081..:8083 from IONOS — NSG locks mgmt ports to IONOS only).
+- Relay health: `curl -kfsS https://127.0.0.1:8080/healthz` on the VM (repeat
+  for :8081..:8083). The `/internal/lobbies` roster is an authenticated
+  management endpoint, not an unauthenticated health probe; production
+  management access is HTTPS and restricted by the NSG to IONOS.
 - Live TLS check:
-  `echo | openssl s_client -connect 20.122.128.185:25592 -servername relay.shadowsofwar.io`
+  `echo | openssl s_client -connect 20.122.128.185:<dynamic-port> -servername relay.shadowsofwar.io`
+  (25592 is only an example allocation, not a fixed game port.)
 - Workers: `systemctl status 'sow-relay@0..3'`; expect exactly 4 active units.
   Do not treat historical `NRestarts` values or old journal entries as current
   health. Verify `ActiveState=active`, `Result=success`, `ExecMainStatus=0`,

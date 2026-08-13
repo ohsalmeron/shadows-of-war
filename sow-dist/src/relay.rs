@@ -62,7 +62,10 @@ pub(super) fn execute(paths: &Paths) -> Result<()> {
         .parse::<std::net::IpAddr>()
         .with_context(|| format!("invalid SOW_DB_RESOLVE_IP={db_resolve_ip}"))?;
     let secondary_ids = if worker_count > 1 {
-        format!("{}", (1..worker_count).map(|id| id.to_string()).collect::<Vec<_>>().join("|"))
+        (1..worker_count)
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+            .join("|")
     } else {
         String::new()
     };
@@ -117,6 +120,9 @@ pub(super) fn execute(paths: &Paths) -> Result<()> {
     let runtime_setup = format!(
         "set -eu; \
          sudo systemctl stop sow-relay.service {unit_stops} 2>/dev/null || true; \
+         sudo systemctl disable --now sow-relay-secondary@.service 2>/dev/null || true; \
+         sudo rm -f /etc/systemd/system/sow-relay-secondary@.service /etc/systemd/system/sow-relay.service.bak-debug; \
+         sudo find /etc/systemd/system -maxdepth 1 -type f -name 'sow-relay.service.bak.*' -delete; \
          if ! getent group {group} >/dev/null; then sudo groupadd --system {group}; fi; \
          if ! id -u {user} >/dev/null 2>&1; then sudo useradd --system --gid {group} --home-dir /nonexistent --shell /usr/sbin/nologin {user}; fi; \
          sudo install -d -o root -g {group} -m 0750 /usr/local/libexec/sow-relay /usr/local/etc/sow; \
@@ -222,11 +228,10 @@ EOF\n\
     if Path::new(&cert_local).exists() && Path::new(&key_local).exists() {
         run("scp", &["-q", &cert_local, &format!("{host}:/tmp/relay-fullchain.pem")], None)?;
         run("scp", &["-q", &key_local, &format!("{host}:/tmp/relay-privkey.pem")], None)?;
-        let install = format!(
-            "sudo install -d -o root -g sowrelay -m 0750 /usr/local/etc/sow && \
+        let install = "sudo install -d -o root -g sowrelay -m 0750 /usr/local/etc/sow && \
              sudo install -o root -g sowrelay -m 0640 /tmp/relay-fullchain.pem /usr/local/etc/sow/relay.crt && \
              sudo install -o root -g sowrelay -m 0640 /tmp/relay-privkey.pem /usr/local/etc/sow/relay.key"
-        );
+            .to_string();
         run("ssh", &[&host, &install], None)?;
         println!("✅ TLS cert deployed to {host} (/usr/local/etc/sow/)");
     } else {
@@ -306,7 +311,7 @@ EOF\n\
          sudo -u sowrelay test -w /dev/hugepages; \
          test ! -e /etc/systemd/system/sow-relay.service.d/override.conf; \
          test \"$(stat -c '%a' /etc/systemd/system/sow-relay@.service.d/override.conf)\" = 600; \
-         if sudo grep -R -l -E 'sow_db_dev_secret_123_change_me_in_prod|SOW_DB_URL=http://' /etc/systemd/system /etc/sow 2>/dev/null | grep -q .; then \
+         if sudo grep -R -l -E 'sow_db_dev_secret_123_change_me_in_prod|SOW_DB_URL=http://|SOW_RELAY_ADDR=' /etc/systemd/system /etc/sow /usr/local/sbin 2>/dev/null | grep -q .; then \
              echo 'legacy relay secret or HTTP DB URL remains on relay' >&2; exit 78; \
          fi; \
          for p in {}; do curl -kfsS --max-time 5 https://127.0.0.1:$p/healthz >/dev/null; echo mgmt-$p-tls-ok; done; \

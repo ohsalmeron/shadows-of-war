@@ -155,8 +155,8 @@ impl BotPool {
 ///     up. There is NO mean, NO drip clock, NO "next entry depends on the
 ///     previous one". Timing is a set of independent points on a line, not a
 ///     sequence. That is what kills any perceptible rate.
-///  3. Leave room for humans: target is a TOTAL (humans + bots). Humans
-///     present → fewer bots needed → trim the pending queue. Already-met
+///  3. Leave room for external players: target is a TOTAL (external players
+///     + bots). External players present → fewer bots needed → trim the pending queue. Already-met
 ///     ghosts stay; the lobby keeps the ghosts that were going to show up
 ///     soonest.
 ///  4. Each tick: every pending ghost whose `join_at_elapsed` has been
@@ -186,7 +186,7 @@ pub fn inject_internal_bots(games: &mut [ServerLobby]) {
         }
 
         let max = g.config.max_players as usize;
-        let humans = g.players.iter().filter(|p| !p.is_internal_bot).count();
+        let external_players = g.players.iter().filter(|p| !p.is_internal_bot).count();
         let bots = g.players.iter().filter(|p| p.is_internal_bot).count();
 
         // ── First sighting: this lobby gets its OWN count, and every ghost
@@ -224,12 +224,12 @@ pub fn inject_internal_bots(games: &mut [ServerLobby]) {
             g.pending_bots = pending;
         }
 
-        // ── Leave room for humans: bots yield to real players. ────────────
-        // Target is a TOTAL (humans + bots). Humans present → fewer bots
+        // ── Leave room for external players: bots yield to real players. ──
+        // Target is a TOTAL (external players + bots). External players present → fewer bots
         // needed. Trim the tail of the pending queue (latest-arriving ghosts
         // first) so a human always has room to join.
         let target = g.bot_fill_target.unwrap_or(0);
-        let bots_desired = target.saturating_sub(humans);
+        let bots_desired = target.saturating_sub(external_players);
         let bots_needed_now = bots_desired.saturating_sub(bots);
         if g.pending_bots.len() > bots_needed_now {
             g.pending_bots.truncate(bots_needed_now);

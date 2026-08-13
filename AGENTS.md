@@ -1,113 +1,113 @@
 # Agent Instructions
 
-## Core Rules
+These instructions describe the current Shadows of War deployment. Historical
+hostnames, paths and compatibility behavior are not production instructions.
 
-- Execute **exactly** what the user asks. Nothing more, nothing less.
-- Be direct and concise. When asked for a short answer, give one. No preamble, no postamble, no explanation unless asked.
-- Professional, respectful, intelligent. Follow instructions the first time.
-- The user's message is the only agenda. Everything else is noise.
-- Infrastructure decisions require explicit user approval first.
-- Firewall, PF, NSG, IP rules require explicit authorization before existing.
-- In plan mode: the user sets the pace. You respond, you wait, you execute when told.
-- If something requires concept explanation, explain first, ensure understanding, execute only after confirmation.
-- Ask before acting. Certainty comes from asking, not assuming.
-- The prompt is always clear. Execute. No second-guessing.
-- Questions must be ONLY about what the user asked. Not about side tangents, not about what you think they might need.
-- Unsolicited opinions, suggestions, brainstorming, or ideas are detrimental unless explicitly requested. If they wanted input, they'd ask for it.
+## Core rules
 
-## Lessons Learned
+- Execute exactly the requested scope; do not invent adjacent work.
+- Verify before making claims. Distinguish current runtime facts from historical
+  evidence and roadmap design.
+- Infrastructure decisions, firewall/PF/NSG changes and new resources require
+  explicit user approval.
+- The deploy pipeline is the only deployment interface. Never activate a
+  release, copy artifacts, restart services, or edit production configuration
+  manually.
+- If `./sow p` fails, fix the pipeline and rerun it. Do not bypass it.
+- Do not commit or push unless explicitly requested.
 
-- An IP hardcoded in PF without authorization caused total SSH loss to sow-prod-freebsd
-- "Admin user" in Azure FreeBSD requires real sudo verification — `az vm user update` reports "Succeeded" without making actual changes on FreeBSD
-- Root cause fix > ten workarounds
-- Verify > assume. Always.
-- **The pipeline is law, not an option.** If `./sow p` fails, fix the pipeline, don't bypass it with manual commands. No "urgency", "workaround", "just this once" justifies a bypass. Every bypass corrupts state and makes the unpredictable what was once reliable.
+## Current production topology
 
-## Verification Rules
+### IONOS game/orchestrator host
 
-- FIRST command on any new VM: verify sudo/root works. Show output.
-- Every Azure command must be confirmed with a second independent command showing the result.
-- If a step fails, that step is the absolute priority until resolved.
-- Every new resource exists first as a user-approved plan.
+- SSH alias: `ionos`; public IP: `74.208.246.177`.
+- FreeBSD 15.1-STABLE, 4 vCPU, approximately 8 GiB RAM.
+- Release layout: `/srv/sow/current` → `releases/<sha>`; web assets at
+  `/srv/sow/web`; state at `/var/db/sow/`; logs at `/var/log/sow/`.
+- Loopback-only services: `sow-server` WebSocket `25564`, HTTP/admin/maps
+  `25566`, `sow-database` `25585`, and Valkey `6379`.
+- nginx terminates public HTTP/TLS on `:80`/`:443` and proxies the game
+  orchestrator WebSocket to `127.0.0.1:25564`.
+- `/admin/api/status` is localhost-only; `/health` is not a server route.
 
-## Anti-Brick Checklist (Azure FreeBSD VMs)
+### Azure F-Stack relay host
 
-- `pw moduser root -h 0` (password for serial console)
-- `pf_enable=NO`, `pflog_enable=NO`, `pfctl -d`
-- `NOPASSWD` sudo for admin user (FreeBSD waagent doesn't manage sudo well)
-- Verify post-deploy: `sudo id`, `pfctl -si`, `grep autoboot_delay /boot/loader.conf`
+- SSH alias: `relay`; VM: `sow-dev-2nic`; Linux with F-Stack/DPDK.
+- Management IP: `20.230.49.9`; data/public IP: `20.122.128.185`.
+- Four `sow-relay@0..3` workers, one per DPDK queue. Management HTTPS is on
+  `8080..8083`; game listeners use dynamically allocated ports registered by
+  `sow-server`.
+- Clients receive `relay.shadowsofwar.io` and a dynamic game port, then connect
+  directly with `wss://`; IONOS is not in the game-packet data path.
+- `SOW_RELAY_WORKERS` is the authoritative catalog. Production requires relay
+  management TLS and relay tickets (`SOW_RELAY_TICKETS_REQUIRED=1`).
+- The old Azure FreeBSD host `sow`/`20.7.77.78` and aliases `azure` and
+  `sow-prod` are stale and must not be used.
 
-## Production
+## Deploy pipeline (`./sow p`)
 
-- VM: FreeBSD 15.1-RELEASE, Azure, Standard_D2als_v6, 2 vCPU / 4 GiB.
-- OS pool: `zroot` (30 GiB). No data disk.
-- Datasets: `zroot/sow` → `/srv/sow`, `zroot/sow/releases` → `/srv/sow/releases`, `zroot/sow/state` → `/var/db/sow`, `zroot/sow/log` → `/var/log/sow` (8G quota).
-- NSG is the only network barrier. PF disabled permanently.
-- `autoboot_delay=5` for serial console recovery.
+1. Preflight release directory, sudo and checksums on the target hosts.
+2. Build WASM locally and FreeBSD binaries on the `freebsd` build VM.
+3. Assemble a content-addressed release.
+4. Upload and activate through the pipeline activator.
+5. Restart only the services affected by the release, wait for database
+   readiness before starting `sow-server`, and verify health/public reachability.
 
-### Deploy Pipeline (`./sow p`)
-1. Preflight: check releases dir + sudo + sha256sum on VM
-2. Build: WASM local, FreeBSD binaries via rsync+cargo on build VM
-3. Assemble content-addressed release (SHA-256)
-4. Upload via rsync + SCP activate-release.sh
-5. Activator: verify, install rc.d/nginx, activate symlink, restart services, verify health
-6. Public verification (optional, `SOW_REQUIRE_PUBLIC`)
+`./sow b` is an optional backfill/bot test workflow; it is not a production
+deployment path. Backfill hosts are test capacity and are not part of the live
+IONOS + Azure relay topology unless explicitly enabled.
 
-### Service users
-- `sowserver`: game server + relays
-- `sowdb`: database
-- Valkey as `valkey`, Nginx as `www`
+## Read-only debugging
 
-## Agent Audit (review what previous agents did)
-
-```sh
-# 1. List recent sessions
-opencode session list
-
-# 2. Export session as JSON (filter messages with jq)
-opencode export <session_id> | jq '.messages[] | {role: .data.role, text: .data.text}' | less
-
-# 3. Check for pipeline bypasses in bash commands
-opencode export <session_id> | jq '.messages[] | select(.data.tool == "bash") | .data.text' | grep -E "ssh.*service |scp |ln -sfn"
-```
-
-Look for: `ssh sow 'service ...'` manual, `scp` direct, `ln -sfn`, env var overrides in commands — these are pipeline bypasses.
-
-## Authorized Debugging (read-only, never deploy)
+The following commands are diagnostics only; any mutation belongs in `./sow p`.
 
 ```sh
-# Service status
-ssh sow 'sudo service sow_server status'
-ssh sow 'sudo service sow_database status'
-
-# Logs
-ssh sow 'sudo tail -50 /var/log/sow/server.log'
-ssh sow 'sudo tail -50 /var/log/sow/database.log'
-
-# Active connections
-ssh sow 'sudo sockstat -4l | grep -E "sow_|relay"'
-
-# Processes
-ssh sow 'ps aux | grep -E "sow_server|sow_database|relay"'
-
-# Current active release
-ssh sow 'readlink /usr/local/sow/current'
-
-# Health
-curl -s http://20.7.77.78/health
-curl -s http://20.7.77.78/admin/lobbies
-
+ssh ionos 'sudo service sow_server status'
+ssh ionos 'sudo service sow_database status'
+ssh ionos 'sudo tail -50 /var/log/sow/server.log'
+ssh ionos 'sudo tail -50 /var/log/sow/database.log'
+ssh ionos 'sudo sockstat -4l | grep -E "sow_|relay"'
+ssh ionos 'ps aux | grep -E "sow_server|sow_database|relay"'
+ssh ionos 'readlink /srv/sow/current'
+ssh ionos 'curl -s http://127.0.0.1:25566/admin/api/status'
+ssh relay 'systemctl is-active sow-relay@0 sow-relay@1 sow-relay@2 sow-relay@3'
+ssh relay 'systemctl show sow-relay@0 sow-relay@1 sow-relay@2 sow-relay@3 -p ActiveState -p Result -p ExecMainStatus'
 ```
 
-**Clear line:** if the command modifies files, restarts services, or moves releases, it's not debug — it's deploy. That goes through the pipeline.
+For relay health use the authenticated HTTPS management endpoints; do not use
+an unauthenticated HTTP `/internal/lobbies` request as a health probe.
 
-## Absolute Rules
+## Identity and player-flow contract
 
-- The pipeline (`./sow p`, `./sow b`) is the ONLY deploy interface. No manual activations, direct scp, env var overrides.
-- **If the pipeline fails, fix the pipeline, don't bypass it.** No "urgency", "workaround", "just this once". Zero exceptions.
-- **Disobedience is not acceptable.** The agent does not decide when to follow or skip rules. If the user says "use the pipeline", use the pipeline. If they say "don't do X", don't do X. Period.
-- Never hardcode infrastructure paths in open source code. Use `.env` or environment variables.
-- Zero overhead to the user: no sleeps, waits, polling, or artificial latency.
-- Nothing fails silently. Every Redis operation that fails must log the error.
-- Only commit when explicitly asked.
-- Ask before assuming. No override without confirmation.
+- Anonymous players have one canonical account ID issued by
+  `POST /profile/anonymous`, stored client-side as `sow_account_id`.
+- A browser refresh or cache deletion may create a new anonymous account; this
+  is intentional. CrazyGames verified identities and persistent bot accounts
+  use `LinkedIdentity` records and are separate provider cases.
+- `Join.database_account_id` is client-declared roster/progress metadata. The
+  server may use it to correlate a lobby reconnect or ban, but it is not proof
+  of identity or relay authentication. The relay authenticates the direct game
+  connection with a short-lived match ticket
+  (`ReadyWithTicket`/`ReconnectWithTicket`).
+- Anonymous `account_id` is a bearer-like progress lookup key, not a secret or
+  platform credential; do not use it as an authorization decision.
+- Unticketed relay frames remain only as wire-compatibility decoding; production
+  refuses them when `SOW_RELAY_TICKETS_REQUIRED=1`.
+
+## Audit guidance
+
+- Label historical reports and PRDs as historical/roadmap when their baseline
+  differs from the running system.
+- Do not remove active bot accounts, CrazyGames `LinkedIdentity`, canonical
+  anonymous identity, or protocol compatibility solely because the names look
+  similar; verify call sites first.
+- Search for stale hosts, old relay routing, guest-ID migrations, `/profile/link`,
+  and unauthenticated relay assumptions before changing code.
+
+## Safety lessons
+
+- A hardcoded PF IP previously caused total SSH loss. Never edit PF/NSG without
+  explicit approval; validate syntax before loading rules and preserve SSH.
+- On a new VM, verify `sudo id`/root access before any other operation.
+- Every infrastructure mutation must be reproducible from this repository and
+  the pipeline.

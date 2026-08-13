@@ -131,6 +131,7 @@ fn sync_prod_secrets(config: &Config, db_secret: &str, control_secret: &str) -> 
     let remote = format!(
         "set -eu; secret_file={}; control_file={}; f=/usr/local/etc/sow/sow.env; t=$(mktemp /tmp/sow.env.XXXXXX); \\
          trap 'rm -f \"$t\" \"$secret_file\" \"$control_file\"' EXIT; \\
+         sudo service sow_server stop 2>/dev/null || true; \\
          chmod 600 \"$secret_file\"; \\
          for pid in $(sudo ps -axo pid= -o command= | awk '$2 == \"daemon:\" && index($0, \"/root/shadowsofwar/sow-database\") {{print $1}}'); do sudo kill -TERM \"$pid\"; done; \\
          sleep 1; \\
@@ -277,9 +278,9 @@ fn sync_relay_env(config: &Config) -> Result<()> {
     }
     let remote = format!(
         "set -eu; f=/usr/local/etc/sow/sow.env; t=$(mktemp /tmp/sow.env.XXXXXX); \\
-         if sudo test -f \"$f\"; then sudo grep -v -E '^(SOW_RELAY_HOST|SOW_RELAY_WORKER_COUNT|SOW_RELAY_WORKERS|SOW_RELAY_PORT|SOW_RELAY_MGMT_URL|SOW_RELAY_MGMT_SCHEME|SOW_RELAY_MGMT_RESOLVE_IP|SOW_RELAY_TICKETS_REQUIRED|SOW_SERVER_MAX_CONNECTIONS)=' \"$f\" > \"$t\"; else : > \"$t\"; fi; \\
-         printf '%s\\n' SOW_RELAY_HOST={} SOW_RELAY_WORKER_COUNT={} SOW_RELAY_WORKERS={} SOW_RELAY_PORT=80 SOW_RELAY_MGMT_URL={} SOW_RELAY_MGMT_SCHEME={} SOW_RELAY_MGMT_RESOLVE_IP={} SOW_RELAY_TICKETS_REQUIRED={} SOW_SERVER_MAX_CONNECTIONS={} >> \"$t\"; \\
-         sudo install -o root -g wheel -m 0600 \"$t\" \"$f\"; rm -f \"$t\"; sudo service sow_server restart; sudo service sow_server status",
+         if sudo test -f \"$f\"; then sudo grep -v -E '^(SOW_RELAY_HOST|SOW_RELAY_WORKER_COUNT|SOW_RELAY_WORKERS|SOW_RELAY_PORT|SOW_RELAY_BASE_PORT|SOW_RELAY_BASE_MGMT_PORT|SOW_RELAY_MGMT_PORT|SOW_RELAY_MGMT_URL|SOW_RELAY_MGMT_SCHEME|SOW_RELAY_MGMT_RESOLVE_IP|SOW_RELAY_TICKETS_REQUIRED|SOW_SERVER_MAX_CONNECTIONS)=' \"$f\" > \"$t\"; else : > \"$t\"; fi; \\
+         printf '%s\\n' SOW_RELAY_HOST={} SOW_RELAY_WORKER_COUNT={} SOW_RELAY_WORKERS={} SOW_RELAY_MGMT_URL={} SOW_RELAY_MGMT_SCHEME={} SOW_RELAY_MGMT_RESOLVE_IP={} SOW_RELAY_TICKETS_REQUIRED={} SOW_SERVER_MAX_CONNECTIONS={} >> \"$t\"; \\
+         sudo install -o root -g wheel -m 0600 \"$t\" \"$f\"; rm -f \"$t\"",
         shell_quote(&relay_host),
         worker_count,
         shell_quote(&workers),
@@ -487,17 +488,17 @@ fn assemble_release(
         ],
     )?;
     let cache = paths.root.join("dist/.sow-state/release");
-    if let Ok(value) = fs::read_to_string(&cache) {
-        if let Some((cached_fingerprint, id)) = value.trim().split_once(' ') {
-            let dir = paths.root.join("dist/releases").join(id);
-            if cached_fingerprint == fingerprint && dir.join("SHA256").is_file() {
-                println!("==> Release unchanged — reusing {id}");
-                return Ok(Release {
-                    id: id.to_string(),
-                    version: version.to_string(),
-                    dir,
-                });
-            }
+    if let Ok(value) = fs::read_to_string(&cache)
+        && let Some((cached_fingerprint, id)) = value.trim().split_once(' ')
+    {
+        let dir = paths.root.join("dist/releases").join(id);
+        if cached_fingerprint == fingerprint && dir.join("SHA256").is_file() {
+            println!("==> Release unchanged — reusing {id}");
+            return Ok(Release {
+                id: id.to_string(),
+                version: version.to_string(),
+                dir,
+            });
         }
     }
 
@@ -659,6 +660,7 @@ fn deploy(paths: &Paths, config: &Config, release: &Release) -> Result<()> {
          fi; \
          sudo service sow_database start; \
          sudo service sow_database status; \
+         ready=0; i=0; while [ \"$i\" -lt 30 ]; do if curl -sS --max-time 1 -o /dev/null 'http://127.0.0.1:25585/healthz' 2>/dev/null; then ready=1; break; fi; i=$(expr \"$i\" + 1); sleep 1; done; test \"$ready\" = 1; \
          sudo service sow_server restart; \
          sudo nginx -t && sudo service nginx reload"
     );

@@ -176,35 +176,18 @@ fn validate_runtime_security() -> Result<(), String> {
     Ok(())
 }
 
-/// Parse one worker as either `game_host:legacy_game_port:mgmt_port` or
-/// `game_host:legacy_game_port:mgmt_host:mgmt_port`.
+/// Parse one worker as `game_host:mgmt_host:mgmt_port`.
 ///
 /// `SOW_RELAY_WORKERS` is a comma-separated catalog in this format. Hosts are
 /// intentionally plain DNS/IP tokens here; IPv6 literals should be supplied
 /// through a front door/DNS name until the client URL contract is upgraded.
 fn parse_relay_worker(spec: &str, id: usize) -> Option<RelayWorker> {
     let fields: Vec<_> = spec.trim().split(':').collect();
-    let (host, legacy_game_port, mgmt_host, mgmt_port) = match fields.as_slice() {
-        [host, legacy_game_port, mgmt_port] => (
-            *host,
-            *legacy_game_port,
-            *host,
-            *mgmt_port,
-        ),
-        [host, legacy_game_port, mgmt_host, mgmt_port] => (
-            *host,
-            *legacy_game_port,
-            *mgmt_host,
-            *mgmt_port,
-        ),
+    let (host, mgmt_host, mgmt_port) = match fields.as_slice() {
+        [host, mgmt_host, mgmt_port] => (*host, *mgmt_host, *mgmt_port),
         _ => return None,
     };
     let mgmt_port = mgmt_port.parse::<u16>().ok()?;
-    // The middle field is a legacy worker game port. Dynamic routing no
-    // longer uses it, but accepting the old catalog shape keeps deployment
-    // configuration backwards-compatible while the new ports are allocated
-    // per lobby.
-    let _legacy_game_port = legacy_game_port.parse::<u16>().ok()?;
     if host.is_empty()
         || host.contains('/')
         || host.contains('[')
@@ -224,58 +207,22 @@ fn parse_relay_worker(spec: &str, id: usize) -> Option<RelayWorker> {
     })
 }
 
-fn relay_workers() -> Vec<RelayWorker> {
-    if let Ok(specs) = std::env::var("SOW_RELAY_WORKERS") {
-        let parsed_specs: Vec<_> = specs
-            .split(',')
-            .filter_map(|spec| parse_relay_worker(spec, 0))
-            .collect();
-        let parsed: Vec<_> = parsed_specs
-            .into_iter()
-            .enumerate()
-            .map(|(id, mut worker)| {
-                worker.id = id;
-                worker
-            })
-            .collect();
-        if !parsed.is_empty() {
-            return parsed;
-        }
-        log::warn!("SOW_RELAY_WORKERS had no valid entries; using legacy single-worker settings");
-    }
-
-    let host = std::env::var("SOW_RELAY_HOST")
-        .ok()
-        .filter(|h| !h.trim().is_empty())
-        .or_else(|| {
-            std::env::var("SOW_RELAY_ADDR").ok().map(|addr| {
-                addr.rsplit_once(':')
-                    .map(|(host, _)| host.to_string())
-                    .unwrap_or(addr)
+fn relay_workers() -> Result<Vec<RelayWorker>, String> {
+    let specs = std::env::var("SOW_RELAY_WORKERS")
+        .map_err(|_| "SOW_RELAY_WORKERS must configure every relay worker".to_string())?;
+    let workers: Vec<_> = specs
+        .split(',')
+        .enumerate()
+        .map(|(id, spec)| {
+            parse_relay_worker(spec, id).ok_or_else(|| {
+                format!("SOW_RELAY_WORKERS contains an invalid worker entry at index {id}")
             })
         })
-        .unwrap_or_else(|| "127.0.0.1".to_string());
-    let _legacy_game_port = std::env::var("SOW_RELAY_BASE_PORT")
-        .or_else(|_| std::env::var("SOW_RELAY_PORT"))
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(80);
-    let mgmt_port = std::env::var("SOW_RELAY_BASE_MGMT_PORT")
-        .or_else(|_| std::env::var("SOW_RELAY_MGMT_PORT"))
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(8080);
-    // Keep the pre-worker deployment contract working. Older environments
-    // supplied a complete management URL instead of host/port components.
-    let mgmt_url = std::env::var("SOW_RELAY_MGMT_URL")
-        .ok()
-        .filter(|url| !url.trim().is_empty())
-        .unwrap_or_else(|| format!("{}://{host}:{mgmt_port}", relay_mgmt_scheme()));
-    vec![RelayWorker {
-        id: 0,
-        host: host.clone(),
-        mgmt_url,
-    }]
+        .collect::<Result<_, _>>()?;
+    if workers.is_empty() {
+        return Err("SOW_RELAY_WORKERS must contain at least one worker".to_string());
+    }
+    Ok(workers)
 }
 
 struct RelayPortAllocator {
@@ -687,7 +634,13 @@ async fn main() {
     let (global_tx, _rx) = broadcast::channel::<Vec<u8>>(100);
     let (event_tx, mut event_rx) = mpsc::channel::<ServerEvent>(100000);
     let (relay_tx, mut relay_rx) = mpsc::unbounded_channel::<RelayCandidate>();
-    let relay_workers = relay_workers();
+    let relay_workers = match relay_workers() {
+        Ok(workers) => workers,
+        Err(error) => {
+            log::error!("Relay worker catalog is invalid: {error}");
+            return;
+        }
+    };
     let relay_worker_count = relay_worker_count();
     if relay_workers.len() != relay_worker_count {
         log::error!(
@@ -1580,16 +1533,17 @@ mod relay_worker_tests {
     };
 
     #[test]
-    fn parses_host_game_and_management_ports() {
-        let worker = parse_relay_worker("relay-a.example:83:8083", 2).expect("valid worker");
+    fn parses_game_and_management_hosts() {
+        let worker = parse_relay_worker("relay-a.example:mgmt.example:8083", 2)
+            .expect("valid worker");
         assert_eq!(worker.id, 2);
         assert_eq!(worker.host, "relay-a.example");
-        assert_eq!(worker.mgmt_url, "https://relay-a.example:8083");
+        assert_eq!(worker.mgmt_url, "https://mgmt.example:8083");
     }
 
     #[test]
     fn parses_separate_game_and_management_hosts() {
-        let worker = parse_relay_worker("data.example:80:mgmt.example:8080", 0)
+        let worker = parse_relay_worker("data.example:mgmt.example:8080", 0)
             .expect("valid worker");
         assert_eq!(worker.host, "data.example");
         assert_eq!(worker.mgmt_url, "https://mgmt.example:8080");
@@ -1610,10 +1564,10 @@ mod relay_worker_tests {
 
     #[test]
     fn rejects_malformed_worker_entries() {
-        assert!(parse_relay_worker("relay-a.example:80", 0).is_none());
-        assert!(parse_relay_worker("relay-a.example:not-a-port:8080", 0).is_none());
-        assert!(parse_relay_worker("http://relay-a.example:80:8080", 0).is_none());
-        assert!(parse_relay_worker("[::1]:80:8080", 0).is_none());
+        assert!(parse_relay_worker("relay-a.example:8080", 0).is_none());
+        assert!(parse_relay_worker("relay-a.example:mgmt.example:not-a-port", 0).is_none());
+        assert!(parse_relay_worker("http://relay-a.example:mgmt.example:8080", 0).is_none());
+        assert!(parse_relay_worker("[::1]:mgmt.example:8080", 0).is_none());
     }
 
     #[tokio::test]

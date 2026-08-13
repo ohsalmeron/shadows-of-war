@@ -26,7 +26,18 @@ The coordinator owns identities, leases and durable history. Workers only
 provide execution capacity. No bot and no worker owns an independent
 database.
 
-## 2. Current baseline
+> **Document status: roadmap, not the live runtime contract.**
+>
+> This PRD preserves the 2026-07-26 bot product proposal. The running system
+> has since changed: bot accounts are persistent `AccountKind::Bot` records,
+> anonymous players use the canonical `POST /profile/anonymous` flow, and
+> relay admission uses the short-lived `ReadyWithTicket` /
+> `ReconnectWithTicket` messages. The `/session/crazygames` and PASETO session
+> endpoints described later in this document are future design, not current
+> endpoints. For the current contract use `docs/security-audit.md`, the
+> protocol definitions, and the deployed pipeline configuration.
+
+## 2. Historical baseline (2026-07-26)
 
 The existing daemon already completes the essential anonymous gameplay path:
 
@@ -68,15 +79,20 @@ The soak is the reference behavior for phase-one parity. It must remain
 possible to observe active relays, concurrent connections, resource growth,
 errors and cleanup while later phases are developed.
 
-### 2.1 Current limitations
+### 2.1 Historical limitations (superseded where noted)
 
-- Bot names are process-local `ANON###` values.
-- `database_account_id` is `None`; bots have no persistent record.
+- Bot names were process-local `ANON###` values in this snapshot. The current
+  bot pool seeds persistent `AccountKind::Bot` accounts instead.
+- `database_account_id` was `None` in this snapshot; this is no longer the
+  current bot-account model.
 - The current coordinator exists only inside one worker process.
 - Multiple VPS instances can select the same lobby and exceed its target.
 - The game server identifies synthetic clients as human players.
-- A client can currently declare a `database_account_id` during `Join`.
-- A relay reconnect identifies itself with only `lobby_id + player_id`.
+- A client could declare a `database_account_id` during `Join` in this
+  snapshot. The field remains roster/progress metadata in the current wire
+  protocol; it is not relay authentication.
+- A relay reconnect used only `lobby_id + player_id` in this snapshot. Current
+  production requires a relay reconnect ticket.
 - Match statistics are declared by the client instead of being fully
   authoritative.
 - The CrazyGames public key is fetched for every token verification.

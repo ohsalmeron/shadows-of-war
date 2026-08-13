@@ -139,6 +139,11 @@ pub enum ClientMessage {
         clan_tag: String,
         civilization: crate::player::Civilization,
         leader: crate::player::Leader,
+        /// Client-declared account/progress metadata for the roster (CrazyGames
+        /// or a persistent bot account). The server may use it to correlate a
+        /// lobby reconnect or ban, but it is not proof of identity or relay
+        /// authentication; the direct relay connection requires a short-lived
+        /// ticket.
         database_account_id: Option<String>,
         /// When creating a custom lobby (public or private), the host's desired config.
         #[serde(default)]
@@ -160,9 +165,9 @@ pub enum ClientMessage {
         lobby_id: u64,
         player_id: u16,
     },
-    /// First relay frame for an authenticated game session.  Kept as a new
-    /// enum variant so legacy orchestrator `Ready` frames remain compatible
-    /// during the ticket rollout.
+    /// First relay frame for an authenticated game session. The unticketed
+    /// `Ready` variant remains decodable for wire compatibility, but production
+    /// relay workers reject it when `SOW_RELAY_TICKETS_REQUIRED=1`.
     ReadyWithTicket {
         lobby_id: u64,
         player_id: u16,
@@ -318,8 +323,9 @@ pub struct ServerStartMessage {
     pub missed_turns: Vec<Turn>,
     pub map_data: Option<Vec<u8>>, // currently unused (maps fetched via HTTP)
     pub relay_port: Option<u16>,
-    /// Direct relay host (data PIP) for the assigned DPDK worker. None means
-    /// "connect to the relay on the orchestrator host" (legacy nginx path).
+    /// Direct relay TLS hostname for the assigned DPDK worker. `None` is kept
+    /// only for wire compatibility/dev fixtures; production always supplies
+    /// the direct relay host and dynamic game port.
     #[serde(default)]
     pub relay_host: Option<String>,
 }
