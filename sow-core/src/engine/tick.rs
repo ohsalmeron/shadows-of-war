@@ -4,6 +4,48 @@ impl SowEngine {
     pub fn tick(&mut self) {
         if let crate::game::GamePhase::Spawning { end_tick } = self.state.phase {
             self.state.tick += 1;
+
+            // ── Stagger ghost (is_ai_controlled) spawns across the deploy window ──
+            // Each unspawned ghost has a deterministic spawn moment, uniformly and
+            // independently placed in [1, end_tick-1] via WyRand(seed ^ pid). When
+            // the current tick reaches that moment, the ghost is placed via the
+            // same find_valid_spawn + place_spawn path used by the safety net
+            // below. Middle ground between the two old extremes:
+            //   - legacy socketed backfill: continuous scatter-storm ("too crazy")
+            //   - pre-fix ghosts: invisible all window, then mass-pop at end_tick
+            // Each ghost fires AT MOST once; any that miss (no valid tile) are
+            // caught by the safety net at the phase transition. Deterministic →
+            // lockstep-safe across all clients (same seed, same pid → same moment).
+            if end_tick >= 2 {
+                use crate::rng::NextIntExt;
+                use wyrand::WyRand;
+                let now = self.state.tick;
+                let seed = self.state.seed;
+                // Collect due ghosts in ascending pid order for deterministic
+                // tile ownership progression (find_valid_spawn sees prior spawns).
+                let due: Vec<u16> = self
+                    .state
+                    .players
+                    .iter()
+                    .filter(|p| {
+                        p.is_ai_controlled
+                            && !p.has_spawned
+                            && {
+                                let mut m = WyRand::new(seed.wrapping_add(p.id as u64));
+                                m.next_int(1, (end_tick as i32) - 1) as u64 == now
+                            }
+                    })
+                    .map(|p| p.id)
+                    .collect();
+                for pid in due {
+                    let mut rng =
+                        WyRand::new(seed.wrapping_add(pid as u64).wrapping_add(now));
+                    if let Some((sx, sy)) = self.find_valid_spawn(&mut rng) {
+                        self.state.place_spawn(pid, sx, sy);
+                    }
+                }
+            }
+
             if self.state.tick >= end_tick {
                 self.state.phase = crate::game::GamePhase::Playing;
                 // Auto-spawn players who missed the window
@@ -134,7 +176,9 @@ impl SowEngine {
         let win_threshold = (self.state.total_land_tiles as f32
             * self.state.config.map_control_win_percentage) as u32;
 
-        if self.state.config.game_mode == "Teams" {
+        if self.state.config.game_mode == "Teams"
+            || self.state.config.game_mode == "HumansVsNations"
+        {
             self.check_team_winner(win_threshold);
         } else {
             self.check_ffa_winner(win_threshold);

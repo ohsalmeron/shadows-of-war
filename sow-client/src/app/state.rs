@@ -188,6 +188,8 @@ pub struct UiState {
     pub show_dev_sidebar: bool,
     pub update_available: bool,
     pub is_spectating: bool,
+    /// Cached once per turn from the snapshot: true when my player is dead or otherwise observing.
+    pub observing: bool,
     pub fallout_zones: Vec<FalloutZone>,
     pub last_projectiles: std::collections::HashMap<u64, TrackedProjectile>,
     pub cached_player_colors: Vec<egui::Color32>,

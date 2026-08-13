@@ -103,7 +103,7 @@ async fn bridge_worker() {
     loop {
         while let Some(ev) = rx.pop() {
             match ev {
-                Ev::Accept { fd, generation } => {
+                Ev::Accept { fd, generation, .. } => {
                     gens.insert(fd, generation);
                 }
                 Ev::Data { fd, mut guard } => {

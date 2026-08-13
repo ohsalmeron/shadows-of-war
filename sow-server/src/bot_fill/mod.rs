@@ -265,8 +265,10 @@ pub fn inject_internal_bots(games: &mut [ServerLobby]) {
             let (dummy_tx, _dummy_rx) = mpsc::channel::<Vec<u8>>(8);
 
             // Teams: drop the ghost into whichever team is smaller (Red on a tie),
-            // mirroring join_player.
-            let team = if g.game_mode == "Teams" {
+            // mirroring join_player. HumansVsNations: ghosts are human-side → Red.
+            let team = if g.game_mode == "HumansVsNations" {
+                Some(Team::Red)
+            } else if g.game_mode == "Teams" {
                 let reds = g
                     .players
                     .iter()
@@ -299,6 +301,7 @@ pub fn inject_internal_bots(games: &mut [ServerLobby]) {
                 database_account_id,
                 team,
                 ip: "127.0.0.1".to_string(),
+                session_id: None,
                 is_internal_bot: true,
             });
             g.ready_players.insert(player_id);

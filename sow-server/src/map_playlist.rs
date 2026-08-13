@@ -1,6 +1,7 @@
 //! OpenFront-style weighted map playlists (mirrors `MapPlaylist.ts`).
 //!
-//! Each game mode (FFA, Teams) owns a deck built from `multiplayer_frequency`
+//! Each game mode (FFA, Teams, HumansVsNations) owns a deck built from
+//! `multiplayer_frequency`
 //! tickets per map — a map with frequency 20 appears 20x in the deck. The deck
 //! is shuffled once, then consumed sequentially; a map is never drawn twice
 //! within the last `NON_CONSECUTIVE` picks. When the deck is exhausted it is
@@ -30,10 +31,13 @@ pub struct MapPlaylist {
 
 static FFA_PLAYLIST: OnceLock<Mutex<MapPlaylist>> = OnceLock::new();
 static TEAMS_PLAYLIST: OnceLock<Mutex<MapPlaylist>> = OnceLock::new();
+static HVN_PLAYLIST: OnceLock<Mutex<MapPlaylist>> = OnceLock::new();
 
 fn playlist_for(mode: &str) -> &'static Mutex<MapPlaylist> {
     if mode == "Teams" {
         TEAMS_PLAYLIST.get_or_init(|| Mutex::new(MapPlaylist::new("Teams")))
+    } else if mode == "HumansVsNations" {
+        HVN_PLAYLIST.get_or_init(|| Mutex::new(MapPlaylist::new("HumansVsNations")))
     } else {
         FFA_PLAYLIST.get_or_init(|| Mutex::new(MapPlaylist::new("FFA")))
     }

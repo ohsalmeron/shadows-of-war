@@ -16,6 +16,7 @@ pub enum GameModeFilter {
     All,
     Ffa,
     Teams,
+    HumansVsNations,
 }
 
 /// Brief auto-dismissing notice shown after the server pulls a player out of a lobby.

@@ -425,6 +425,57 @@ mod tests {
         assert_eq!(engine.state.players.len(), 3);
     }
 
+    /// Regression: nations must NEVER carry a team in "Teams" mode (teams are
+    /// human-only), and must be Blue in "HumansVsNations". The old code force-
+    /// assigned Red/Blue to nations alternating by index — that bug must not
+    /// return.
+    #[test]
+    fn test_nation_team_assignment_per_mode() {
+        use crate::player::PlayerType;
+
+        fn spawn_nations(mode: &str) -> Vec<crate::player::Player> {
+            let config = GameConfig {
+                map_name: crate::maps::DEFAULT_MAP_KEY.to_string(),
+                map_width: 1000,
+                map_height: 800,
+                game_mode: mode.to_string(),
+                ..Default::default()
+            };
+            let mut state = GameState::new(7, 1000, 800, config);
+            for t in &mut state.map.terrain {
+                *t = crate::map::MapTile::from_byte(0b1000_0000);
+            }
+            let mut engine = SowEngine::new(state, WaterComponents::default());
+            engine.spawn_ai(4, 0);
+            engine
+                .state
+                .players
+                .iter()
+                .filter(|p| p.player_type == PlayerType::Nation)
+                .cloned()
+                .collect()
+        }
+
+        // FFA: no teams anywhere.
+        for p in spawn_nations("FFA") {
+            assert!(p.team.is_none(), "FFA nation {} has a team {:?}", p.id, p.team);
+        }
+        // Teams: nations are wild (human-only teams).
+        for p in spawn_nations("Teams") {
+            assert!(p.team.is_none(), "Teams nation {} has a team {:?}", p.id, p.team);
+        }
+        // HumansVsNations: every nation is Blue.
+        for p in spawn_nations("HumansVsNations") {
+            assert_eq!(
+                p.team,
+                Some(crate::protocol::Team::Blue),
+                "HvN nation {} wrong team {:?}",
+                p.id,
+                p.team
+            );
+        }
+    }
+
     /// All-land 1000x800 state with the (approx) europe bbox stamped.
     fn geo_test_state(seed: u64) -> GameState {
         let config = GameConfig {

@@ -2,7 +2,39 @@ use super::placement::resolve_build_target_tile;
 use crate::app::SowApp;
 
 impl SowApp {
+    fn show_observer_notice(&mut self, x: f64, y: f64) {
+        let messages = [
+            "Spectators don't click! 🍿",
+            "Just watch the show! 🎬",
+            "Popcorn duty, no buttons! 🍿",
+            "No controls in the front row! 🎟️",
+            "Sit back, it's live! 📺",
+            "You watch, they click! 👀",
+            "Hands off, you're spectating! 🙌",
+            "This seat is for watching! 💺",
+        ];
+        let click_seed = (x + y) as usize;
+        let msg = messages[click_seed % messages.len()];
+
+        let world_x = (x as f32 - self.input.camera_x) / self.input.camera_zoom;
+        let offset_mouse_y = y as f32 - 60.0;
+        let world_y = (offset_mouse_y - self.input.camera_y) / self.input.camera_zoom;
+
+        self.ui.floating_notices.push(crate::app::FloatingNotice {
+            text: msg.to_string(),
+            world_x,
+            world_y,
+            start_time: web_time::Instant::now(),
+            duration: web_time::Duration::from_millis(1500),
+            color: egui::Color32::from_rgb(203, 213, 225), // slate
+        });
+    }
+
     pub(crate) fn try_begin_hold_attack(&mut self, x: f64, y: f64, is_touch: bool) {
+        if self.ui.observing {
+            self.show_observer_notice(x, y);
+            return;
+        }
         if self.ui.app.hud_state.selected_nuke_kind.is_some() {
             return;
         }
@@ -177,6 +209,10 @@ impl SowApp {
     }
 
     pub(crate) fn handle_map_click(&mut self, x: f64, y: f64) {
+        if self.ui.observing {
+            self.show_observer_notice(x, y);
+            return;
+        }
         let phase = self
             .sim
             .current_snapshot

@@ -62,6 +62,7 @@ pub struct MainMenuStrings {
     pub free_for_all: String,
     pub team_tactics: String,
     pub simulation: String,
+    pub humans_vs_nations: String,
     pub channel: String,
     pub slots: String,
     pub lobby_channel_label: String,

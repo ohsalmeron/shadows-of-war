@@ -111,7 +111,7 @@ async fn bridge_worker() {
     loop {
         while let Some(ev) = rx.pop() {
             match ev {
-                Ev::Accept { fd, generation } => {
+                Ev::Accept { fd, generation, .. } => {
                     let (tx, rx_conn) = mpsc::channel(bridge::RX_CAP);
                     conns.insert(fd, tx);
                     tokio::spawn(ws_task(fd, generation, rx_conn));

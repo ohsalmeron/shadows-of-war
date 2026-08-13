@@ -87,6 +87,7 @@ impl SowApp {
             self.input.screen_h * 0.5 - (map_h as f32 * 0.5) * self.input.camera_zoom;
         self.input.has_snapped_camera_to_spawn = false;
         self.ui.is_spectating = false;
+        self.ui.observing = false;
         self.ui.endgame_cache = None;
         sow_audio::set_music_context(seed as u32, map_w as f32 * 0.5, map_h as f32 * 0.5);
     }

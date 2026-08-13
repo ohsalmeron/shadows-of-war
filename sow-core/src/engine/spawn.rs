@@ -184,15 +184,15 @@ impl SowEngine {
             }
 
             if let Some((sx, sy)) = spawn_point {
-                let (team, color) = if config.game_mode == "Teams" {
-                    if i % 2 == 0 {
-                        (Some(crate::protocol::Team::Red), [1.0, 0.2, 0.2])
-                    } else {
-                        (Some(crate::protocol::Team::Blue), [0.2, 0.5, 1.0])
-                    }
+                // Teams are human-only (real + ai-controlled). In "Teams" mode
+                // nations stay wild (team=None). In "HumansVsNations" the nations
+                // form the opposing Blue team; humans are Red (forced at lobby).
+                let team = if config.game_mode == "HumansVsNations" {
+                    Some(crate::protocol::Team::Blue)
                 } else {
-                    (None, crate::player::human_shader_territory_rgb(bot_id))
+                    None
                 };
+                let color = crate::player::human_shader_territory_rgb(bot_id);
 
                 let mut player = Player::new_nation(bot_id, name, color, &config);
                 player.team = team;
@@ -288,6 +288,32 @@ impl SowEngine {
         let mut rng = WyRand::new(self.state.seed.wrapping_add(player_id as u64));
         let config = self.state.config.clone();
 
+        // Ghost (is_ai_controlled) Humans get a varied, high-average IQ so
+        // they act with personality through the unified AI scheduler instead
+        // of sitting inert at the flat default (100). Deterministic per
+        // (seed, player_id) → lockstep-safe across clients. Tiers by id give
+        // emergent personality differentiation (elite / strong / capable / solid).
+        let ghost_iq: Option<u32> = if is_ai_controlled {
+            use crate::rng::NextIntExt;
+            let mut iq_rng = WyRand::new(
+                self.state
+                    .seed
+                    .wrapping_add(player_id as u64)
+                    .wrapping_add(0xA11CE),
+            );
+            Some(if player_id.is_multiple_of(100) {
+                iq_rng.next_int(140, 180) as u32
+            } else if player_id.is_multiple_of(10) {
+                iq_rng.next_int(120, 140) as u32
+            } else if player_id.is_multiple_of(4) {
+                iq_rng.next_int(110, 130) as u32
+            } else {
+                iq_rng.next_int(100, 120) as u32
+            })
+        } else {
+            None
+        };
+
         // Campaign: place the human at a fixed homeland tile (auto-spawn, no picker).
         if let Some((tx, ty)) = config.player_spawn {
             if let Some((sx, sy)) = self.nearest_free_land(tx, ty) {
@@ -296,6 +322,9 @@ impl SowEngine {
                 player.civilization = civilization;
                 player.leader = leader;
                 player.is_ai_controlled = is_ai_controlled;
+                if let Some(iq) = ghost_iq {
+                    player.iq = iq;
+                }
                 self.state.spawn_player(player, sx, sy);
                 log::info!("spawn_human: scripted at ({},{})", sx, sy);
                 return;

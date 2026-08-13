@@ -641,7 +641,7 @@ async fn handle_http(
                 .map(|(id, st)| {
                     serde_json::json!({
                         "lobby_id": id,
-                        "humans": st.clients.try_lock().map(|c| c.len()).unwrap_or(0),
+                        "active_relay_connections": st.clients.try_lock().map(|c| c.len()).unwrap_or(0),
                     })
                 })
                 .collect();
@@ -747,9 +747,9 @@ async fn tick_task(
         tokio::select! {
             _ = ticker.tick() => {
                 let mut clients = state.clients.lock().await;
-                let humans = clients.len();
+                let active_relay_connections = clients.len();
 
-                if humans == 0 {
+                if active_relay_connections == 0 {
                     active_empty_secs -= 0.05;
                     if active_empty_secs <= 0.0 {
                         eprintln!("[relay] lobby {} empty for too long, GC", state.id);
@@ -804,8 +804,13 @@ async fn tick_task(
 
                 if last_status.elapsed().as_secs() >= 10 {
                     eprintln!(
-                        "STATUS|{}|{}|{}|{}|{}|{}",
-                        state.id, std::process::id(), GAME_PORT, humans, total_ticks, total_intents
+                        "STATUS|lobby={}|pid={}|relay_port={}|active_relay_connections={}|ticks={}|intents={}",
+                        state.id,
+                        std::process::id(),
+                        GAME_PORT,
+                        active_relay_connections,
+                        total_ticks,
+                        total_intents
                     );
                     last_status = std::time::Instant::now();
                     // Heartbeat: refresh per-lobby Redis TTL.
@@ -888,7 +893,7 @@ async fn bridge_worker(registry: Registry, stub: Option<Arc<StubState>>) {
     loop {
         while let Some(ev) = rx.pop() {
             match ev {
-                Ev::Accept { fd, generation } => {
+                Ev::Accept { fd, generation, .. } => {
                     let (tx, rx_conn) = mpsc::channel(bridge::RX_CAP);
                     conns.insert(fd, tx);
                     tokio::spawn(ws_task(

@@ -85,8 +85,17 @@ pub fn draw_lobby_rows(
         })
         .cloned()
         .collect();
+    let hvn_lobbies: Vec<sow_core::protocol::LobbyInfo> = lobbies
+        .iter()
+        .filter(|l| {
+            l.kind == sow_core::protocol::LobbyKind::Custom
+                && matches!(filter, GameModeFilter::All | GameModeFilter::HumansVsNations)
+                && l.game_mode == "HumansVsNations"
+        })
+        .cloned()
+        .collect();
 
-    let any = !ffa_lobbies.is_empty() || !team_lobbies.is_empty();
+    let any = !ffa_lobbies.is_empty() || !team_lobbies.is_empty() || !hvn_lobbies.is_empty();
 
     if !any {
         ui.add_space(12.0);
@@ -117,6 +126,15 @@ pub fn draw_lobby_rows(
             draw_lobby_row(ui, lobby, side, asset_loader, state, action, strings);
         }
     }
+
+    if !hvn_lobbies.is_empty() {
+        ui.add_space(8.0);
+        section_header(ui, "HUMANS VS NATIONS");
+        ui.spacing_mut().item_spacing.y = 8.0;
+        for lobby in &hvn_lobbies {
+            draw_lobby_row(ui, lobby, side, asset_loader, state, action, strings);
+        }
+    }
 }
 
 pub fn draw_filter_pills(
@@ -138,6 +156,13 @@ pub fn draw_filter_pills(
         }
         if filter_pill(ui, "TEAMS", state.join_mode_filter == GameModeFilter::Teams) {
             state.join_mode_filter = GameModeFilter::Teams;
+        }
+        if filter_pill(
+            ui,
+            "HVN",
+            state.join_mode_filter == GameModeFilter::HumansVsNations,
+        ) {
+            state.join_mode_filter = GameModeFilter::HumansVsNations;
         }
     });
 }

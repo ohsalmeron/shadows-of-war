@@ -447,12 +447,18 @@ fn draw_difficulty_spawning_card(
                             .color(palette::text_muted()),
                     );
                     ui.add_space(3.0);
-                    let mode_idx = if config.game_mode == "Teams" { 1 } else { 0 };
-                    if let Some(n) = pill_row(ui, &["FFA", "TEAMS"], mode_idx) {
-                        config.game_mode = if n == 1 {
-                            "Teams".to_string()
-                        } else {
-                            "FFA".to_string()
+                    let mode_idx = if config.game_mode == "Teams" {
+                        1
+                    } else if config.game_mode == "HumansVsNations" {
+                        2
+                    } else {
+                        0
+                    };
+                    if let Some(n) = pill_row(ui, &["FFA", "TEAMS", "HVN"], mode_idx) {
+                        config.game_mode = match n {
+                            1 => "Teams".to_string(),
+                            2 => "HumansVsNations".to_string(),
+                            _ => "FFA".to_string(),
                         };
                     }
                 });

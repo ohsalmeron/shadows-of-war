@@ -305,6 +305,7 @@ impl SowApp {
                 show_dev_sidebar: false,
                 update_available: false,
                 is_spectating: false,
+                observing: false,
                 fallout_zones: Vec::new(),
                 last_projectiles: std::collections::HashMap::new(),
                 cached_player_colors: Vec::new(),

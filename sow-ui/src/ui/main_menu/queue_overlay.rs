@@ -453,6 +453,8 @@ fn draw_summary_content(
                         &strings.team_tactics,
                         sow_ui_kit::theme::palette::neon_gold(),
                     )
+                } else if lobby.game_mode == "HumansVsNations" {
+                    (&strings.humans_vs_nations, Color32::from_rgb(74, 222, 128))
                 } else {
                     (&strings.simulation, sow_ui_kit::theme::palette::pink())
                 };
@@ -501,6 +503,9 @@ fn draw_players_panel(
 ) {
     let strings = &sow_i18n::get(lang).main_menu;
     let is_teams = lobby.game_mode == "Teams";
+    // Team chips render for any team-based mode; the host "MOVE TEAM" toggle
+    // stays Teams-only (HumansVsNations forces every human to Red).
+    let show_team_chips = is_teams || lobby.game_mode == "HumansVsNations";
 
     let menu_id = egui::Id::new("lobby_roster_action_menu");
     let menu_open: Option<u16> = ui
@@ -610,7 +615,7 @@ fn draw_players_panel(
                                                     Color32::from_rgb(250, 204, 21),
                                                 );
                                             }
-                                            if is_teams {
+                                            if show_team_chips {
                                                 if let Some((label, col)) = team_chip(p.team) {
                                                     ui.add_space(6.0);
                                                     status_badge(ui, label, col);

@@ -63,7 +63,8 @@ pub(super) fn is_team_mode(app: &SowApp) -> bool {
     app.sim
         .engine
         .as_ref()
-        .is_some_and(|e| e.state.config.game_mode == "Teams")
+        .is_some_and(|e| e.state.config.game_mode == "Teams"
+            || e.state.config.game_mode == "HumansVsNations")
 }
 
 pub(super) fn team_label(team: Team) -> &'static str {

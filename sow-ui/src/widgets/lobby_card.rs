@@ -116,6 +116,8 @@ impl<'a> Widget for LobbyCard<'a> {
         let top_rect = rect.shrink(8.0);
         let mode_text = if self.lobby.game_mode == "FFA" {
             "FFA"
+        } else if self.lobby.game_mode == "HumansVsNations" {
+            "HVN"
         } else {
             "TEAMS"
         };

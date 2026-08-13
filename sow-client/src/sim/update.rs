@@ -451,6 +451,7 @@ impl SowApp {
             self.ui.app.hud_state.gold = player.gold;
             self.ui.app.hud_state.troops = player.troops;
             self.ui.app.hud_state.max_troops = player.max_troops;
+            self.ui.observing = !player.alive && player.has_spawned;
 
             // Compute correct actual troop rate
             if let Some(e) = &self.sim.engine {

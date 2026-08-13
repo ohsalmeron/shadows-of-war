@@ -29,6 +29,7 @@ use libc::{c_char, c_int, c_void, sockaddr_in, socklen_t, size_t, timespec, FION
 use std::collections::{HashMap, VecDeque};
 use std::io;
 use std::mem;
+use std::net::{Ipv4Addr, SocketAddr};
 use std::pin::Pin;
 use std::ptr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -55,7 +56,13 @@ const POLL_TIMEOUT_NS: i64 = 10_000_000;
 
 /// RX ring item: ff_run -> tokio.
 pub enum Ev {
-    Accept { fd: c_int, generation: u64 },
+    /// A newly accepted F-Stack connection. `peer` is captured at accept time;
+    /// consumers must not infer identity from fd/generation or from counters.
+    Accept {
+        fd: c_int,
+        generation: u64,
+        peer: SocketAddr,
+    },
     Data { fd: c_int, guard: ZcRxGuard },
     Closed { fd: c_int },
 }
@@ -716,7 +723,15 @@ unsafe fn accept_pending(listener_fd: c_int) {
         let mut kev: kevent = mem::zeroed();
         ev_set(&mut kev, nfd as usize, EVFILT_READ, EV_ADD, 0, 0, ptr::null_mut());
         crate::ffi::ff_kevent(KQ, &kev, 1, ptr::null_mut(), 0, ptr::null());
-        push_rx(Ev::Accept { fd: nfd, generation: ACCEPTS });
+        let peer = SocketAddr::new(
+            Ipv4Addr::from(u32::from_be(peer.sin_addr.s_addr)).into(),
+            u16::from_be(peer.sin_port),
+        );
+        push_rx(Ev::Accept {
+            fd: nfd,
+            generation: ACCEPTS,
+            peer,
+        });
     }
 }
 
@@ -855,7 +870,7 @@ unsafe fn push_rx(ev: Ev) {
                             );
                             drop(guard);
                         }
-                        Ev::Accept { fd, generation } => {
+                        Ev::Accept { fd, generation, .. } => {
                             eprintln!(
                                 "[bridge] RX delivery budget exhausted; closing accepted fd={fd} generation={generation}"
                             );

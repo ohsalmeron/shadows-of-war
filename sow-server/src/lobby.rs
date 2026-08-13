@@ -28,7 +28,10 @@ pub struct PlayerConnection {
     /// Lobby-stage team (Teams mode only; `None` in FFA). Carried into the match start.
     pub team: Option<Team>,
     pub ip: String,
-    /// Internal backfiller: ghost player injected to fill the lobby. No socket behind it.
+    /// Monotonic server connection identifier. `None` means an internal bot
+    /// with no network session.
+    pub session_id: Option<u64>,
+    /// Server-side internal bot filler: no socket and no relay ticket behind it.
     pub is_internal_bot: bool,
 }
 
@@ -178,7 +181,7 @@ fn ensure_queue_depth(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
         return;
     }
     static ROTATION: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    const MODES: &[&str] = &["FFA", "Teams"];
+    const MODES: &[&str] = &["FFA", "Teams", "HumansVsNations"];
     let idx = ROTATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst) % MODES.len();
     spawn_waiting_lobby(
         games,
@@ -280,6 +283,7 @@ pub struct JoinPlayerOpts {
     pub host_config: Option<Box<GameConfig>>,
     pub password: Option<String>,
     pub ip: String,
+    pub session_id: Option<u64>,
 }
 
 pub fn join_player(
@@ -298,6 +302,7 @@ pub fn join_player(
     let host_config = opts.host_config;
     let password = opts.password;
     let ip = opts.ip;
+    let session_id = opts.session_id;
     let mut is_new_host = false;
     let lobby_id = if host_private {
         if target_lobby_id.is_some() {
@@ -470,7 +475,10 @@ pub fn join_player(
             .max()
             .unwrap_or(0)
             .saturating_add(1);
-        let team = if fallback_lobby.game_mode == "Teams" {
+        let team = if fallback_lobby.game_mode == "HumansVsNations" {
+            // PvE: every human is on the Red team against AI nations (Blue).
+            Some(Team::Red)
+        } else if fallback_lobby.game_mode == "Teams" {
             let reds = fallback_lobby.players.iter().filter(|p| p.team == Some(Team::Red)).count();
             let blues = fallback_lobby.players.iter().filter(|p| p.team == Some(Team::Blue)).count();
             Some(if blues < reds { Team::Blue } else { Team::Red })
@@ -488,6 +496,7 @@ pub fn join_player(
             database_account_id,
             team,
             ip,
+            session_id,
             is_internal_bot: false,
         });
         return Ok((
@@ -579,7 +588,10 @@ pub fn join_player(
         .saturating_add(1);
 
     // Teams mode: drop the joiner into whichever team is smaller (Red on a tie).
-    let team = if lobby.game_mode == "Teams" {
+    // HumansVsNations: every human joins Red (AI nations are Blue, spawned engine-side).
+    let team = if lobby.game_mode == "HumansVsNations" {
+        Some(Team::Red)
+    } else if lobby.game_mode == "Teams" {
         let reds = lobby
             .players
             .iter()
@@ -606,6 +618,7 @@ pub fn join_player(
         database_account_id,
         team,
         ip,
+        session_id,
         is_internal_bot: false,
     });
 
@@ -729,7 +742,10 @@ pub fn set_player_team(
         return;
     }
     if lobby.game_mode != "Teams" {
-        log::warn!("[TEAM] Lobby {lobby_id} is not a Teams lobby — ignored");
+        log::warn!(
+            "[TEAM] Lobby {lobby_id} mode '{}' is not host-toggleable Teams — ignored",
+            lobby.game_mode
+        );
         return;
     }
     if let Some(target) = lobby.players.iter_mut().find(|p| p.player_id == target_id) {
