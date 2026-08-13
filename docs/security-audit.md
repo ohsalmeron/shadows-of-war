@@ -1,6 +1,6 @@
 # Security Audit Checkpoint
 
-**Date:** 2026-08-09
+**Date:** 2026-08-13
 **Scope:** IONOS + Azure relay deployment and the code at the current
 `feat/dpdk-relay` HEAD.  The baseline observations below were captured before
 the controlled data reset; the cleanup checkpoint records the resulting zero
@@ -17,6 +17,9 @@ state.
   public IP.
 - Relay workers use the installed `relay.shadowsofwar.io` certificate and the
   relay-to-database path is HTTPS.
+- Relay workers run as the dedicated `sowrelay` user, with `NoNewPrivileges`,
+  a bounded capability set, and a shared DPDK runtime directory.  All four
+  current units are `active`, `Result=success`, and `ExecMainStatus=0`.
 - IONOS `/internal/*` is origin-allowlisted to the relay data IP; the relay
   bypasses the public Cloudflare edge with pinned DNS resolution while keeping
   `shadowsofwar.io` as the TLS/SNI hostname.
@@ -27,20 +30,19 @@ or least-privilege service isolation.
 
 ## Critical-risk backlog
 
-1. The relay handoff ticket is bearer-only for its 900-second lifetime; it is
-   not one-time and is not bound to an account or source IP.
-3. Public orchestrator and relay connections have no verified per-IP admission
+1. The current database and relay-control secrets must be rotated after the
+   audit incident recorded below.
+2. Public orchestrator and relay connections have no verified per-IP admission
    or handshake rate limit.
-4. Relay workers run as root and relay SSH is reachable from any source allowed
-   by the NSG.
-5. Public profile routes can
-   create arbitrary-provider accounts without platform authentication.
-6. Game ports are public and the Azure VNet has no attached Azure DDoS
-   Protection plan.
+3. Non-CrazyGames profile requests accept any non-empty `external_id`; local
+   guest identities are anonymous and are not proof of account ownership.
+4. Azure SSH/22 is currently allowed from any source by the NSG, and the VNet
+   has no attached Azure DDoS Protection plan.  Game ports are intentionally
+   public and require a separate flood-mitigation decision.
 
 ## Phase 1 — relay management control plane
 
-Deployment release: `0.1.2-b47d00198eda` (deployed by `./sow p`).
+Deployment release: `0.1.2-ba12cc29d9e0` (deployed by `./sow p`).
 
 The IONOS server now signs every relay-management mutation with a dedicated
 `SOW_RELAY_CONTROL_SECRET`.  The signature covers the HTTP method, exact path,
@@ -55,8 +57,8 @@ Management listeners use the existing `relay.shadowsofwar.io` certificate.
 mutation paths are not.  Read-only post-deploy checks on all four workers
 returned `{"ok":true}` over HTTPS and HTTP 401 for unsigned
 `/internal/lobbies`; a plain HTTP request did not produce a successful response.
-All four worker services were active with `NRestarts=0`, and IONOS has
-`SOW_RELAY_MGMT_SCHEME=https`. Because the relay VM has separate data and
+All four worker services are currently `active` with `Result=success` and
+`ExecMainStatus=0`, and IONOS has `SOW_RELAY_MGMT_SCHEME=https`. Because the relay VM has separate data and
 management NICs, IONOS pins management DNS resolution to
 `SOW_RELAY_MGMT_RESOLVE_IP=20.230.49.9` while retaining the TLS hostname. The
 game hostname and F-Stack data path remain unchanged.
@@ -67,13 +69,14 @@ verifying the positive signed registration path end-to-end.
 
 ## Phase 2 — player relay capability
 
-The source now carries a per-player, per-match random relay ticket with a
-900-second admission expiry.  The
-ticket is sent in a separate `RelayTicket` frame immediately before the
-player's existing `Start` message; the relay registration receives only its
-SHA-256 digest.  The relay compares the presented ticket in constant time
-before accepting `ReadyWithTicket`.  Ticket material is not included in the
-persisted lobby summary or logs.
+The source carries a per-player, per-match random relay ticket with a
+900-second admission expiry.  The ticket is sent in a separate `RelayTicket`
+frame immediately before the player's existing `Start` message; the relay
+registration receives only its SHA-256 digest.  The relay compares the
+presented ticket in constant time before accepting `ReadyWithTicket`.
+The initial ticket is one-shot (`initial_used`); successful admission creates
+a reconnect capability whose digest is replaced on every reconnect.  Ticket
+material is not included in the persisted lobby summary or logs.
 
 `ReadyWithTicket` is a new protocol variant; the legacy `Ready` variant remains
 available only while `SOW_RELAY_TICKETS_REQUIRED=0`.  Production deployment
@@ -83,8 +86,7 @@ configuration fallback from silently returning the control plane to HTTP.
 
 The ticket protects relay admission and cross-lobby/player impersonation.  It
 does not replace platform account authentication; `database_account_id` is
-still a separate follow-up hardening phase and must not be treated as proof of
-identity.
+still separate and must not be treated as proof of identity.
 
 ## Phase 3 — private relay-to-database path
 
@@ -162,11 +164,44 @@ HTTPS.
 4. Verified old-credential rejection, new-credential acceptance, listener
    binding, service state, and four relay workers with zero restarts.
 
-### Still outstanding
+### Current verification
 
-1. Inspect logs for prior use of the retired credential.
-2. Add one-time ticket consumption or a reconnect-specific capability if the
-   threat model requires stolen tickets to be unusable before expiry.
+- The retired development value has zero matches in the active IONOS and relay
+  logs.
+- The four deployed workers report `User=sowrelay`, `NoNewPrivileges=yes`,
+  `Result=success`, and `ExecMainStatus=0`.
+- The relay journal is bounded by the deployed 7-day/256 MiB retention policy.
+
+## Audit incident — credential exposure during verification
+
+On 2026-08-13, an independent privileged diagnostic command printed the active
+`SOW_DB_SECRET` and `SOW_RELAY_CONTROL_SECRET` into the audit tool output.  The
+values are intentionally not recorded here.  The command was not part of the
+application or deployment pipeline, and no secret value was committed.  The
+credentials must nevertheless be treated as exposed and rotated through
+`./sow p` before public launch.  Future diagnostics must redact values before
+rendering output and report only hashes, lengths, modes, or match counts.
+
+## Remaining security plan
+
+1. **Credential rotation gate:** regenerate both active secrets in the ignored
+   deployment environment, run `./sow p`, and independently verify old-value
+   rejection, new-value acceptance, matching service configuration hashes, and
+   absence of secret values in command output/logs.
+2. **Admission-control phase:** inspect the actual F-Stack accept path and the
+   IONOS nginx/WebSocket path, then add bounded per-IP connection and handshake
+   controls with metrics.  Prove that legitimate CrazyGames and guest traffic
+   still reaches the relay; do not guess at limits.
+3. **Identity phase:** define which providers may create anonymous accounts,
+   require provider verification where an identity is claimed, and test
+   profile/link/conflict routes for takeover and replay.  Preserve anonymous
+   play only if its limits and ownership semantics are explicit.
+4. **Infrastructure exposure phase:** encode an approved SSH source restriction
+   in the reproducible Azure deployment path, verify recovery access first, and
+   separately decide whether Azure DDoS Protection or another mitigation is
+   justified for the public game-port range.
+5. **Auditability gate:** add read-only audit commands that emit counts and
+   redacted status only, then re-run the entire checklist after each phase.
 
 ## Runtime data observations — pre-cleanup baseline
 
@@ -224,8 +259,9 @@ and match keys; zero replay files; and static catalog counts of 1,062 geo plus
 12 leader records.  A new `local:guest_d88…` account was created at
 08:31:25Z during the restart window (profile still has zero matches); it is
 new post-reset activity, not retained state.  Azure remains at zero replay /
-journal files, zero Redis keys, empty dead-letter queue, four active workers
-with `NRestarts=0`, and empty lobby rosters on ports 8080–8083.
+journal files, zero Redis keys, empty dead-letter queue, four active workers,
+and empty lobby rosters on ports 8080–8083.  Historical `NRestarts` values are
+not used as the current health signal.
 
 The reset was deployed and restarted through `./sow p` as release
 `0.1.2-6884b4ebcafc`.  To roll back code, use `git revert <this-commit>` and
