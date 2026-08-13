@@ -44,8 +44,9 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use std::task::{Context, Poll};
+use std::time::Instant;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio_rustls::TlsAcceptor;
 use tokio::net::TcpListener;
@@ -61,7 +62,178 @@ const DEFAULT_EXPECTED_WORKER_COUNT: u16 = 4;
 const MAX_MGMT_BODY_BYTES: usize = 2 * 1024 * 1024;
 const MGMT_CLOCK_SKEW_SECS: u64 = 30;
 const MGMT_NONCE_TTL_SECS: u64 = 120;
+const DEFAULT_MAX_CONNECTIONS: usize = 32_768;
+const DEFAULT_MAX_CONNECTIONS_PER_IP: usize = 4_096;
+const DEFAULT_HANDSHAKES_PER_IP: u32 = 512;
+const MAX_ADMISSION_IPS: usize = 65_536;
+const HANDSHAKE_TIMEOUT_SECS: u64 = 10;
 type HmacSha256 = Hmac<Sha256>;
+
+struct IpAdmissionState {
+    active: usize,
+    window_started: Instant,
+    accepted_in_window: u32,
+}
+
+struct AdmissionState {
+    active: usize,
+    by_ip: HashMap<IpAddr, IpAdmissionState>,
+}
+
+struct RelayAdmissionPolicy {
+    max_connections: usize,
+    max_connections_per_ip: usize,
+    handshakes_per_ip: u32,
+    state: StdMutex<AdmissionState>,
+    accepted: AtomicU64,
+    rejected_global: AtomicU64,
+    rejected_per_ip: AtomicU64,
+    rejected_rate: AtomicU64,
+    active_peak: AtomicU64,
+}
+
+static RELAY_ADMISSION: OnceLock<RelayAdmissionPolicy> = OnceLock::new();
+
+impl RelayAdmissionPolicy {
+    fn from_env() -> Result<Self, String> {
+        let parse = |name: &str, default: &str| -> Result<usize, String> {
+            std::env::var(name)
+                .unwrap_or_else(|_| default.to_string())
+                .parse::<usize>()
+                .map_err(|_| format!("{name} must be a positive integer"))
+                .and_then(|value| {
+                    if value == 0 {
+                        Err(format!("{name} must be a positive integer"))
+                    } else {
+                        Ok(value)
+                    }
+                })
+        };
+        let max_connections = parse(
+            "SOW_RELAY_MAX_CONNECTIONS",
+            &DEFAULT_MAX_CONNECTIONS.to_string(),
+        )?;
+        let max_connections_per_ip = parse(
+            "SOW_RELAY_MAX_CONNECTIONS_PER_IP",
+            &DEFAULT_MAX_CONNECTIONS_PER_IP.to_string(),
+        )?;
+        let handshakes_per_ip = std::env::var("SOW_RELAY_HANDSHAKES_PER_IP")
+            .unwrap_or_else(|_| DEFAULT_HANDSHAKES_PER_IP.to_string())
+            .parse::<u32>()
+            .map_err(|_| "SOW_RELAY_HANDSHAKES_PER_IP must be a positive integer".to_string())?;
+        if max_connections_per_ip > max_connections {
+            return Err("SOW_RELAY_MAX_CONNECTIONS_PER_IP must not exceed SOW_RELAY_MAX_CONNECTIONS".to_string());
+        }
+        Ok(Self {
+            max_connections,
+            max_connections_per_ip,
+            handshakes_per_ip,
+            state: StdMutex::new(AdmissionState {
+                active: 0,
+                by_ip: HashMap::new(),
+            }),
+            accepted: AtomicU64::new(0),
+            rejected_global: AtomicU64::new(0),
+            rejected_per_ip: AtomicU64::new(0),
+            rejected_rate: AtomicU64::new(0),
+            active_peak: AtomicU64::new(0),
+        })
+    }
+
+    fn try_accept(&self, peer: SocketAddr) -> bool {
+        let ip = peer.ip();
+        let now = Instant::now();
+        let mut state = self.state.lock().expect("relay admission mutex poisoned");
+        if state.active >= self.max_connections {
+            let count = self.rejected_global.fetch_add(1, Ordering::Relaxed) + 1;
+            if count.is_power_of_two() {
+                warn!("[admission] global connection cap rejected peer={} count={count}", peer);
+            }
+            return false;
+        }
+        if !state.by_ip.contains_key(&ip) && state.by_ip.len() >= MAX_ADMISSION_IPS {
+            let count = self.rejected_global.fetch_add(1, Ordering::Relaxed) + 1;
+            if count.is_power_of_two() {
+                warn!("[admission] IP table cap rejected peer={} count={count}", peer);
+            }
+            return false;
+        }
+        {
+            let entry = state.by_ip.entry(ip).or_insert_with(|| IpAdmissionState {
+                active: 0,
+                window_started: now,
+                accepted_in_window: 0,
+            });
+            if now.duration_since(entry.window_started) >= Duration::from_secs(1) {
+                entry.window_started = now;
+                entry.accepted_in_window = 0;
+            }
+            if entry.active >= self.max_connections_per_ip {
+                let count = self.rejected_per_ip.fetch_add(1, Ordering::Relaxed) + 1;
+                if count.is_power_of_two() {
+                    warn!("[admission] per-IP connection cap rejected peer={} count={count}", peer);
+                }
+                return false;
+            }
+            if entry.accepted_in_window >= self.handshakes_per_ip {
+                let count = self.rejected_rate.fetch_add(1, Ordering::Relaxed) + 1;
+                if count.is_power_of_two() {
+                    warn!("[admission] per-IP handshake rate rejected peer={} count={count}", peer);
+                }
+                return false;
+            }
+        }
+        state.active += 1;
+        let entry = state.by_ip.get_mut(&ip).expect("admission entry inserted");
+        entry.active += 1;
+        entry.accepted_in_window += 1;
+        let active = state.active as u64;
+        self.accepted.fetch_add(1, Ordering::Relaxed);
+        self.active_peak.fetch_max(active, Ordering::Relaxed);
+        true
+    }
+
+    fn on_close(&self, peer: SocketAddr) {
+        let ip = peer.ip();
+        let now = Instant::now();
+        let mut state = self.state.lock().expect("relay admission mutex poisoned");
+        state.active = state.active.saturating_sub(1);
+        if let Some(entry) = state.by_ip.get_mut(&ip) {
+            entry.active = entry.active.saturating_sub(1);
+            if entry.active == 0 && now.duration_since(entry.window_started) >= Duration::from_secs(1) {
+                state.by_ip.remove(&ip);
+            }
+        }
+    }
+
+    fn metrics(&self) -> serde_json::Value {
+        let state = self.state.lock().expect("relay admission mutex poisoned");
+        serde_json::json!({
+            "active": state.active,
+            "tracked_ips": state.by_ip.len(),
+            "max_connections": self.max_connections,
+            "max_connections_per_ip": self.max_connections_per_ip,
+            "handshakes_per_ip": self.handshakes_per_ip,
+            "accepted": self.accepted.load(Ordering::Relaxed),
+            "rejected_global": self.rejected_global.load(Ordering::Relaxed),
+            "rejected_per_ip": self.rejected_per_ip.load(Ordering::Relaxed),
+            "rejected_rate": self.rejected_rate.load(Ordering::Relaxed),
+            "active_peak": self.active_peak.load(Ordering::Relaxed),
+        })
+    }
+}
+
+fn relay_accept_filter(peer: SocketAddr) -> bool {
+    RELAY_ADMISSION
+        .get()
+        .is_none_or(|policy| policy.try_accept(peer))
+}
+
+fn relay_close_hook(peer: SocketAddr) {
+    if let Some(policy) = RELAY_ADMISSION.get() {
+        policy.on_close(peer);
+    }
+}
 
 fn tickets_required() -> bool {
     std::env::var("SOW_RELAY_TICKETS_REQUIRED")
@@ -877,6 +1049,7 @@ type Registry = Arc<RwLock<HashMap<u64, Arc<LobbyState>>>>;
 // ---- main (bridge boot — same shape as the fstack-bridge examples) ----------
 
 fn main() {
+    env_logger::init();
     if std::env::var("SOW_DB_SECRET")
         .ok()
         .filter(|value| !value.trim().is_empty())
@@ -898,12 +1071,35 @@ fn main() {
         std::process::exit(78);
     }
 
+    let admission = match RelayAdmissionPolicy::from_env() {
+        Ok(policy) => policy,
+        Err(e) => {
+            eprintln!("[sow-relay] invalid admission-control configuration: {e}");
+            std::process::exit(78);
+        }
+    };
+    if RELAY_ADMISSION.set(admission).is_err() {
+        eprintln!("[sow-relay] admission policy initialized twice");
+        std::process::exit(78);
+    }
+    if let Err(e) = bridge::set_accept_filter(relay_accept_filter) {
+        eprintln!("[sow-relay] failed to install accept filter: {e}");
+        std::process::exit(78);
+    }
+    if let Err(e) = bridge::set_close_hook(relay_close_hook) {
+        eprintln!("[sow-relay] failed to install close hook: {e}");
+        std::process::exit(78);
+    }
+    let policy = RELAY_ADMISSION.get().expect("admission policy installed");
+    info!(
+        "[BOOT] admission max_connections={} max_connections_per_ip={} handshakes_per_ip={}",
+        policy.max_connections, policy.max_connections_per_ip, policy.handshakes_per_ip
+    );
+
     let prog_args: Vec<CString> = std::env::args()
         .filter(|a| !a.starts_with("--fstack-"))
         .map(|a| CString::new(a).unwrap())
         .collect();
-    env_logger::init();
-
     let base_mgmt = base_mgmt_port();
 
     // TLS: load cert if configured, otherwise plain ws://.
@@ -1359,6 +1555,10 @@ async fn handle_http(
                 "dispatch_local": DISPATCH_LOCAL.load(Ordering::Relaxed),
                 "dispatch_redirected": DISPATCH_REDIRECTED.load(Ordering::Relaxed),
                 "dispatch_unmatched": DISPATCH_UNMATCHED.load(Ordering::Relaxed),
+                "admission": RELAY_ADMISSION
+                    .get()
+                    .map(RelayAdmissionPolicy::metrics)
+                    .unwrap_or_else(|| serde_json::json!({ "initialized": false })),
             }),
         ),
         ("POST", "/internal/lobby/close") => {
@@ -1871,10 +2071,19 @@ async fn ws_task(
 
     // TLS handshake (if cert configured), then WebSocket upgrade.
     let stream = if let Some(acceptor) = TLS_ACCEPTOR.get().and_then(|o| o.as_ref()) {
-        match acceptor.accept(conn).await {
-            Ok(tls) => MaybeTlsConn::Tls(tls),
-            Err(e) => {
+        match tokio::time::timeout(
+            Duration::from_secs(HANDSHAKE_TIMEOUT_SECS),
+            acceptor.accept(conn),
+        )
+        .await
+        {
+            Ok(Ok(tls)) => MaybeTlsConn::Tls(tls),
+            Ok(Err(e)) => {
                 warn!("[tls] handshake fail fd={} err={}", fd, e);
+                return;
+            }
+            Err(_) => {
+                warn!("[tls] handshake timeout fd={} peer={}", fd, peer);
                 return;
             }
         }
@@ -1882,10 +2091,19 @@ async fn ws_task(
         MaybeTlsConn::Plain(conn)
     };
 
-    let ws = match tokio_tungstenite::accept_async(stream).await {
-        Ok(ws) => ws,
-        Err(e) => {
+    let ws = match tokio::time::timeout(
+        Duration::from_secs(HANDSHAKE_TIMEOUT_SECS),
+        tokio_tungstenite::accept_async(stream),
+    )
+    .await
+    {
+        Ok(Ok(ws)) => ws,
+        Ok(Err(e)) => {
             warn!("[ws] handshake fail fd={} err={}", fd, e);
+            return;
+        }
+        Err(_) => {
+            warn!("[ws] handshake timeout fd={} peer={}", fd, peer);
             return;
         }
     };
@@ -2442,11 +2660,33 @@ fn lobby_info(state: &Arc<LobbyState>) -> LobbyInfo {
 
 #[cfg(test)]
 mod dispatcher_tests {
-    use super::{ticket_matches, try_ready_register, Registry};
+    use super::{
+        ticket_matches, try_ready_register, AdmissionState, IpAdmissionState,
+        RelayAdmissionPolicy, Registry,
+    };
     use sha2::{Digest, Sha256};
     use std::collections::HashMap;
+    use std::net::SocketAddr;
     use std::sync::Arc;
+    use std::sync::Mutex as StdMutex;
     use tokio::sync::{mpsc, RwLock};
+
+    fn policy(max_connections: usize, max_connections_per_ip: usize, handshakes_per_ip: u32) -> RelayAdmissionPolicy {
+        RelayAdmissionPolicy {
+            max_connections,
+            max_connections_per_ip,
+            handshakes_per_ip,
+            state: StdMutex::new(AdmissionState {
+                active: 0,
+                by_ip: HashMap::<std::net::IpAddr, IpAdmissionState>::new(),
+            }),
+            accepted: std::sync::atomic::AtomicU64::new(0),
+            rejected_global: std::sync::atomic::AtomicU64::new(0),
+            rejected_per_ip: std::sync::atomic::AtomicU64::new(0),
+            rejected_rate: std::sync::atomic::AtomicU64::new(0),
+            active_peak: std::sync::atomic::AtomicU64::new(0),
+        }
+    }
 
     #[tokio::test]
     async fn rejects_ready_for_lobby_not_owned_by_worker() {
@@ -2472,5 +2712,25 @@ mod dispatcher_tests {
         let expected: [u8; 32] = digest.into();
         assert!(ticket_matches(ticket, &expected));
         assert!(!ticket_matches("0123456789abcdef0123456789abcde0", &expected));
+    }
+
+    #[test]
+    fn admission_enforces_per_ip_and_releases_on_close() {
+        let policy = policy(4, 1, 10);
+        let first: SocketAddr = "198.51.100.1:1000".parse().unwrap();
+        assert!(policy.try_accept(first));
+        assert!(!policy.try_accept("198.51.100.1:1001".parse().unwrap()));
+        policy.on_close(first);
+        assert!(policy.try_accept("198.51.100.1:1002".parse().unwrap()));
+        assert_eq!(policy.metrics()["rejected_per_ip"], 1);
+    }
+
+    #[test]
+    fn admission_enforces_global_cap() {
+        let policy = policy(2, 2, 10);
+        assert!(policy.try_accept("198.51.100.1:1000".parse().unwrap()));
+        assert!(policy.try_accept("198.51.100.2:1000".parse().unwrap()));
+        assert!(!policy.try_accept("198.51.100.3:1000".parse().unwrap()));
+        assert_eq!(policy.metrics()["rejected_global"], 1);
     }
 }

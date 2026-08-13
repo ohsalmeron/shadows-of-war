@@ -30,11 +30,9 @@ or least-privilege service isolation.
 
 ## Critical-risk backlog
 
-1. Public orchestrator and relay connections have no verified per-IP admission
-   or handshake rate limit.
-2. Non-CrazyGames profile requests accept any non-empty `external_id`; local
+1. Non-CrazyGames profile requests accept any non-empty `external_id`; local
    guest identities are anonymous and are not proof of account ownership.
-3. Azure SSH/22 is currently allowed from any source by the NSG, and the VNet
+2. Azure SSH/22 is currently allowed from any source by the NSG, and the VNet
    has no attached Azure DDoS Protection plan.  Game ports are intentionally
    public and require a separate flood-mitigation decision.
 
@@ -182,21 +180,46 @@ remote credential hashes without rendering values; the retired development
 credential returned HTTP 401.  Future diagnostics must redact values before
 rendering output and report only hashes, lengths, modes, or match counts.
 
+## Phase 4 — admission control and handshake bounds
+
+Deployment release: `0.1.2-85a825781227` (deployed and verified by `./sow p`).
+
+The relay now applies admission before a socket is registered with Tokio or
+enters TLS/WebSocket processing. Each worker enforces a global cap of 32,768
+connections, a per-IP cap of 4,096, a per-IP handshake rate of 512 per second,
+and a bounded 65,536-entry IP table. Closing a socket releases its admission
+state. The F-Stack accept and close hooks are installed before `ff_run`.
+
+TLS and WebSocket handshakes each have a 10-second timeout. The IONOS
+orchestrator has a 32,768-connection semaphore and the same 10-second
+handshake timeout. The public `/ws/` location has Cloudflare-aware client-IP
+restoration, a 4,096-connection limit, and a 256-request/second handshake
+limit with a 512 burst. The Cloudflare ranges and these Nginx directives are
+owned by the release and installed by the pipeline; they are not manual host
+state.
+
+Fresh post-deploy evidence: all four `sow-relay@0..3.service` units are
+`active`, `Result=success`, `ExecMainStatus=0`, `User=sowrelay`, and
+`NoNewPrivileges=yes`; all four TLS management health checks returned
+`{"ok":true}`; the primary journal reports
+`max_connections=32768 max_connections_per_ip=4096 handshakes_per_ip=512`;
+the IONOS and database services are running; `nginx -t` succeeds; and the
+public `/play/` check returned HTTP 200. The F-Stack release build completed
+on the relay VM. Local relay test execution remains unavailable because this
+workstation lacks the DPDK static libraries, but `cargo check --tests` and the
+remote release build completed successfully.
+
 ## Remaining security plan
 
-1. **Admission-control phase:** inspect the actual F-Stack accept path and the
-   IONOS nginx/WebSocket path, then add bounded per-IP connection and handshake
-   controls with metrics.  Prove that legitimate CrazyGames and guest traffic
-   still reaches the relay; do not guess at limits.
-2. **Identity phase:** define which providers may create anonymous accounts,
+1. **Identity phase:** define which providers may create anonymous accounts,
    require provider verification where an identity is claimed, and test
    profile/link/conflict routes for takeover and replay.  Preserve anonymous
    play only if its limits and ownership semantics are explicit.
-3. **Infrastructure exposure phase:** encode an approved SSH source restriction
+2. **Infrastructure exposure phase:** encode an approved SSH source restriction
    in the reproducible Azure deployment path, verify recovery access first, and
    separately decide whether Azure DDoS Protection or another mitigation is
    justified for the public game-port range.
-4. **Auditability gate:** add read-only audit commands that emit counts and
+3. **Auditability gate:** add read-only audit commands that emit counts and
    redacted status only, then re-run the entire checklist after each phase.
 
 ## Runtime data observations — pre-cleanup baseline

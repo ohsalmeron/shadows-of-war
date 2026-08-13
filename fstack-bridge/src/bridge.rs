@@ -362,6 +362,27 @@ static mut TX_BUDGET_CLOSURES: u64 = 0;
 static mut PENDING_SEND_PEAK: usize = 0;
 static mut LAST_STATS_AT: u64 = 0;
 
+/// Optional application admission hook. It runs on the F-Stack driver thread,
+/// immediately after `ff_accept` has captured the peer and before the fd is
+/// registered or handed to Tokio. The hook must be fast and non-blocking.
+pub type AcceptFilter = fn(SocketAddr) -> bool;
+pub type CloseHook = fn(SocketAddr);
+static ACCEPT_FILTER: OnceLock<AcceptFilter> = OnceLock::new();
+static CLOSE_HOOK: OnceLock<CloseHook> = OnceLock::new();
+
+/// Peer addresses are retained only while the fd is alive so a close can
+/// release the application admission slot without making policy code inspect
+/// or trust fd numbers.
+static mut PEERS: Option<HashMap<c_int, SocketAddr>> = None;
+
+pub fn set_accept_filter(filter: AcceptFilter) -> Result<(), &'static str> {
+    ACCEPT_FILTER.set(filter).map_err(|_| "accept filter already set")
+}
+
+pub fn set_close_hook(hook: CloseHook) -> Result<(), &'static str> {
+    CLOSE_HOOK.set(hook).map_err(|_| "close hook already set")
+}
+
 /// Create rings + pool + notify. Call once before spawning any worker.
 pub fn setup() {
     RX.set(Arc::new(ArrayQueue::new(RX_CAP))).ok();
@@ -376,6 +397,7 @@ pub fn setup() {
         PENDING_SEND_BYTES = 0;
         PENDING_SEND_PEAK = 0;
         FD_GEN = None;
+        PEERS = None;
         LISTEN_FD = -1;
         LISTENERS = Some(HashMap::new());
     }
@@ -714,19 +736,24 @@ unsafe fn accept_pending(listener_fd: c_int) {
         if nfd < 0 {
             break;
         }
+        let peer = SocketAddr::new(
+            Ipv4Addr::from(u32::from_be(peer.sin_addr.s_addr)).into(),
+            u16::from_be(peer.sin_port),
+        );
+        if ACCEPT_FILTER.get().is_some_and(|filter| !filter(peer)) {
+            crate::ffi::ff_close(nfd);
+            continue;
+        }
         let on: c_int = 1;
         crate::ffi::ff_ioctl(nfd, FIONBIO as libc::c_ulong, &on);
         ACCEPTS += 1;
         // The accept counter is strictly monotonic: it is this connection's
         // unique generation while it owns the fd.
         fd_gen().insert(nfd, ACCEPTS);
+        peers().insert(nfd, peer);
         let mut kev: kevent = mem::zeroed();
         ev_set(&mut kev, nfd as usize, EVFILT_READ, EV_ADD, 0, 0, ptr::null_mut());
         crate::ffi::ff_kevent(KQ, &kev, 1, ptr::null_mut(), 0, ptr::null());
-        let peer = SocketAddr::new(
-            Ipv4Addr::from(u32::from_be(peer.sin_addr.s_addr)).into(),
-            u16::from_be(peer.sin_port),
-        );
         push_rx(Ev::Accept {
             fd: nfd,
             generation: ACCEPTS,
@@ -848,8 +875,27 @@ unsafe fn close_fd(fd: c_int) {
     // this generation will fail the FD_GEN check (or worse, hit a reused fd
     // with a DIFFERENT generation — also rejected).
     fd_gen().remove(&fd);
+    release_peer(fd);
     clear_pending_send(fd);
     push_rx(Ev::Closed { fd });
+}
+
+unsafe fn peers() -> &'static mut HashMap<c_int, SocketAddr> {
+    PEERS.get_or_insert_with(HashMap::new)
+}
+
+unsafe fn release_peer(fd: c_int) {
+    if let Some(peer) = PEERS.as_mut().and_then(|peers| peers.remove(&fd)) {
+        if let Some(hook) = CLOSE_HOOK.get() {
+            hook(peer);
+        }
+    }
+}
+
+unsafe fn reject_accepted_fd(fd: c_int) {
+    crate::ffi::ff_close(fd);
+    fd_gen().remove(&fd);
+    release_peer(fd);
 }
 
 unsafe fn push_rx(ev: Ev) {
@@ -874,8 +920,7 @@ unsafe fn push_rx(ev: Ev) {
                             eprintln!(
                                 "[bridge] RX delivery budget exhausted; closing accepted fd={fd} generation={generation}"
                             );
-                            crate::ffi::ff_close(fd);
-                            fd_gen().remove(&fd);
+                            reject_accepted_fd(fd);
                         }
                         Ev::Closed { fd } => {
                             eprintln!("[bridge] RX delivery budget exhausted; dropping close fd={fd}");

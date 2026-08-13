@@ -36,6 +36,21 @@ pub(super) fn execute(paths: &Paths) -> Result<()> {
     if tickets_required != "0" && tickets_required != "1" {
         bail!("SOW_RELAY_TICKETS_REQUIRED must be 0 or 1");
     }
+    let max_connections = env_or("SOW_RELAY_MAX_CONNECTIONS", "32768")
+        .parse::<usize>()
+        .context("SOW_RELAY_MAX_CONNECTIONS must be an integer")?;
+    let max_connections_per_ip = env_or("SOW_RELAY_MAX_CONNECTIONS_PER_IP", "4096")
+        .parse::<usize>()
+        .context("SOW_RELAY_MAX_CONNECTIONS_PER_IP must be an integer")?;
+    let handshakes_per_ip = env_or("SOW_RELAY_HANDSHAKES_PER_IP", "512")
+        .parse::<u32>()
+        .context("SOW_RELAY_HANDSHAKES_PER_IP must be an integer")?;
+    if max_connections == 0 || max_connections_per_ip == 0 || handshakes_per_ip == 0 {
+        bail!("relay admission limits must be positive");
+    }
+    if max_connections_per_ip > max_connections {
+        bail!("SOW_RELAY_MAX_CONNECTIONS_PER_IP must not exceed SOW_RELAY_MAX_CONNECTIONS");
+    }
     let db_url = env_or("SOW_DB_URL", "https://shadowsofwar.io");
     let parsed_db_url = url::Url::parse(&db_url)
         .with_context(|| format!("invalid SOW_DB_URL={db_url}"))?;
@@ -174,6 +189,9 @@ EOF\n\
          Environment=SOW_MGMT_TLS_REQUIRED=1\n\
          Environment=SOW_RELAY_WORKER_COUNT={}\n\
          Environment=SOW_RELAY_TICKETS_REQUIRED={}\n\
+         Environment=SOW_RELAY_MAX_CONNECTIONS={}\n\
+         Environment=SOW_RELAY_MAX_CONNECTIONS_PER_IP={}\n\
+         Environment=SOW_RELAY_HANDSHAKES_PER_IP={}\n\
          Environment=SOW_DB_URL={}\n\
          Environment=SOW_DB_RESOLVE_IP={}\n\
          Environment=SOW_REPLAY_SPOOL_DIR={}\n\
@@ -189,6 +207,9 @@ EOF\n\
         shell_quote(&remote_control_secret),
         worker_count,
         tickets_required,
+        max_connections,
+        max_connections_per_ip,
+        handshakes_per_ip,
         shell_quote(&db_url),
         shell_quote(&db_resolve_ip),
         shell_quote(RELAY_REPLAYS),

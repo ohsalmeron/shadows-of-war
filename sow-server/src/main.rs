@@ -23,7 +23,7 @@ use std::time::Duration;
 use rand::{RngCore, rngs::OsRng};
 use sha2::{Digest, Sha256};
 use tokio::net::TcpListener;
-use tokio::sync::{Mutex, broadcast, mpsc};
+use tokio::sync::{Mutex, Semaphore, broadcast, mpsc};
 use tokio_tungstenite::tungstenite::protocol::Message;
 
 const DEFAULT_RELAY_WORKER_COUNT: usize = 4;
@@ -31,12 +31,27 @@ const RELAY_PORT_MIN: u16 = 25592;
 const RELAY_PORT_MAX: u16 = 26500;
 const RELAY_TICKET_TTL_SECS: u64 = 900;
 const RELAY_HANDOFF_SEND_TIMEOUT_SECS: u64 = 10;
+const DEFAULT_MAX_CONNECTIONS: usize = 32_768;
+const HANDSHAKE_TIMEOUT_SECS: u64 = 10;
 type HmacSha256 = Hmac<Sha256>;
 
 static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
+static REJECTED_CONNECTIONS: AtomicU64 = AtomicU64::new(0);
 
 fn next_session_id() -> u64 {
     NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed)
+}
+
+fn max_server_connections() -> Result<usize, String> {
+    let value = std::env::var("SOW_SERVER_MAX_CONNECTIONS")
+        .unwrap_or_else(|_| DEFAULT_MAX_CONNECTIONS.to_string());
+    let parsed = value
+        .parse::<usize>()
+        .map_err(|_| "SOW_SERVER_MAX_CONNECTIONS must be a positive integer".to_string())?;
+    if parsed == 0 {
+        return Err("SOW_SERVER_MAX_CONNECTIONS must be a positive integer".to_string());
+    }
+    Ok(parsed)
 }
 
 #[derive(Clone, Debug)]
@@ -1092,7 +1107,18 @@ async fn main() {
     let addr = std::env::var("SOW_WS_LISTEN").unwrap_or_else(|_| "0.0.0.0:25565".to_string());
 
     let listener = TcpListener::bind(&addr).await.expect("Failed to bind");
-    log::info!("SOW-SERVER listening on ws://{}", addr);
+    let max_connections = match max_server_connections() {
+        Ok(value) => value,
+        Err(e) => {
+            log::error!("{e}");
+            return;
+        }
+    };
+    let connection_slots = Arc::new(Semaphore::new(max_connections));
+    log::info!(
+        "SOW-SERVER listening on ws://{} max_connections={} handshake_timeout={}s",
+        addr, max_connections, HANDSHAKE_TIMEOUT_SECS
+    );
 
     // HTTP Static File Server for maps and Admin Dashboard
     let games_for_axum = Arc::clone(&games_state);
@@ -1147,14 +1173,28 @@ async fn main() {
     });
 
     while let Ok((stream, addr)) = listener.accept().await {
+        let permit = match connection_slots.clone().try_acquire_owned() {
+            Ok(permit) => permit,
+            Err(_) => {
+                let rejected = REJECTED_CONNECTIONS.fetch_add(1, Ordering::Relaxed) + 1;
+                if rejected.is_power_of_two() {
+                    log::warn!("Connection cap rejected orchestrator peer={} count={rejected}", addr);
+                }
+                drop(stream);
+                continue;
+            }
+        };
         let mut global_rx = global_tx.subscribe();
         let ev_tx = event_tx.clone();
         let games_state_conn = Arc::clone(&games_state);
         tokio::spawn(async move {
+            let _connection_permit = permit;
             let session_id = next_session_id();
             let ip_cell = Arc::new(std::sync::Mutex::new(addr.ip().to_string()));
             let ip_cell_clone = Arc::clone(&ip_cell);
-            let ws_stream = match tokio_tungstenite::accept_hdr_async(stream, move |req: &tokio_tungstenite::tungstenite::handshake::server::Request, response: tokio_tungstenite::tungstenite::handshake::server::Response| {
+            let ws_stream = match tokio::time::timeout(
+                Duration::from_secs(HANDSHAKE_TIMEOUT_SECS),
+                tokio_tungstenite::accept_hdr_async(stream, move |req: &tokio_tungstenite::tungstenite::handshake::server::Request, response: tokio_tungstenite::tungstenite::handshake::server::Response| {
                 if let Some(real_ip) = req.headers().get("X-Real-IP") {
                     if let Ok(ip) = real_ip.to_str() {
                         if let Ok(mut guard) = ip_cell_clone.lock() {
@@ -1171,10 +1211,17 @@ async fn main() {
                     }
                 }
                 Ok(response)
-            }).await {
-                Ok(ws) => ws,
-                Err(e) => {
+            }),
+            )
+            .await
+            {
+                Ok(Ok(ws)) => ws,
+                Ok(Err(e)) => {
                     log::error!("Handshake failed: {}", e);
+                    return;
+                }
+                Err(_) => {
+                    log::warn!("Handshake timeout peer={} session_id={}", addr, session_id);
                     return;
                 }
             };

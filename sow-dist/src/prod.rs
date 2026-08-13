@@ -269,10 +269,16 @@ fn sync_relay_env(config: &Config) -> Result<()> {
     if parsed_mgmt_url.scheme() != "https" {
         bail!("SOW_RELAY_MGMT_URL must use https for production deploys");
     }
+    let server_max_connections = env_or("SOW_SERVER_MAX_CONNECTIONS", "32768")
+        .parse::<usize>()
+        .context("SOW_SERVER_MAX_CONNECTIONS must be an integer")?;
+    if server_max_connections == 0 {
+        bail!("SOW_SERVER_MAX_CONNECTIONS must be positive");
+    }
     let remote = format!(
         "set -eu; f=/usr/local/etc/sow/sow.env; t=$(mktemp /tmp/sow.env.XXXXXX); \\
-         if sudo test -f \"$f\"; then sudo grep -v -E '^(SOW_RELAY_HOST|SOW_RELAY_WORKER_COUNT|SOW_RELAY_WORKERS|SOW_RELAY_PORT|SOW_RELAY_MGMT_URL|SOW_RELAY_MGMT_SCHEME|SOW_RELAY_MGMT_RESOLVE_IP|SOW_RELAY_TICKETS_REQUIRED)=' \"$f\" > \"$t\"; else : > \"$t\"; fi; \\
-         printf '%s\\n' SOW_RELAY_HOST={} SOW_RELAY_WORKER_COUNT={} SOW_RELAY_WORKERS={} SOW_RELAY_PORT=80 SOW_RELAY_MGMT_URL={} SOW_RELAY_MGMT_SCHEME={} SOW_RELAY_MGMT_RESOLVE_IP={} SOW_RELAY_TICKETS_REQUIRED={} >> \"$t\"; \\
+         if sudo test -f \"$f\"; then sudo grep -v -E '^(SOW_RELAY_HOST|SOW_RELAY_WORKER_COUNT|SOW_RELAY_WORKERS|SOW_RELAY_PORT|SOW_RELAY_MGMT_URL|SOW_RELAY_MGMT_SCHEME|SOW_RELAY_MGMT_RESOLVE_IP|SOW_RELAY_TICKETS_REQUIRED|SOW_SERVER_MAX_CONNECTIONS)=' \"$f\" > \"$t\"; else : > \"$t\"; fi; \\
+         printf '%s\\n' SOW_RELAY_HOST={} SOW_RELAY_WORKER_COUNT={} SOW_RELAY_WORKERS={} SOW_RELAY_PORT=80 SOW_RELAY_MGMT_URL={} SOW_RELAY_MGMT_SCHEME={} SOW_RELAY_MGMT_RESOLVE_IP={} SOW_RELAY_TICKETS_REQUIRED={} SOW_SERVER_MAX_CONNECTIONS={} >> \"$t\"; \\
          sudo install -o root -g wheel -m 0600 \"$t\" \"$f\"; rm -f \"$t\"; sudo service sow_server restart; sudo service sow_server status",
         shell_quote(&relay_host),
         worker_count,
@@ -281,6 +287,7 @@ fn sync_relay_env(config: &Config) -> Result<()> {
         shell_quote(&mgmt_scheme),
         shell_quote(&mgmt_resolve_ip),
         shell_quote(&tickets_required),
+        server_max_connections,
     );
     run("ssh", &[&config.prod_host, &remote], None).context("relay catalog sync failed")
 }
@@ -475,6 +482,7 @@ fn assemble_release(
             &paths.assets_maps,
             &paths.root.join("sow-dist/deploy/freebsd/rc.d"),
             &paths.root.join("sow-dist/deploy/freebsd/conf.d"),
+            &paths.root.join("sow-dist/deploy/freebsd/snippets"),
             &paths.root.join("sow-dist/deploy/freebsd/nginx.conf"),
         ],
     )?;
@@ -520,6 +528,10 @@ fn assemble_release(
     copy_dir(
         &paths.root.join("sow-dist/deploy/freebsd/conf.d"),
         &work.join("ops/conf.d"),
+    )?;
+    copy_dir(
+        &paths.root.join("sow-dist/deploy/freebsd/snippets"),
+        &work.join("ops/snippets"),
     )?;
     fs::copy(
         paths.root.join("sow-dist/deploy/freebsd/nginx.conf"),
@@ -623,8 +635,22 @@ fn deploy(paths: &Paths, config: &Config, release: &Release) -> Result<()> {
          sudo ln -s \"releases/{id}\" \"$link\"; \
          sudo mv -fh \"$link\" /srv/sow/current; \
          sudo install -d -m 0755 /usr/local/etc/nginx/conf.d; \
-         if sudo test -f \"{target}/ops/conf.d/shadowsofwar.io.conf\"; then \
-             sudo install -o root -g wheel -m 0644 \"{target}/ops/conf.d/shadowsofwar.io.conf\" /usr/local/etc/nginx/conf.d/shadowsofwar.io.conf; \
+         sudo install -d -m 0755 /usr/local/etc/nginx/snippets; \
+         if sudo test -d \"{target}/ops/conf.d\"; then \
+             for conf in \"{target}\"/ops/conf.d/*; do \
+                 if sudo test -f \"$conf\"; then \
+                     name=$(basename \"$conf\"); \
+                     sudo install -o root -g wheel -m 0644 \"$conf\" \"/usr/local/etc/nginx/conf.d/$name\"; \
+                 fi; \
+             done; \
+         fi; \
+         if sudo test -d \"{target}/ops/snippets\"; then \
+             for snippet in \"{target}\"/ops/snippets/*; do \
+                 if sudo test -f \"$snippet\"; then \
+                     name=$(basename \"$snippet\"); \
+                     sudo install -o root -g wheel -m 0644 \"$snippet\" \"/usr/local/etc/nginx/snippets/$name\"; \
+                 fi; \
+             done; \
          fi; \
          if sudo test -f \"{target}/ops/nginx.conf\"; then \
              if ! sudo grep -q \"conf.d\" /usr/local/etc/nginx/nginx.conf 2>/dev/null; then \
