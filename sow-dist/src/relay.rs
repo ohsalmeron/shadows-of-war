@@ -113,7 +113,19 @@ pub(super) fn execute(paths: &Paths) -> Result<()> {
          sudo tee /etc/tmpfiles.d/sow-relay.conf >/dev/null <<'EOF'\n\
 d /var/run/dpdk 0700 {user} {group} -\n\
 Z /dev/hugepages 0700 {user} {group} -\n\
-EOF",
+EOF\n\
+         sudo install -d -m 0755 /etc/systemd/journald.conf.d; \
+         sudo tee /etc/systemd/journald.conf.d/30-sow-relay.conf >/dev/null <<'EOF'\n\
+[Journal]\n\
+SystemMaxUse=256M\n\
+RuntimeMaxUse=128M\n\
+MaxRetentionSec=7day\n\
+RateLimitIntervalSec=30s\n\
+RateLimitBurst=10000\n\
+EOF\n\
+         sudo systemctl restart systemd-journald; \
+         sudo journalctl --rotate; \
+         sudo journalctl --vacuum-size=256M",
         unit_stops = unit_stops,
         user = RELAY_USER,
         group = RELAY_GROUP,
@@ -278,7 +290,11 @@ EOF\n\
          fi; \
          for p in {}; do curl -kfsS --max-time 5 https://127.0.0.1:$p/healthz >/dev/null; echo mgmt-$p-tls-ok; done; \
          pgrep -af sow-relay; \
-         systemctl show {} -p NRestarts",
+         for u in {}; do \
+             test \"$(systemctl show $u -p ActiveState --value)\" = active; \
+             test \"$(systemctl show $u -p Result --value)\" = success; \
+             test \"$(systemctl show $u -p ExecMainStatus --value)\" = 0; \
+         done",
         unit_wants,
         mgmt_ports.join(" "),
         unit_wants

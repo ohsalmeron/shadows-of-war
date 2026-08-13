@@ -101,8 +101,10 @@ hostname, not the IP.
   (or :8081..:8083 from IONOS — NSG locks mgmt ports to IONOS only).
 - Live TLS check:
   `echo | openssl s_client -connect 20.122.128.185:25592 -servername relay.shadowsofwar.io`
-- Workers: `systemctl status 'sow-relay@*'`; expect 4 active, 12 failed
-  templates (sow-relay@4..15 are harmless leftovers).
+- Workers: `systemctl status 'sow-relay@0..3'`; expect exactly 4 active units.
+  Do not treat historical `NRestarts` values or old journal entries as current
+  health. Verify `ActiveState=active`, `Result=success`, `ExecMainStatus=0`,
+  and the four HTTPS health checks on ports 8080–8083.
 - CPU ~100% per worker is normal (DPDK busy-poll).
 
 ## Certificate renewal
