@@ -35,6 +35,8 @@ pub enum UiAction {
     ToggleDevSidebar,
     StartPrivateLobby(u64),
     PortalShowAuthPrompt,
+    /// Persist the anonymous player's edited display name.
+    SaveDisplayName(String),
     OpenCreateGame,
     CreateGame {
         config: Box<sow_core::game_config::GameConfig>,

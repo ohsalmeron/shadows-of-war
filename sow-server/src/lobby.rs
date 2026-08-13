@@ -553,9 +553,9 @@ pub fn join_player(
     }
     let max = lobby.config.max_players as usize;
 
-    // Reconnect matches by stable account id ONLY — never by name. Names
-    // collide between human defaults (ANON###) and bot fillers. Both sides
-    // must carry a real Some(account_id); otherwise the player joins fresh.
+    // Reconnect matches by stable account id ONLY — never by display name.
+    // Names are mutable presentation data and may collide; both sides must
+    // carry a real Some(account_id), otherwise the player joins fresh.
     if let Some(existing_idx) = lobby.players.iter().position(|p| {
         matches!(
             (&p.database_account_id, &database_account_id),

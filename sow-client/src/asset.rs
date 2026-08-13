@@ -419,11 +419,12 @@ impl SowApp {
                 crate::player_progress::DbEvent::ProfileLoaded {
                     progress,
                     account_id,
+                    display_name,
                     provider,
                 } => {
                     let old_level = self.progress.level;
                     let is_crazygames = provider == "crazygames";
-                    self.apply_cloud_profile(progress, account_id, provider);
+                    self.apply_cloud_profile(progress, account_id, display_name, provider);
                     log::info!(
                         "Successfully synced profile from cloud database: level {} ({} XP)",
                         self.progress.level,
@@ -439,6 +440,10 @@ impl SowApp {
                     {
                         self.boot_db_settled = true;
                     }
+                }
+                crate::player_progress::DbEvent::DisplayNameSaved { display_name } => {
+                    self.ui.app.main_menu_state.player_name = display_name;
+                    self.ui.app.main_menu_state.name_locked = false;
                 }
                 crate::player_progress::DbEvent::LoadFailed => {
                     log::warn!("sow-database sync failed. Continuing with local offline progress.");

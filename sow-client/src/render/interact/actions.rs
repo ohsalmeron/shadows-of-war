@@ -248,6 +248,9 @@ impl SowApp {
                 UiAction::PortalShowAuthPrompt => {
                     crate::store_portals::show_auth_prompt();
                 }
+                UiAction::SaveDisplayName(display_name) => {
+                    self.save_display_name(display_name);
+                }
             }
         }
     }

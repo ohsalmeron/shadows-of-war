@@ -61,13 +61,12 @@ fn draw_lobby_list(
             .and_then(|catalog| sow_core::maps::catalog_lookup(catalog, &lobby.map_name))
             .map(|entry| entry.display_name.clone())
             .unwrap_or_else(|| lobby.map_name.clone());
-        let response = ui
-            .add(
-                LobbyCard::new(lobby, thumbnail)
-                    .width(card_w)
-                    .side(card_h)
-                    .display_name(display_name),
-            );
+        let response = ui.add(
+            LobbyCard::new(lobby, thumbnail)
+                .width(card_w)
+                .side(card_h)
+                .display_name(display_name),
+        );
         if response.clicked() {
             *action = Some(UiAction::JoinLobby(lobby.id));
         }

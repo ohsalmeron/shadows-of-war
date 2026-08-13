@@ -214,10 +214,7 @@ struct QueueBodyOpts<'a> {
 
 /// Desktop: two equal columns filling `body`. Left = map summary with the
 /// action row pinned to its bottom edge; right = players roster.
-fn draw_body_desktop(
-    ui: &mut Ui,
-    opts: QueueBodyOpts<'_>,
-) {
+fn draw_body_desktop(ui: &mut Ui, opts: QueueBodyOpts<'_>) {
     let state = opts.state;
     let lobby = opts.lobby;
     let asset_loader = opts.asset_loader;
@@ -243,10 +240,7 @@ fn draw_body_desktop(
 
 /// Compact / mobile: one scrollable column (summary + players) with the action
 /// row pinned to the bottom of the card, always visible.
-fn draw_body_compact(
-    ui: &mut Ui,
-    opts: QueueBodyOpts<'_>,
-) {
+fn draw_body_compact(ui: &mut Ui, opts: QueueBodyOpts<'_>) {
     let state = opts.state;
     let lobby = opts.lobby;
     let asset_loader = opts.asset_loader;

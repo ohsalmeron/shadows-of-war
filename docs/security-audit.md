@@ -6,7 +6,7 @@
 the controlled data reset; the cleanup checkpoint records the resulting zero
 state.
 
-**Current deployed release:** `0.1.2-1d2ea5072dca` via `./sow p`.
+**Current deployed release:** `0.1.2-a086aec733d3` via `./sow p`.
 
 ## Confirmed protections
 
@@ -39,11 +39,12 @@ or least-privilege service isolation.
    has no attached Azure DDoS Protection plan.  Game ports are intentionally
    public and require a separate flood-mitigation decision.
 
-Anonymous identity is now one canonical browser/native `account_id` issued by
-`POST /profile/anonymous`.  CrazyGames is the only external provider accepted
-by `GET /profile`, and its ID is verified from the platform token.  The old
-guest-ID migration and all profile-link/conflict routes were removed; they are
-not compatibility paths.
+Anonymous identity is one canonical browser/native `account_id` issued by
+`POST /profile/anonymous`, with a persisted mutable `display_name`.  A rename
+uses `POST /profile/anonymous/name`; it never changes the account ID.  CrazyGames
+is the only external provider accepted by `GET /profile`, and its ID is
+verified from the platform token.  The legacy identity migration and all
+profile-link/conflict routes were removed; they are not compatibility paths.
 
 The canonical anonymous ID is a progress lookup key, not a secret or an
 authentication credential.  Likewise, `Join.database_account_id` is supplied
@@ -53,7 +54,7 @@ should be treated as authorization proof.
 
 ## Phase 1 — relay management control plane
 
-Deployment release: `0.1.2-1d2ea5072dca` (current release, deployed by `./sow p`).
+Deployment release: `0.1.2-a086aec733d3` (current release, deployed by `./sow p`).
 
 The IONOS server now signs every relay-management mutation with a dedicated
 `SOW_RELAY_CONTROL_SECRET`.  The signature covers the HTTP method, exact path,
@@ -198,7 +199,7 @@ rendering output and report only hashes, lengths, modes, or match counts.
 ## Phase 4 — admission control and handshake bounds
 
 The admission-control changes are included in current release
-`0.1.2-1d2ea5072dca` (deployed and verified by `./sow p`).
+`0.1.2-a086aec733d3` (deployed and verified by `./sow p`).
 
 The relay now applies admission before a socket is registered with Tokio or
 enters TLS/WebSocket processing. Each worker enforces a global cap of 32,768
@@ -234,19 +235,20 @@ remote release build completed successfully.
 2. **Auditability gate:** add read-only audit commands that emit counts and
    redacted status only, then re-run the entire checklist after each phase.
 
-## Runtime data observations — historical pre-cleanup baseline
+## Runtime data observations — archived pre-canonical-name baseline
 
 The following records describe the old implementation and are retained only as
-audit evidence.  They are not part of the current identity contract.
+audit evidence.  They are not part of the current identity contract.  Current
+anonymous records use `account_id` plus persisted `display_name`; do not infer
+the current schema from these historical counts.
 
-- IONOS Valkey currently contains 78 account records: 77 with provider
-  `local` (anonymous guest identities such as `guest_<hex>`) and one `test`
-  record created by the audit probe.  The code does not persist whether a
-  `local` identity came from a human or a backfill.
-- 33 of those accounts currently have nonzero `matches_played`; the 33
+- IONOS Valkey then contained 78 legacy account records: 77 anonymous local
+  identities and one `test` record created by the audit probe.  The old code
+  did not persist whether a local identity came from a human or a backfill.
+- 33 of those legacy accounts had nonzero `matches_played`; the 33
   accounts sum to 98 recorded matches (45 accounts have zero; the rest have
   values from 1 through 28).  `local` means the game supplied an anonymous
-  guest identity; it does not identify a human versus a backfill.
+  anonymous identity; it did not identify a human versus a backfill.
 - The retained database log shows 32 match registrations and 16 finalizations,
   while replay-write lines include duplicates.  It also contains 56
   `Match not registered` finalize errors.  Match IDs near 99,000 are IDs

@@ -202,8 +202,7 @@ pub struct UiState {
     pub cached_hovered_building_id: Option<u64>,
     pub cached_hovered_building_level: u8,
     pub cached_hovered_building_tooltip: String,
-    pub attack_troop_labels:
-        std::collections::HashMap<u64, AttackTroopLabel>,
+    pub attack_troop_labels: std::collections::HashMap<u64, AttackTroopLabel>,
     pub attack_troop_labels_last_update: std::collections::HashMap<u64, web_time::Instant>,
     pub cached_galleys: std::collections::HashMap<(String, u32), std::sync::Arc<egui::Galley>>,
     pub cached_prepared_names:
@@ -379,6 +378,9 @@ pub struct SowApp {
     pub progress: crate::player_progress::PlayerProgress,
     pub progress_account_id: Option<String>,
     pub progress_provider: String,
+    /// Anonymous rename entered before the first profile response arrives.
+    /// It is flushed once the canonical account ID is available.
+    pub pending_display_name: Option<String>,
     pub progress_match_recorded: bool,
     pub progress_stats_submitted: bool,
     pub progress_session_defeats: crate::player_progress::SessionDefeats,

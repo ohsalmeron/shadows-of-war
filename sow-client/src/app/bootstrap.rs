@@ -79,6 +79,9 @@ impl SowApp {
         let pending_engine_init_data: Option<EngineInitData> = None;
         let engine_init_queued_msg: Option<sow_core::protocol::ServerStartMessage> = None;
 
+        let stored_account_id = crate::anonymous_identity::load_account_id();
+        let has_stored_account = stored_account_id.is_some();
+
         let (connect_tx, connect_rx) = crossbeam_channel::unbounded();
 
         // Reconnect scheduling (idle drop / resume / failed handshake).
@@ -126,7 +129,8 @@ impl SowApp {
 
         #[cfg(target_arch = "wasm32")]
         {
-            let fallback = app.main_menu_state.player_name.clone();
+            let fallback = crate::anonymous_identity::load_display_name()
+                .unwrap_or_else(|| app.main_menu_state.player_name.clone());
             let identity = crate::store_portals::load_identity(&fallback);
             app.main_menu_state.player_name = identity.display_name;
             app.main_menu_state.name_locked = identity.name_locked;
@@ -363,8 +367,13 @@ impl SowApp {
             ime_bridge,
             gpu_init_failed: false,
             progress: crate::player_progress::PlayerProgress::default(),
-            progress_account_id: None,
-            progress_provider: String::from("local"),
+            progress_account_id: stored_account_id,
+            progress_provider: if has_stored_account {
+                String::from("anonymous")
+            } else {
+                String::from("local")
+            },
+            pending_display_name: None,
             progress_match_recorded: false,
             progress_stats_submitted: false,
             progress_session_defeats: crate::player_progress::SessionDefeats::default(),

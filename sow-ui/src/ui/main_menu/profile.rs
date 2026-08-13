@@ -197,6 +197,13 @@ pub fn draw_user_profile_header(
                                 edit_state.store(ui.ctx(), output_name.response.id);
                             }
                         }
+                        if output_name.response.lost_focus()
+                            || (output_name.response.has_focus()
+                                && ui.input(|input| input.key_pressed(egui::Key::Enter)))
+                        {
+                            *action =
+                                Some(crate::UiAction::SaveDisplayName(state.player_name.clone()));
+                        }
                     });
                 });
 

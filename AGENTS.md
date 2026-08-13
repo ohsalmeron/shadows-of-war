@@ -81,9 +81,11 @@ an unauthenticated HTTP `/internal/lobbies` request as a health probe.
 
 - Anonymous players have one canonical account ID issued by
   `POST /profile/anonymous`, stored client-side as `sow_account_id`.
-- A browser refresh or cache deletion may create a new anonymous account; this
-  is intentional. CrazyGames verified identities and persistent bot accounts
-  use `LinkedIdentity` records and are separate provider cases.
+- The anonymous account also owns a persisted `display_name`. Browser refresh
+  keeps both values; clearing site storage intentionally creates a new account.
+  Renames use `POST /profile/anonymous/name` and never change the account ID.
+  CrazyGames verified identities and persistent bot accounts use
+  `LinkedIdentity` records and are separate provider cases.
 - `Join.database_account_id` is client-declared roster/progress metadata. The
   server may use it to correlate a lobby reconnect or ban, but it is not proof
   of identity or relay authentication. The relay authenticates the direct game
@@ -101,8 +103,8 @@ an unauthenticated HTTP `/internal/lobbies` request as a health probe.
 - Do not remove active bot accounts, CrazyGames `LinkedIdentity`, canonical
   anonymous identity, or protocol compatibility solely because the names look
   similar; verify call sites first.
-- Search for stale hosts, old relay routing, guest-ID migrations, `/profile/link`,
-  and unauthenticated relay assumptions before changing code.
+- Search for stale hosts, old relay routing, removed profile-link routes, and
+  unauthenticated relay assumptions before changing code.
 
 ## Safety lessons
 

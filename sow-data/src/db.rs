@@ -8,8 +8,8 @@ const ANALYTICS_ACTIVE_PREFIX: &str = "sow:analytics:active:";
 const ANALYTICS_DAU_TTL_SECS: i64 = 35 * 24 * 3600;
 
 /// SET index of all bot account_ids — populated by `seed_bot_pool`, used for
-/// pool introspection and analytics. The (account_id → display_name) mapping
-/// is held by the caller (sow-server), not stored here.
+/// pool introspection and analytics. Account records carry a canonical
+/// display_name field; the bot allocator may choose its presentation name.
 const BOT_POOL_KEY: &str = "sow:bot:pool";
 
 const XP_WIN: u32 = 100;
@@ -20,6 +20,28 @@ const XP_PER_EMPIRE: u32 = 8;
 const XP_PER_TRIBE: u32 = 2;
 const XP_PER_ASSIST: u32 = 5;
 const ACCOUNT_ID_HEX_LEN: usize = 32;
+pub const DISPLAY_NAME_MAX_CHARS: usize = 16;
+
+fn default_display_name() -> String {
+    "ANON".to_string()
+}
+
+/// Normalize a player-facing name without making it an identity key.
+/// The account ID remains the stable identity; this value is presentation data.
+pub fn normalize_display_name(value: &str) -> Result<String, &'static str> {
+    let normalized: String = value
+        .chars()
+        .filter(|ch| !ch.is_control())
+        .collect::<String>()
+        .trim()
+        .chars()
+        .take(DISPLAY_NAME_MAX_CHARS)
+        .collect();
+    if normalized.is_empty() {
+        return Err("display_name cannot be empty");
+    }
+    Ok(normalized)
+}
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default)]
 pub struct SessionDefeats {
@@ -117,6 +139,9 @@ impl PlayerProfile {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PlayerAccount {
     pub id: String, // Stable canonical internal account ID
+    /// Mutable player-facing name. Never used as an identity key.
+    #[serde(default = "default_display_name")]
+    pub display_name: String,
     pub profile: PlayerProfile,
     pub linked_identities: Vec<LinkedIdentity>,
     /// Account kind. Missing kind fields in older records deserialize as Human.
@@ -183,9 +208,9 @@ impl PlayerDb {
                 && let Ok(json) = serde_json::to_string(account)
             {
                 let _ = table.insert(account.id.as_str(), json.as_bytes());
-                }
-                let _ = write_txn.commit();
             }
+            let _ = write_txn.commit();
+        }
     }
 
     /// Key format for looking up canonical account ID by platform identity
@@ -263,6 +288,7 @@ impl PlayerDb {
 
         let new_account = PlayerAccount {
             id: random_id.clone(),
+            display_name: default_display_name(),
             profile: PlayerProfile::default(),
             linked_identities: vec![identity.clone()],
             kind,
@@ -295,6 +321,7 @@ impl PlayerDb {
     pub async fn get_or_create_anonymous(
         &self,
         account_id: Option<&str>,
+        requested_display_name: Option<&str>,
     ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
         let mut con = self.get_connection().await?;
 
@@ -302,8 +329,22 @@ impl PlayerDb {
             if !is_valid_account_id(account_id) {
                 return Err("account_id must be exactly 32 hexadecimal characters".into());
             }
-            return Self::load_account(&mut con, account_id).await;
+            let mut account = Self::load_account(&mut con, account_id).await?;
+            if account.display_name.trim().is_empty() {
+                account.display_name = default_display_name();
+                let updated_json = serde_json::to_string(&account)?;
+                con.set::<_, _, ()>(Self::account_key(account_id), updated_json)
+                    .await?;
+                self.save_player_account_to_redb(&account);
+            }
+            return Ok(account);
         }
+
+        let display_name = requested_display_name
+            .map(normalize_display_name)
+            .transpose()
+            .map_err(|error| error.to_string())?
+            .unwrap_or_else(default_display_name);
 
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -314,6 +355,7 @@ impl PlayerDb {
             let random_id = format!("{:032x}", rand::random::<u128>());
             let account = PlayerAccount {
                 id: random_id.clone(),
+                display_name: display_name.clone(),
                 profile: PlayerProfile::default(),
                 linked_identities: Vec::new(),
                 kind: AccountKind::Human,
@@ -341,9 +383,8 @@ impl PlayerDb {
     /// the `sow:bot:pool` SET as an index of all bot account_ids for
     /// analytics / debugging.
     ///
-    /// The display name is NOT stored here — it is derived deterministically
-    /// by the caller (sow-server) from the external_id index, so the caller
-    /// keeps the (account_id, display_name) mapping in its local cache.
+    /// Bot display names remain server-managed; the account record still has a
+    /// canonical display_name field for schema consistency.
     pub async fn seed_bot_pool(
         &self,
         external_ids: Vec<String>,
@@ -372,6 +413,7 @@ impl PlayerDb {
             };
             let account = PlayerAccount {
                 id: random_id.clone(),
+                display_name: default_display_name(),
                 profile: PlayerProfile::default(),
                 linked_identities: vec![identity.clone()],
                 kind: AccountKind::Bot,
@@ -392,7 +434,10 @@ impl PlayerDb {
             account_ids.push(random_id);
         }
 
-        info!("[bot-pool] seed resolved {} bot accounts", account_ids.len());
+        info!(
+            "[bot-pool] seed resolved {} bot accounts",
+            account_ids.len()
+        );
         Ok(account_ids)
     }
 
@@ -421,6 +466,37 @@ impl PlayerDb {
         } else {
             Err("Account not found".into())
         }
+    }
+
+    /// Rename an anonymous account. The account ID is the bearer identity;
+    /// the mutable display name is never treated as an account key.
+    pub async fn update_anonymous_display_name(
+        &self,
+        account_id: &str,
+        display_name: &str,
+    ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
+        if !is_valid_account_id(account_id) {
+            return Err("account_id must be exactly 32 hexadecimal characters".into());
+        }
+        let display_name = normalize_display_name(display_name).map_err(str::to_string)?;
+        let mut con = self.get_connection().await?;
+        let acc_key = Self::account_key(account_id);
+        let Some(acc_json) = con.get::<_, Option<String>>(&acc_key).await? else {
+            return Err("Account not found".into());
+        };
+        let mut account: PlayerAccount = serde_json::from_str(&acc_json)?;
+        if !account.linked_identities.is_empty() {
+            return Err("account is not anonymous".into());
+        }
+        account.display_name = display_name;
+        account.updated_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let updated_json = serde_json::to_string(&account)?;
+        con.set::<_, _, ()>(&acc_key, updated_json).await?;
+        self.save_player_account_to_redb(&account);
+        Ok(account)
     }
 
     /// Record a match outcome with KDA stats from relay-logged client submissions.
@@ -608,7 +684,6 @@ impl PlayerDb {
             }
         }
     }
-
 }
 
 fn is_valid_account_id(value: &str) -> bool {
@@ -617,12 +692,32 @@ fn is_valid_account_id(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::is_valid_account_id;
+    use super::{
+        DISPLAY_NAME_MAX_CHARS, default_display_name, is_valid_account_id, normalize_display_name,
+    };
 
     #[test]
     fn validates_canonical_account_ids() {
         assert!(is_valid_account_id("0123456789abcdef0123456789abcdef"));
-        assert!(!is_valid_account_id("guest_0123456789abcdef0123456789abcdef"));
+        // The removed guest_<hex> format is intentionally rejected; only the
+        // 32-hex canonical account ID is accepted by the live API.
+        assert!(!is_valid_account_id(
+            "guest_0123456789abcdef0123456789abcdef"
+        ));
         assert!(!is_valid_account_id("not-an-account"));
+    }
+
+    #[test]
+    fn normalizes_display_names_without_using_them_as_ids() {
+        assert_eq!(normalize_display_name("  Alice  ").unwrap(), "Alice");
+        assert_eq!(
+            normalize_display_name(&"x".repeat(DISPLAY_NAME_MAX_CHARS + 4))
+                .unwrap()
+                .chars()
+                .count(),
+            DISPLAY_NAME_MAX_CHARS
+        );
+        assert!(normalize_display_name("\n\t").is_err());
+        assert_eq!(default_display_name(), "ANON");
     }
 }

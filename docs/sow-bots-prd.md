@@ -81,8 +81,9 @@ errors and cleanup while later phases are developed.
 
 ### 2.1 Historical limitations (superseded where noted)
 
-- Bot names were process-local `ANON###` values in this snapshot. The current
-  bot pool seeds persistent `AccountKind::Bot` accounts instead.
+- This historical snapshot used process-local `ANON###` bot names. The current
+  bot pool seeds persistent `AccountKind::Bot` accounts; this old naming
+  behavior is not a live contract.
 - `database_account_id` was `None` in this snapshot; this is no longer the
   current bot-account model.
 - The current coordinator exists only inside one worker process.

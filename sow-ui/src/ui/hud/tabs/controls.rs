@@ -387,7 +387,12 @@ pub(in crate::ui::hud) fn draw_hud_sidebar_row(
                     if let Some(dlg) = state.bottom_dialog.clone() {
                         let clicked = crate::widgets::paint_dialog_contents(
                             ui,
-                            (dlg.visual.as_ref(), dlg.name.as_deref(), &dlg.title, &dlg.body),
+                            (
+                                dlg.visual.as_ref(),
+                                dlg.name.as_deref(),
+                                &dlg.title,
+                                &dlg.body,
+                            ),
                             &dlg.buttons,
                             asset_loader,
                             compact,

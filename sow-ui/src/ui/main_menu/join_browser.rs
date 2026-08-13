@@ -89,7 +89,10 @@ pub fn draw_lobby_rows(
         .iter()
         .filter(|l| {
             l.kind == sow_core::protocol::LobbyKind::Custom
-                && matches!(filter, GameModeFilter::All | GameModeFilter::HumansVsNations)
+                && matches!(
+                    filter,
+                    GameModeFilter::All | GameModeFilter::HumansVsNations
+                )
                 && l.game_mode == "HumansVsNations"
         })
         .cloned()

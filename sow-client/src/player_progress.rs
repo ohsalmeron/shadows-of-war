@@ -46,7 +46,11 @@ pub enum DbEvent {
     ProfileLoaded {
         progress: PlayerProgress,
         account_id: String,
+        display_name: String,
         provider: String,
+    },
+    DisplayNameSaved {
+        display_name: String,
     },
     LoadFailed,
 }

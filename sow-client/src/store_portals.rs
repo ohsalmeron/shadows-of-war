@@ -157,8 +157,8 @@ pub fn is_lobby_modal_embed() -> bool {
 }
 
 pub fn should_fetch_cloud_profile() -> bool {
-    // Anonymous browsers also receive a canonical account ID.  Portal
-    // embedding is not a reason to silently fall back to local-only stats.
+    // Anonymous browsers receive a canonical account and display name.
+    // Portal embedding is not a reason to bypass the canonical profile flow.
     true
 }
 
@@ -171,9 +171,9 @@ pub fn load_portal_progress() -> Option<crate::player_progress::PlayerProgress> 
         }
         serde_json::from_str(&json).ok()
     }
-    // Native deliberately persists nothing yet: there's no cross-session login outside CrazyGames,
-    // so there's no trustworthy place to store "has this player done the tutorial?". Until native
-    // logins exist, native keeps no profile (and the boot route always shows the intro).
+    // Native has no portal progress bridge; its anonymous account storage is
+    // handled by anonymous_identity and the database profile remains the
+    // source of truth for online stats.
     #[cfg(not(target_arch = "wasm32"))]
     {
         None

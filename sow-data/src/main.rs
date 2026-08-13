@@ -1,5 +1,5 @@
-use sow_data::db::{PlayerDb, PlayerProfile};
 use sow_data::crazygames;
+use sow_data::db::{PlayerDb, PlayerProfile};
 
 use axum::{
     Json, Router,
@@ -33,6 +33,13 @@ struct ProfileQuery {
 #[derive(Deserialize)]
 struct AnonymousProfileRequest {
     account_id: Option<String>,
+    display_name: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct AnonymousDisplayNameRequest {
+    account_id: String,
+    display_name: String,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -163,6 +170,10 @@ async fn main() {
         .route("/healthz", get(handle_healthz))
         .route("/profile", get(handle_get_profile))
         .route("/profile/anonymous", post(handle_anonymous_profile))
+        .route(
+            "/profile/anonymous/name",
+            post(handle_anonymous_display_name),
+        )
         .route("/match/start", post(handle_match_start))
         .route("/internal/match-finalize", post(handle_match_finalize))
         .route("/internal/save", post(handle_direct_save))
@@ -190,21 +201,49 @@ async fn handle_healthz() -> impl IntoResponse {
     (StatusCode::OK, Json(serde_json::json!({ "ok": true })))
 }
 
-/// POST /profile/anonymous — load the canonical anonymous account ID or issue
-/// one for a new browser profile.
+/// POST /profile/anonymous — load the canonical anonymous account and issue
+/// one for a new browser profile. The initial display name is stored only when
+/// the account is created; later renames use the explicit name endpoint.
 async fn handle_anonymous_profile(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<AnonymousProfileRequest>,
 ) -> impl IntoResponse {
     match state
         .db
-        .get_or_create_anonymous(payload.account_id.as_deref())
+        .get_or_create_anonymous(
+            payload.account_id.as_deref(),
+            payload.display_name.as_deref(),
+        )
         .await
     {
         Ok(account) => (StatusCode::OK, Json(account)).into_response(),
         Err(error) => {
             let message = error.to_string();
             let status = if message.contains("account_id must") {
+                StatusCode::BAD_REQUEST
+            } else {
+                StatusCode::NOT_FOUND
+            };
+            (status, Json(ErrorResponse { error: message })).into_response()
+        }
+    }
+}
+
+/// POST /profile/anonymous/name — persist a rename for an anonymous account.
+async fn handle_anonymous_display_name(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<AnonymousDisplayNameRequest>,
+) -> impl IntoResponse {
+    match state
+        .db
+        .update_anonymous_display_name(&payload.account_id, &payload.display_name)
+        .await
+    {
+        Ok(account) => (StatusCode::OK, Json(account)).into_response(),
+        Err(error) => {
+            let message = error.to_string();
+            let status = if message.contains("account_id must") || message.contains("display_name")
+            {
                 StatusCode::BAD_REQUEST
             } else {
                 StatusCode::NOT_FOUND
@@ -497,11 +536,9 @@ async fn handle_bot_pool_seed(
     }
 
     match state.db.seed_bot_pool(payload.external_ids).await {
-        Ok(account_ids) => (
-            StatusCode::OK,
-            Json(BotPoolSeedResponse { account_ids }),
-        )
-            .into_response(),
+        Ok(account_ids) => {
+            (StatusCode::OK, Json(BotPoolSeedResponse { account_ids })).into_response()
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {

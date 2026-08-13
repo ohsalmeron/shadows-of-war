@@ -126,7 +126,11 @@ impl<'a> Widget for LobbyCard<'a> {
             ui.painter(),
             (top_rect.min, false),
             (mode_text, egui::FontId::proportional(14.0)),
-            (Color32::WHITE, sow_ui_kit::theme::palette::neon_cyan(), false),
+            (
+                Color32::WHITE,
+                sow_ui_kit::theme::palette::neon_cyan(),
+                false,
+            ),
         );
 
         let timer_text = if self.lobby.is_counting_down {
