@@ -175,8 +175,11 @@ pub(crate) fn render(
                 betrayal_flash = true;
             }
 
-            let vibrant_color =
-                crate::hud::nameplate::ensure_readable_nameplate_color(player.color);
+            let vibrant_color = crate::hud::nameplate::ensure_readable_nameplate_color(
+                player
+                    .team
+                    .map_or(player.color, sow_core::player::team_territory_rgb),
+            );
 
             let troops_str = sow_ui_kit::utils::format_number(player.troops);
             let font_id = egui::FontId::proportional(font_size);

@@ -50,6 +50,18 @@ pub fn premium_color(index: usize) -> [f32; 3] {
     PREMIUM_COLORS[index % 300].rgb
 }
 
+/// Planar team territory color (Red/Blue). Every teammate shares the exact
+/// same color so the whole team reads as one bloc on the map and in the HUD.
+/// This is the single canonical palette for team colors — leaderboard,
+/// map shader, nameplates and endgame all derive from here.
+#[inline]
+pub fn team_territory_rgb(team: crate::protocol::Team) -> [f32; 3] {
+    match team {
+        crate::protocol::Team::Red => [1.0, 0.2, 0.2],
+        crate::protocol::Team::Blue => [0.2, 0.5, 1.0],
+    }
+}
+
 /// RGB used for human-owned territory in the sow-render map shader (`map.wgsl`).
 /// Matches WGSL `owner_id <= 16` branch so UI (nameplates) matches the map tint.
 #[inline]

@@ -4,14 +4,14 @@ use crate::app::SowApp;
 impl SowApp {
     fn show_observer_notice(&mut self, x: f64, y: f64) {
         let messages = [
-            "Spectators don't click! 🍿",
-            "Just watch the show! 🎬",
-            "Popcorn duty, no buttons! 🍿",
-            "No controls in the front row! 🎟️",
-            "Sit back, it's live! 📺",
-            "You watch, they click! 👀",
-            "Hands off, you're spectating! 🙌",
-            "This seat is for watching! 💺",
+            "Enjoying the view? 🍿",
+            "Best seat in the house! 🏟️",
+            "Wave at the players! 👋",
+            "The crowd goes wild! 🎉",
+            "Grab some popcorn! 🍿",
+            "Great game to watch! ⭐",
+            "Cheer them on! 📣",
+            "Spectating in style! 😎",
         ];
         let click_seed = (x + y) as usize;
         let msg = messages[click_seed % messages.len()];
@@ -32,7 +32,6 @@ impl SowApp {
 
     pub(crate) fn try_begin_hold_attack(&mut self, x: f64, y: f64, is_touch: bool) {
         if self.ui.observing {
-            self.show_observer_notice(x, y);
             return;
         }
         if self.ui.app.hud_state.selected_nuke_kind.is_some() {
@@ -194,6 +193,10 @@ impl SowApp {
     }
 
     pub(crate) fn open_context_menu_at(&mut self, x: f64, y: f64) {
+        if self.ui.observing {
+            self.show_observer_notice(x, y);
+            return;
+        }
         if let Some((col, row)) = self.mouse_to_tile(x, y) {
             let idx = (row * self.sim.map_w as i32 + col) as u32;
 
@@ -211,6 +214,10 @@ impl SowApp {
     pub(crate) fn handle_map_click(&mut self, x: f64, y: f64) {
         if self.ui.observing {
             self.show_observer_notice(x, y);
+            self.ui.app.hud_state.selected_building_kind = None;
+            self.ui.app.hud_state.selected_nuke_kind = None;
+            self.input.hold_build_active = false;
+            self.input.hold_build_accum = 0.0;
             return;
         }
         let phase = self

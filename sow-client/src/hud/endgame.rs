@@ -132,7 +132,30 @@ impl SowApp {
             )
         };
 
-        let border_color = if is_victory {
+        // Team victories frame the panel in the team's color (when the player's
+        // team won). Defeats keep the danger red.
+        let victory_team_color: Option<[f32; 3]> =
+            self.sim.current_snapshot.as_ref().and_then(|snap| {
+                let my_team = snap
+                    .players
+                    .iter()
+                    .find(|p| p.id == my_id)
+                    .and_then(|p| p.team);
+                if snap.winning_team.is_some_and(|wt| my_team == Some(wt)) {
+                    my_team.map(sow_core::player::team_territory_rgb)
+                } else {
+                    None
+                }
+            });
+
+        let border_color = if let Some(rgb) = victory_team_color {
+            Color32::from_rgb(
+                (rgb[0] * 255.0).round() as u8,
+                (rgb[1] * 255.0).round() as u8,
+                (rgb[2] * 255.0).round() as u8,
+            )
+            .linear_multiply(alpha)
+        } else if is_victory {
             sow_ui_kit::theme::accent_ranked_gold().linear_multiply(alpha)
         } else {
             sow_ui_kit::theme::palette::danger().linear_multiply(alpha)
@@ -164,7 +187,14 @@ impl SowApp {
                 ui.set_max_width(actual_width - win_margin * 2.0);
 
                 ui.vertical_centered(|ui| {
-                    let title_color = if is_victory {
+                    let title_color = if let Some(rgb) = victory_team_color {
+                        Color32::from_rgb(
+                            (rgb[0] * 255.0).round() as u8,
+                            (rgb[1] * 255.0).round() as u8,
+                            (rgb[2] * 255.0).round() as u8,
+                        )
+                        .linear_multiply(alpha)
+                    } else if is_victory {
                         sow_ui_kit::theme::accent_ranked_gold().linear_multiply(alpha)
                     } else {
                         sow_ui_kit::theme::palette::danger().linear_multiply(alpha)

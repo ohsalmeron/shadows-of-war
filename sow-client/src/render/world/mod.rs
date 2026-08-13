@@ -153,7 +153,11 @@ impl SowApp {
                 }
 
                 let center = egui::pos2(screen_x, screen_y);
-                let pc = nameplate_matte_player_rgb(player.color);
+                let pc = nameplate_matte_player_rgb(
+                    player
+                        .team
+                        .map_or(player.color, sow_core::player::team_territory_rgb),
+                );
 
                 // `lod_presence` uses zoom (when zoomed out, dots only). `sizing_presence`
                 // does not, so nameplate font sizes stay stable and egui's glyph atlas is not
@@ -238,7 +242,9 @@ impl SowApp {
             }
             for p in &snap.players {
                 let id = p.id as usize;
-                let rgb = p.color;
+                let rgb = p
+                    .team
+                    .map_or(p.color, sow_core::player::team_territory_rgb);
                 if id < self.ui.cached_player_colors.len() {
                     self.ui.cached_player_colors[id] = egui::Color32::from_rgb(
                         (rgb[0] * 255.0) as u8,

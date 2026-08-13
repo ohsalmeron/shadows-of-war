@@ -75,10 +75,7 @@ pub(super) fn team_label(team: Team) -> &'static str {
 }
 
 pub(super) fn team_color(team: Team) -> [f32; 3] {
-    match team {
-        Team::Red => [1.0, 0.2, 0.2],
-        Team::Blue => [0.2, 0.5, 1.0],
-    }
+    sow_core::player::team_territory_rgb(team)
 }
 
 pub(super) fn name_matches_query(name: &str, query: &str) -> bool {
@@ -168,7 +165,9 @@ pub(super) fn paint_player_icon(
     use_portrait: bool,
     metrics: &LeaderboardMetrics,
 ) {
-    let icon_rgb = if display.player_type == PlayerType::Nation {
+    let icon_rgb = if let Some(team) = display.team {
+        sow_core::player::team_territory_rgb(team)
+    } else if display.player_type == PlayerType::Nation {
         display.color
     } else {
         display.leader.filler_rgb()

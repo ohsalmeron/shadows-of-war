@@ -111,7 +111,9 @@ pub(in crate::ui::hud) fn draw_alliance_inbox(
                                     let is_renewal = my_snapshot
                                         .map(|me| me.alliances.contains(&requester_id))
                                         .unwrap_or(false);
-                                    let rgb = if requester.player_type == sow_core::player::PlayerType::Human {
+                                    let rgb = if let Some(team) = requester.team {
+                                        sow_core::player::team_territory_rgb(team)
+                                    } else if requester.player_type == sow_core::player::PlayerType::Human {
                                         sow_core::player::human_shader_territory_rgb(requester.id)
                                     } else {
                                         requester.color
@@ -214,7 +216,9 @@ pub(in crate::ui::hud) fn draw_alliance_inbox(
                                 for req in &resource_requests {
                                     let requester_id = req.requester;
                                     let Some(requester) = state.players.iter().find(|p| p.id == requester_id) else { continue };
-                                    let rgb = if requester.player_type == sow_core::player::PlayerType::Human {
+                                    let rgb = if let Some(team) = requester.team {
+                                        sow_core::player::team_territory_rgb(team)
+                                    } else if requester.player_type == sow_core::player::PlayerType::Human {
                                         sow_core::player::human_shader_territory_rgb(requester.id)
                                     } else {
                                         requester.color

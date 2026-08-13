@@ -18,10 +18,13 @@ pub(in crate::ui::hud) fn paint_betrayal_ally_portrait(
     let radius = size * 0.5;
     let inner_r = radius - 2.0;
 
+    let rgb = ally
+        .team
+        .map_or(ally.color, sow_core::player::team_territory_rgb);
     let vibrant = Color32::from_rgb(
-        (ally.color[0] * 255.0).round() as u8,
-        (ally.color[1] * 255.0).round() as u8,
-        (ally.color[2] * 255.0).round() as u8,
+        (rgb[0] * 255.0).round() as u8,
+        (rgb[1] * 255.0).round() as u8,
+        (rgb[2] * 255.0).round() as u8,
     )
     .linear_multiply(alpha);
 
@@ -49,6 +52,12 @@ pub(in crate::ui::hud) fn paint_betrayal_ally_portrait(
             }
             ui.painter()
                 .circle_stroke(center, radius, Stroke::new(2.0_f32, leader_fill));
+            if ally.team.is_some() {
+                // Team games: the frame carries the team color (the portrait
+                // texture stays the leader's identity).
+                ui.painter()
+                    .circle_stroke(center, radius, Stroke::new(2.0_f32, vibrant));
+            }
         }
         PlayerType::Bot => {
             ui.painter().circle_filled(center, inner_r, vibrant);

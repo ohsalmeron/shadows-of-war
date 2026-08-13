@@ -232,7 +232,10 @@ impl MoverScene {
         let rgb = players
             .iter()
             .find(|p| p.id == fleet.owner_id)
-            .map(|p| p.color)
+            .map(|p| {
+                p.team
+                    .map_or(p.color, sow_core::player::team_territory_rgb)
+            })
             .unwrap_or([0.5, 0.5, 0.5]);
         let color = [rgb[0], rgb[1], rgb[2], 1.0];
         let trail_color = [

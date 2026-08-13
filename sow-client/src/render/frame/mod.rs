@@ -232,8 +232,12 @@ impl SowApp {
                     if let Some(snap) = &self.sim.current_snapshot {
                         for p in &snap.players {
                             if (p.id as usize) < 256 {
-                                player_colors[p.id as usize] =
-                                    [p.color[0], p.color[1], p.color[2], 1.0];
+                                // Team players render with the planar team color;
+                                // everyone else keeps their personal color.
+                                let rgb = p
+                                    .team
+                                    .map_or(p.color, sow_core::player::team_territory_rgb);
+                                player_colors[p.id as usize] = [rgb[0], rgb[1], rgb[2], 1.0];
                             }
                         }
                     }

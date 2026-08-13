@@ -5,7 +5,7 @@ use sow_data::leader_for_civilization;
 
 mod colors;
 
-pub use colors::{bot_territory_color, human_shader_territory_rgb, premium_color};
+pub use colors::{bot_territory_color, human_shader_territory_rgb, premium_color, team_territory_rgb};
 pub use sow_data::{Civilization, Leader, NamedColor, PREMIUM_COLORS};
 
 use wyrand::WyRand;
