@@ -30,19 +30,17 @@ or least-privilege service isolation.
 
 ## Critical-risk backlog
 
-1. The current database and relay-control secrets must be rotated after the
-   audit incident recorded below.
-2. Public orchestrator and relay connections have no verified per-IP admission
+1. Public orchestrator and relay connections have no verified per-IP admission
    or handshake rate limit.
-3. Non-CrazyGames profile requests accept any non-empty `external_id`; local
+2. Non-CrazyGames profile requests accept any non-empty `external_id`; local
    guest identities are anonymous and are not proof of account ownership.
-4. Azure SSH/22 is currently allowed from any source by the NSG, and the VNet
+3. Azure SSH/22 is currently allowed from any source by the NSG, and the VNet
    has no attached Azure DDoS Protection plan.  Game ports are intentionally
    public and require a separate flood-mitigation decision.
 
 ## Phase 1 — relay management control plane
 
-Deployment release: `0.1.2-ba12cc29d9e0` (deployed by `./sow p`).
+Deployment release: `0.1.2-6aeee128e836` (deployed by `./sow p`).
 
 The IONOS server now signs every relay-management mutation with a dedicated
 `SOW_RELAY_CONTROL_SECRET`.  The signature covers the HTTP method, exact path,
@@ -178,29 +176,27 @@ On 2026-08-13, an independent privileged diagnostic command printed the active
 `SOW_DB_SECRET` and `SOW_RELAY_CONTROL_SECRET` into the audit tool output.  The
 values are intentionally not recorded here.  The command was not part of the
 application or deployment pipeline, and no secret value was committed.  The
-credentials must nevertheless be treated as exposed and rotated through
-`./sow p` before public launch.  Future diagnostics must redact values before
+credentials were treated as exposed and rotated through `./sow p --rotate-secrets`
+in release `0.1.2-6aeee128e836`.  Post-rotation checks matched the local and
+remote credential hashes without rendering values; the retired development
+credential returned HTTP 401.  Future diagnostics must redact values before
 rendering output and report only hashes, lengths, modes, or match counts.
 
 ## Remaining security plan
 
-1. **Credential rotation gate:** regenerate both active secrets in the ignored
-   deployment environment, run `./sow p`, and independently verify old-value
-   rejection, new-value acceptance, matching service configuration hashes, and
-   absence of secret values in command output/logs.
-2. **Admission-control phase:** inspect the actual F-Stack accept path and the
+1. **Admission-control phase:** inspect the actual F-Stack accept path and the
    IONOS nginx/WebSocket path, then add bounded per-IP connection and handshake
    controls with metrics.  Prove that legitimate CrazyGames and guest traffic
    still reaches the relay; do not guess at limits.
-3. **Identity phase:** define which providers may create anonymous accounts,
+2. **Identity phase:** define which providers may create anonymous accounts,
    require provider verification where an identity is claimed, and test
    profile/link/conflict routes for takeover and replay.  Preserve anonymous
    play only if its limits and ownership semantics are explicit.
-4. **Infrastructure exposure phase:** encode an approved SSH source restriction
+3. **Infrastructure exposure phase:** encode an approved SSH source restriction
    in the reproducible Azure deployment path, verify recovery access first, and
    separately decide whether Azure DDoS Protection or another mitigation is
    justified for the public game-port range.
-5. **Auditability gate:** add read-only audit commands that emit counts and
+4. **Auditability gate:** add read-only audit commands that emit counts and
    redacted status only, then re-run the entire checklist after each phase.
 
 ## Runtime data observations — pre-cleanup baseline

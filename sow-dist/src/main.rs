@@ -698,15 +698,81 @@ fn ensure_generated_secret(root: &Path, key: &str) -> Result<()> {
     Ok(())
 }
 
+/// Rotate both deployment credentials in the ignored local environment.
+/// Values never enter command-line arguments or stdout; the caller must run
+/// the normal production pipeline immediately afterwards.
+fn rotate_deployment_secrets(root: &Path) -> Result<()> {
+    let path = root.join("sow-dist/.env");
+    let input = fs::read_to_string(&path)
+        .with_context(|| format!("read {} for secret rotation", path.display()))?;
+    let mut output = String::with_capacity(input.len() + 160);
+    let mut replaced = [false; 2];
+    for line in input.lines() {
+        let key = line.split_once('=').map(|(key, _)| key.trim());
+        let slot = match key {
+            Some("SOW_DB_SECRET") => Some(0),
+            Some("SOW_RELAY_CONTROL_SECRET") => Some(1),
+            _ => None,
+        };
+        if let Some(slot) = slot {
+            let mut bytes = [0u8; 32];
+            rand::rngs::OsRng.fill_bytes(&mut bytes);
+            let name = if slot == 0 {
+                "SOW_DB_SECRET"
+            } else {
+                "SOW_RELAY_CONTROL_SECRET"
+            };
+            output.push_str(name);
+            output.push('=');
+            output.push_str(&hex::encode(bytes));
+            output.push('\n');
+            replaced[slot] = true;
+        } else {
+            output.push_str(line);
+            output.push('\n');
+        }
+    }
+    for (slot, present) in replaced.iter().enumerate() {
+        if !present {
+            let mut bytes = [0u8; 32];
+            rand::rngs::OsRng.fill_bytes(&mut bytes);
+            let name = if slot == 0 {
+                "SOW_DB_SECRET"
+            } else {
+                "SOW_RELAY_CONTROL_SECRET"
+            };
+            output.push_str(name);
+            output.push('=');
+            output.push_str(&hex::encode(bytes));
+            output.push('\n');
+        }
+    }
+    let parent = path
+        .parent()
+        .context("secret environment has no parent directory")?;
+    let mut temp = tempfile::NamedTempFile::new_in(parent)
+        .context("create temporary secret environment")?;
+    temp.write_all(output.as_bytes())?;
+    temp.as_file().sync_all()?;
+    fs::set_permissions(temp.path(), fs::Permissions::from_mode(0o600))?;
+    temp.persist(&path)
+        .map_err(|e| anyhow::anyhow!("persist rotated secret environment: {}", e.error))?;
+    println!("✅ rotated deployment secrets locally (values redacted)");
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .canonicalize()?;
+    let args: Vec<String> = env::args().skip(1).collect();
+    if args.iter().any(|arg| arg == "--rotate-secrets") {
+        rotate_deployment_secrets(&root)?;
+    }
     load_dotenv(&root.join("sow-dist/.env"));
     ensure_generated_secret(&root, "SOW_RELAY_CONTROL_SECRET")?;
 
     let paths = Paths::discover()?;
-    let args: Vec<String> = env::args().skip(1).collect();
     let mut cmd = String::new();
     let mut port = 8787u16;
     let mut build_only = false;
@@ -746,6 +812,7 @@ fn main() -> Result<()> {
                 }
             }
             "--allow-empty" => _allow_empty_lobbies = true,
+            "--rotate-secrets" => {}
             _ if cmd.is_empty() => cmd = args[i].clone(),
             _ => {}
         }
