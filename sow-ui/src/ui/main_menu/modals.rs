@@ -1,5 +1,4 @@
 use super::{LobbyNotice, MainMenuState};
-use crate::UiAction;
 use egui::Color32;
 
 fn draw_indicator_toast(
@@ -105,7 +104,40 @@ pub(crate) fn draw_lobby_notice(
             &strings.notice_banned_body,
             sow_ui_kit::theme::palette::danger(),
         ),
+        LobbyNotice::ConnectionLost => (
+            &strings.notice_connection_lost_title,
+            &strings.notice_connection_lost_body,
+            sow_ui_kit::theme::palette::text_muted(),
+        ),
     };
+
+    if body.is_empty() {
+        // Non-intrusive floating toast: no blocking backdrop, no dismiss button needed
+        let pad_y = if compact { 56.0 } else { 24.0 };
+        egui::Area::new(egui::Id::new("connection_lost_toast"))
+            .order(egui::Order::Tooltip)
+            .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, pad_y))
+            .show(root_ui.ctx(), |ui| {
+                egui::Frame::NONE
+                    .fill(Color32::from_black_alpha(180))
+                    .stroke(egui::Stroke::new(
+                        1.0_f32,
+                        sow_ui_kit::theme::palette::field_border(),
+                    ))
+                    .corner_radius(8)
+                    .inner_margin(egui::Margin::symmetric(16, 10))
+                    .show(ui, |ui| {
+                        crate::widgets::outlined_emoji_label(
+                            ui,
+                            title,
+                            egui::FontId::proportional(if compact { 13.0 } else { 14.5 }),
+                            accent,
+                        );
+                    });
+            });
+        return false;
+    }
+
     let mut dismissed = false;
 
     egui::Area::new(egui::Id::new("lobby_notice_backdrop"))
@@ -175,128 +207,4 @@ pub(crate) fn draw_lobby_notice(
         });
 
     dismissed
-}
-
-pub(crate) fn draw_connection_error_modal(
-    root_ui: &mut egui::Ui,
-    state: &mut MainMenuState,
-    action: &mut Option<UiAction>,
-    err_msg: &str,
-    strings: &sow_i18n::MainMenuStrings,
-    compact: bool,
-) {
-    let mut clear_error = false;
-    let mut retry = false;
-
-    egui::Area::new(egui::Id::new("error_modal_backdrop"))
-        .order(egui::Order::Background)
-        .fixed_pos(egui::pos2(0.0, 0.0))
-        .show(root_ui.ctx(), |ui| {
-            let screen_rect = ui.ctx().content_rect();
-            ui.painter()
-                .rect_filled(screen_rect, 0.0, sow_ui_kit::theme::palette::backdrop());
-        });
-
-    let screen_rect = root_ui.ctx().content_rect();
-    let is_mobile = compact;
-    let modal_w = if is_mobile {
-        screen_rect.width() - 32.0
-    } else {
-        420.0
-    };
-
-    egui::Window::new(&strings.connection_error_title)
-        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-        .collapsible(false)
-        .resizable(false)
-        .title_bar(false)
-        .fixed_size(egui::vec2(
-            modal_w,
-            280.0_f32.min(screen_rect.height() - 32.0).max(200.0),
-        ))
-        .frame(
-            egui::Frame::new()
-                .fill(sow_ui_kit::theme::palette::surface())
-                .stroke(egui::Stroke::new(
-                    1.5_f32,
-                    sow_ui_kit::theme::palette::danger_border(),
-                ))
-                .corner_radius(egui::CornerRadius::same(16))
-                .inner_margin(24.0)
-                .shadow(egui::Shadow {
-                    blur: 32,
-                    spread: 0,
-                    color: sow_ui_kit::theme::palette::danger().linear_multiply(0.2),
-                    offset: [0, 8],
-                }),
-        )
-        .show(root_ui.ctx(), |ui| {
-            ui.set_width(modal_w - 48.0);
-            ui.vertical_centered(|ui| {
-                ui.add_space(4.0);
-
-                crate::widgets::outlined_emoji_label(
-                    ui,
-                    "⚠️",
-                    egui::FontId::proportional(36.0),
-                    sow_ui_kit::theme::palette::danger(),
-                );
-
-                ui.add_space(12.0);
-
-                sow_ui_kit::theme::outlined_label(
-                    ui,
-                    &strings.connection_error_header,
-                    egui::FontId::proportional(22.0),
-                    sow_ui_kit::theme::palette::danger(),
-                );
-
-                ui.add_space(16.0);
-
-                ui.label(
-                    egui::RichText::new(err_msg)
-                        .size(14.0)
-                        .color(sow_ui_kit::theme::palette::text_muted()),
-                );
-
-                ui.add_space(8.0);
-                ui.label(
-                    egui::RichText::new(&strings.connection_error_hint)
-                        .size(12.0)
-                        .color(sow_ui_kit::theme::palette::text_muted()),
-                );
-
-                ui.add_space(24.0);
-
-                ui.horizontal(|ui| {
-                    let btn_w = if is_mobile {
-                        (ui.available_width() - 12.0) / 2.0
-                    } else {
-                        140.0
-                    };
-                    let retry_btn = crate::widgets::ThemeButton::new(&strings.connection_retry)
-                        .style(crate::widgets::ThemeButtonStyle::Primary)
-                        .min_size(egui::vec2(btn_w, 40.0));
-                    if ui.add(retry_btn).clicked() {
-                        retry = true;
-                    }
-                    ui.add_space(12.0);
-                    let dismiss_btn = crate::widgets::ThemeButton::new(&strings.dismiss)
-                        .style(crate::widgets::ThemeButtonStyle::Danger)
-                        .min_size(egui::vec2(btn_w, 40.0));
-                    if ui.add(dismiss_btn).clicked() {
-                        clear_error = true;
-                    }
-                });
-
-                ui.add_space(4.0);
-            });
-        });
-
-    if retry {
-        state.error_message = None;
-        *action = Some(UiAction::RetryConnection);
-    } else if clear_error {
-        state.error_message = None;
-    }
 }

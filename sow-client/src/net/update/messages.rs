@@ -338,8 +338,9 @@ impl SowApp {
                                     Some(sow_ui::LobbyNotice::Banned);
                                 self.ui.app.main_menu_state.notice_at = None;
                             } else {
-                                self.ui.app.main_menu_state.error_message =
-                                    Some(fail.reason.clone());
+                                self.ui.app.main_menu_state.notice =
+                                    Some(sow_ui::LobbyNotice::ConnectionLost);
+                                self.ui.app.main_menu_state.notice_at = None;
                             }
                         }
                         ServerMessage::JoinAck(ack) => {

@@ -28,6 +28,8 @@ pub enum LobbyNotice {
     Kicked,
     /// The host banned this player from that lobby.
     Banned,
+    /// Connection to server or relay was lost / unavailable.
+    ConnectionLost,
 }
 
 pub struct MainMenuState {
@@ -641,16 +643,6 @@ pub fn draw(
         state.show_leader_picker = false;
     }
 
-    if let Some(err_msg) = state.error_message.clone() {
-        modals::draw_connection_error_modal(
-            root_ui,
-            state,
-            &mut action,
-            &err_msg,
-            strings,
-            compact,
-        );
-    }
 
     if let Some(notice) = state.notice {
         let now = root_ui.input(|i| i.time);

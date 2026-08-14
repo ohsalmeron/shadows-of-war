@@ -121,10 +121,9 @@ impl SowApp {
                             log::error!("Relay connection failed after 10 attempts");
                             self.net.relay_connect_start = None;
                             self.net.relay_retry_count = 0;
-                            self.ui.app.main_menu_state.error_message = Some(
-                                "Failed to connect to the game server after 10 attempts."
-                                    .to_string(),
-                            );
+                            self.ui.app.main_menu_state.notice =
+                                Some(sow_ui::LobbyNotice::ConnectionLost);
+                            self.ui.app.main_menu_state.notice_at = None;
                             self.begin_exit_to_main_menu(true);
                         } else {
                             log::warn!(
@@ -156,9 +155,9 @@ impl SowApp {
                     log::error!("Relay connection/reconnection timed out after 15 seconds total");
                     self.net.relay_connect_start = None;
                     self.net.relay_retry_count = 0;
-                    self.ui.app.main_menu_state.error_message = Some(
-                        "Failed to connect to the game server. Connection timed out.".to_string(),
-                    );
+                    self.ui.app.main_menu_state.notice =
+                        Some(sow_ui::LobbyNotice::ConnectionLost);
+                    self.ui.app.main_menu_state.notice_at = None;
                     self.begin_exit_to_main_menu(true);
                 }
             }
@@ -258,8 +257,9 @@ impl SowApp {
                     log::warn!(
                         "[CLIENT NET] Connection lost during match — returning to main menu"
                     );
-                    self.ui.app.main_menu_state.error_message =
-                        Some("Connection to the matchmaking server was lost.".to_string());
+                    self.ui.app.main_menu_state.notice =
+                        Some(sow_ui::LobbyNotice::ConnectionLost);
+                    self.ui.app.main_menu_state.notice_at = None;
                     self.begin_exit_to_main_menu(true);
                 }
             } else if self.ui.app.phase != ClientPhase::Splash {

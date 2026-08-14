@@ -23,6 +23,7 @@ impl SowApp {
                 }
                 UiAction::RetryConnection => {
                     self.ui.app.main_menu_state.error_message = None;
+                    self.ui.app.main_menu_state.notice = None;
                     self.ui.app.main_menu_state.is_connecting = true;
                     let url = self.ui.app.main_menu_state.server_address.clone();
                     #[cfg(target_arch = "wasm32")]

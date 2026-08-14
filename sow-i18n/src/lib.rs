@@ -111,6 +111,8 @@ pub struct MainMenuStrings {
     pub notice_kicked_body: String,
     pub notice_banned_title: String,
     pub notice_banned_body: String,
+    pub notice_connection_lost_title: String,
+    pub notice_connection_lost_body: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
