@@ -240,19 +240,13 @@ fn draw_lobby_row(
         let painter = ui.painter();
         let card_rect = response.rect;
         let lock_pos = egui::pos2(card_rect.min.x + 8.0, card_rect.max.y - 38.0);
-        let lock_galley = painter.layout_no_wrap(
-            "🔒".to_string(),
-            egui::FontId::proportional(16.0),
-            Color32::WHITE,
-        );
-        let lock_size = lock_galley.size() + egui::vec2(8.0, 4.0);
-        let lock_rect = egui::Rect::from_min_size(lock_pos, lock_size);
+        let lock_rect = egui::Rect::from_min_size(lock_pos, egui::vec2(28.0, 24.0));
         painter.rect_filled(lock_rect, 4.0, Color32::from_black_alpha(180));
-        painter.galley(
-            egui::pos2(lock_pos.x + 4.0, lock_pos.y + 2.0),
-            lock_galley,
-            Color32::WHITE,
-        );
+        let icon_rect = egui::Rect::from_center_size(lock_rect.center(), egui::vec2(16.0, 16.0));
+        if !crate::widgets::try_paint_emoji(painter, "🔒", icon_rect, Color32::WHITE) {
+            let font_id = egui::FontId::proportional(14.0);
+            painter.text(lock_rect.center(), egui::Align2::CENTER_CENTER, "🔒", font_id, Color32::WHITE); // emoji-ok: fallback when try_paint_emoji misses
+        }
     }
 
     // Host name badge (top center area, below mode badge)

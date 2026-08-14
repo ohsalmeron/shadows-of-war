@@ -325,14 +325,12 @@ fn draw_leader_picker_back_button(
     _ctx: &egui::Context,
     rect: Rect,
 ) -> egui::Response {
-    let response = ui.put(
-        rect,
-        egui::Button::new("◀")
-            .min_size(rect.size())
-            .corner_radius(egui::CornerRadius::same(6))
-            .fill(crate::ui::theme::palette::button_inactive()),
-    );
-    response
+    let btn = crate::widgets::ThemeButton::new("◀")
+        .style(crate::widgets::ThemeButtonStyle::Tertiary)
+        .custom_fill(crate::ui::theme::palette::button_inactive())
+        .min_size(rect.size())
+        .text_size(16.0);
+    ui.put(rect, btn)
 }
 
 fn draw_leader_picker_top_column(

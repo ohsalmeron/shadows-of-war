@@ -235,9 +235,9 @@ pub(crate) fn draw_connection_error_modal(
             ui.vertical_centered(|ui| {
                 ui.add_space(4.0);
 
-                sow_ui_kit::theme::outlined_label(
+                crate::widgets::outlined_emoji_label(
                     ui,
-                    "⚠",
+                    "⚠️",
                     egui::FontId::proportional(36.0),
                     sow_ui_kit::theme::palette::danger(),
                 );

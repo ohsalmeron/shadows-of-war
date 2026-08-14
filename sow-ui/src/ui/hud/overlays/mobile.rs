@@ -1,4 +1,4 @@
-use egui::{Color32, pos2};
+use egui::Color32;
 use sow_i18n::Language;
 
 use super::super::state::HudState;
@@ -10,7 +10,6 @@ pub(in crate::ui::hud) fn draw_mobile_selection_bar(
     lang: Language,
 ) {
     if let Some(tile_info) = &state.selected_tile {
-        use egui::RichText;
         use sow_ui_kit::theme::palette;
         let strings = &sow_i18n::get(lang).hud;
 
@@ -39,14 +38,14 @@ pub(in crate::ui::hud) fn draw_mobile_selection_bar(
                 } else {
                     &strings.status_neutral
                 };
-                ui.label(
-                    RichText::new(format!(
+                crate::widgets::outlined_emoji_label(
+                    ui,
+                    &format!(
                         "{}{}-{}",
                         strings.status_tile_prefix, tile_info.tile_idx, status_text
-                    ))
-                    .strong()
-                    .size(11.0)
-                    .color(text_color),
+                    ),
+                    egui::FontId::proportional(11.0),
+                    text_color,
                 );
             });
 
@@ -139,17 +138,14 @@ pub(in crate::ui::hud) fn draw_mobile_selection_bar(
                     egui::StrokeKind::Inside,
                 );
 
-                let font_id = egui::FontId::proportional(13.0);
-                let galley = ui.painter().layout_no_wrap(
-                    left_label.to_owned(),
-                    font_id.clone(),
+                crate::widgets::paint_emoji_text_at(
+                    ui.painter(),
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    left_label,
+                    egui::FontId::proportional(13.0),
                     Color32::WHITE,
-                );
-                let start_x = rect.center().x - galley.rect.width() / 2.0;
-                ui.painter().galley(
-                    pos2(start_x, rect.center().y - galley.rect.height() / 2.0),
-                    galley,
-                    Color32::WHITE,
+                    true,
                 );
 
                 if resp.clicked() && !tile_info.is_own_territory {

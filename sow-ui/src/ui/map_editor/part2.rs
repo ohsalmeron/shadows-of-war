@@ -32,7 +32,12 @@ pub fn draw_map_editor(
 
             // Row 1: title + exit
             ui.horizontal(|ui| {
-                ui.heading(RichText::new(&strings.title).size(18.0));
+                crate::widgets::outlined_emoji_label(
+                    ui,
+                    &strings.title,
+                    egui::FontId::proportional(18.0),
+                    Color32::WHITE,
+                );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add_enabled_ui(!busy, |ui| {
                         let exit_resp = toolbar_button(

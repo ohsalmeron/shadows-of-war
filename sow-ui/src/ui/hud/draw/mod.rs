@@ -178,11 +178,11 @@ fn draw_hud_notifications(ui: &mut egui::Ui, state: &mut HudState) {
                         .corner_radius(8)
                         .inner_margin(egui::Margin::symmetric(14, 8))
                         .show(ui, |ui| {
-                            ui.label(
-                                egui::RichText::new(&notice.message)
-                                    .color(text_color)
-                                    .size(if compact { 13.0 } else { 14.5 })
-                                    .strong(),
+                            crate::widgets::outlined_emoji_label(
+                                ui,
+                                &notice.message,
+                                egui::FontId::proportional(if compact { 13.0 } else { 14.5 }),
+                                text_color,
                             );
                         });
                 }

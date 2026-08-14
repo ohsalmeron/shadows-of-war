@@ -132,8 +132,8 @@ impl SowApp {
                                 e,
                                 self.net.relay_retry_count + 1
                             );
-                            self.net.ws_connect_fail_backoff_ms = 100;
-                            self.net.ws_connect_not_before = now + Duration::from_millis(100);
+                            self.net.ws_connect_fail_backoff_ms = 500;
+                            self.net.ws_connect_not_before = now + Duration::from_millis(500);
                         }
                     } else {
                         self.net.ws_connect_fail_backoff_ms =

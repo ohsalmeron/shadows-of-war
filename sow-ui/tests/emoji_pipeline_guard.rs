@@ -41,6 +41,9 @@ const RAW_FONT_SINKS: &[&str] = &[
     "Button::new(",
     "CollapsingHeader::new(",
     "painter.text(",
+    "outlined_label(",
+    "paint_premium_glow_text(",
+    "painter.layout_no_wrap(",
 ];
 
 /// Approved emoji entry points: these route through the atlas (`prepare_name` /

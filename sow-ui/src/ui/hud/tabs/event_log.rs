@@ -123,7 +123,14 @@ pub(in crate::ui::hud) fn draw_event_log_tab(
                             ui.painter().rect_filled(stripe_rect, 0, stripe);
                             ui.add_space(6.0);
 
-                            ui.label(RichText::new(icon).size(14.0).color(text_color));
+                            if icon == "•" {
+                                ui.label(RichText::new(icon).size(14.0).color(text_color));
+                            } else {
+                                let (icon_rect, _) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
+                                if !crate::widgets::try_paint_emoji(ui.painter(), icon, icon_rect, text_color) {
+                                    ui.painter().text(icon_rect.center(), egui::Align2::CENTER_CENTER, icon, egui::FontId::proportional(14.0), text_color);
+                                }
+                            }
                             ui.add_space(4.0);
 
                             ui.vertical(|ui| {

@@ -478,7 +478,12 @@ fn draw_summary_content(
                             .color(sow_ui_kit::theme::palette::text_muted()),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(RichText::new(val).size(12.0).strong().color(Color32::WHITE));
+                        crate::widgets::outlined_emoji_label(
+                            ui,
+                            val,
+                            egui::FontId::proportional(12.0),
+                            Color32::WHITE,
+                        );
                     });
                 });
             }

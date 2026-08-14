@@ -143,7 +143,7 @@ pub(in crate::ui::hud) fn draw_transfer_panel(
 
                         // Title
                         ui.vertical_centered(|ui| {
-                            sow_ui_kit::theme::outlined_label(
+                            crate::widgets::outlined_emoji_label(
                                 ui,
                                 &strings.transfer_title,
                                 egui::FontId::proportional(20.0),

@@ -240,7 +240,7 @@ pub fn draw_standard_modal<R>(
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.set_width(ui.available_width());
-                outlined_label(
+                crate::widgets::outlined_emoji_label(
                     ui,
                     title,
                     egui::FontId::proportional(if compact { 20.0 } else { 24.0 }),

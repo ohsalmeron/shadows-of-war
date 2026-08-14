@@ -85,12 +85,14 @@ pub fn draw_tab(
                 } else {
                     style.label_inactive
                 };
-                ui.painter().text(
+                crate::widgets::paint_emoji_text_at(
+                    ui.painter(),
                     rect.center(),
                     Align2::CENTER_CENTER,
                     label,
                     FontId::proportional(font_size),
                     label_color,
+                    false,
                 );
             }
             TabContent::Icon(Some(tex)) => {
