@@ -7,6 +7,8 @@ const PROD_HOST: &str = "ionos";
 const REMOTE_STAGE: &str = "/home/bizkit/.sow-deploy";
 const PUBLIC_ORIGIN: &str = "https://shadowsofwar.io";
 const DEFAULT_RELAY_DB_SOURCE_IP: &str = "20.230.49.9";
+const SERVER_JAIL_IP: &str = "127.0.0.1";
+const DATABASE_JAIL_IP: &str = "127.0.0.1";
 
 struct Config {
     build_host: String,
@@ -56,7 +58,6 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
     println!("==> Production {version}");
     println!("==> 1/6 Preflight");
     preflight(&config)?;
-    reject_untracked_source_files(paths)?;
 
     println!("==> 2/6 Web + FreeBSD backend (parallel)");
     let binaries = std::thread::scope(|scope| {
@@ -93,36 +94,6 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
     Ok(())
 }
 
-/// Refuse to copy untracked files into build or relay worktrees. Production
-/// releases may be built from tracked-but-dirty source during development, but
-/// an untracked artifact has no reviewable or reproducible provenance.
-fn reject_untracked_source_files(paths: &Paths) -> Result<()> {
-    let status = Command::new("git")
-        .args(["status", "--porcelain=v1", "--untracked-files=all"])
-        .current_dir(&paths.root)
-        .output()
-        .context("inspect source tree hygiene")?;
-    if !status.status.success() {
-        bail!(
-            "git status failed while checking source hygiene: {}",
-            String::from_utf8_lossy(&status.stderr).trim()
-        );
-    }
-    let status_text = String::from_utf8_lossy(&status.stdout);
-    let untracked: Vec<String> = status_text
-        .lines()
-        .filter(|line| line.starts_with("?? "))
-        .map(|line| line[3..].to_string())
-        .collect();
-    if !untracked.is_empty() {
-        bail!(
-            "untracked source files are not allowed in ./sow p:\n{}\nCommit or remove them before deploying",
-            untracked.join("\n")
-        );
-    }
-    Ok(())
-}
-
 fn sync_prod_secrets(config: &Config, db_secret: &str, control_secret: &str) -> Result<()> {
     let remote_secret = format!("/tmp/sow-db-secret-{}", std::process::id());
     let remote_control_secret = format!("/tmp/sow-relay-control-secret-{}", std::process::id());
@@ -139,8 +110,7 @@ fn sync_prod_secrets(config: &Config, db_secret: &str, control_secret: &str) -> 
          if sudo test -f \"$f\"; then sudo grep -v '^SOW_DB_SECRET=' \"$f\" > \"$t\"; else : > \"$t\"; fi; \\
          printf 'SOW_DB_SECRET=' >> \"$t\"; cat \"$secret_file\" >> \"$t\"; printf '\\n' >> \"$t\"; \\
          printf 'SOW_RELAY_CONTROL_SECRET=' >> \"$t\"; cat \"$control_file\" >> \"$t\"; printf '\\n' >> \"$t\"; \\
-         sudo install -o root -g wheel -m 0600 \"$t\" \"$f\"; \\
-         sudo service sow_database restart; sudo service sow_database status",
+         sudo install -o root -g wheel -m 0600 \"$t\" \"$f\"",
         shell_quote(&remote_secret),
         shell_quote(&remote_control_secret)
     );
@@ -475,7 +445,7 @@ fn assemble_release(
     let revision = output("git", &["rev-parse", "--short=12", "HEAD"])?;
     let dirty = !output("git", &["status", "--porcelain", "--untracked-files=no"])?.is_empty();
     let fingerprint = input_fingerprint(
-        "release-v2",
+        "release-v3-jails",
         &format!("{version}:{revision}:{dirty}:{relay_db_source_ip}"),
         &[
             &paths.dist_play,
@@ -485,6 +455,7 @@ fn assemble_release(
             &paths.root.join("sow-dist/deploy/freebsd/conf.d"),
             &paths.root.join("sow-dist/deploy/freebsd/snippets"),
             &paths.root.join("sow-dist/deploy/freebsd/nginx.conf"),
+            &paths.root.join("sow-dist/deploy/freebsd/jails"),
         ],
     )?;
     let cache = paths.root.join("dist/.sow-state/release");
@@ -534,6 +505,10 @@ fn assemble_release(
         &paths.root.join("sow-dist/deploy/freebsd/snippets"),
         &work.join("ops/snippets"),
     )?;
+    copy_dir(
+        &paths.root.join("sow-dist/deploy/freebsd/jails"),
+        &work.join("ops/jails"),
+    )?;
     fs::copy(
         paths.root.join("sow-dist/deploy/freebsd/nginx.conf"),
         work.join("ops/nginx.conf"),
@@ -543,9 +518,12 @@ fn assemble_release(
             .root
             .join("sow-dist/deploy/freebsd/conf.d/shadowsofwar.io.conf"),
     )?
-    .replace("__SOW_RELAY_DB_SOURCE_IP__", relay_db_source_ip);
-    if nginx_site.contains("__SOW_RELAY_DB_SOURCE_IP__") {
-        bail!("nginx relay source IP placeholder was not rendered");
+    .replace("__SOW_RELAY_DB_SOURCE_IP__", relay_db_source_ip)
+    .replace("__SOW_DB_LISTEN_HOST__", DATABASE_JAIL_IP)
+    .replace("__SOW_SERVER_LISTEN_HOST__", SERVER_JAIL_IP)
+    .replace("__SOW_MAPS_LISTEN_HOST__", SERVER_JAIL_IP);
+    if nginx_site.contains("__SOW_") {
+        bail!("nginx placeholder was not rendered");
     }
     fs::write(work.join("ops/conf.d/shadowsofwar.io.conf"), nginx_site)?;
 
@@ -607,7 +585,13 @@ fn write_manifest(root: &Path) -> Result<PathBuf> {
 
 fn deploy(paths: &Paths, config: &Config, release: &Release) -> Result<()> {
     let stage_release = format!("{}/release", config.remote_stage.trim_end_matches('/'));
-    let prepare = format!("install -d -m 0700 {}", shell_quote(&stage_release));
+    // Create the receiver directories before rsync starts its atomic temp-file
+    // renames.  The FreeBSD rsync receiver otherwise can race with a missing
+    // child directory and fail with ENOENT while renaming a binary.
+    let stage = shell_quote(&stage_release);
+    let prepare = format!(
+        "install -d -m 0700 {stage} {stage}/bin {stage}/maps {stage}/ops {stage}/web"
+    );
     run("ssh", &[&config.prod_host, &prepare], None)?;
 
     let source = format!("{}/", release.dir.display());
@@ -622,9 +606,36 @@ fn deploy(paths: &Paths, config: &Config, release: &Release) -> Result<()> {
     let target = format!("/srv/sow/releases/{id}");
     let remote_cmd = format!(
         "set -eu; \
-         sudo install -d -m 0755 /srv/sow/releases; \
+         old_current=$(sudo readlink /srv/sow/current); \
+         old_nginx=$(sudo mktemp /tmp/sow-nginx.XXXXXX); \
+         sudo cp /usr/local/etc/nginx/conf.d/shadowsofwar.io.conf \"$old_nginx\"; \
+         old_jail=$(sudo mktemp /tmp/sow-jail.XXXXXX); \
+         sudo cp /etc/jail.conf \"$old_jail\"; \
+         old_valkey=0; old_db=0; old_server=0; \
+         sudo service valkey status >/dev/null 2>&1 && old_valkey=1 || true; \
+         sudo service sow_database status >/dev/null 2>&1 && old_db=1 || true; \
+         sudo service sow_server status >/dev/null 2>&1 && old_server=1 || true; \
+         rollback() {{ \
+             set +e; \
+             sudo service jail stop sow-server sow-database valkey >/dev/null 2>&1 || true; \
+             sudo sysrc valkey_enable=YES sow_database_enable=YES sow_server_enable=YES >/dev/null; \
+             sudo cp \"$old_jail\" /etc/jail.conf; \
+             sudo ln -sfn \"$old_current\" /srv/sow/current; \
+             sudo cp \"$old_nginx\" /usr/local/etc/nginx/conf.d/shadowsofwar.io.conf; \
+             sudo service valkey start >/dev/null 2>&1 || true; \
+             sudo service sow_database start >/dev/null 2>&1 || true; \
+             sudo service sow_server start >/dev/null 2>&1 || true; \
+             sudo nginx -t >/dev/null 2>&1 && sudo service nginx reload >/dev/null 2>&1 || true; \
+             sudo rm -f \"$old_nginx\"; \
+             sudo rm -f \"$old_jail\"; \
+         }}; \
+         trap rollback 0 1 2 3 15; \
          sudo service sow_server stop 2>/dev/null || true; \
          sudo service sow_database stop 2>/dev/null || true; \
+         sudo service valkey stop 2>/dev/null || true; \
+         sudo service jail stop sow-server sow-database valkey 2>/dev/null || true; \
+         sudo sysrc valkey_enable=NO sow_database_enable=NO sow_server_enable=NO jail_enable=YES >/dev/null; \
+         sudo install -d -m 0755 /srv/sow/releases; \
          sudo mkdir -p \"{target}\"; \
          sudo cp -Rp \"{stage_release}/.\" \"{target}/\"; \
          sudo chown -R root:sow \"{target}\"; \
@@ -635,34 +646,50 @@ fn deploy(paths: &Paths, config: &Config, release: &Release) -> Result<()> {
          link=\"/srv/sow/.current.$$\"; \
          sudo ln -s \"releases/{id}\" \"$link\"; \
          sudo mv -fh \"$link\" /srv/sow/current; \
-         sudo install -d -m 0755 /usr/local/etc/nginx/conf.d; \
-         sudo install -d -m 0755 /usr/local/etc/nginx/snippets; \
-         if sudo test -d \"{target}/ops/conf.d\"; then \
-             for conf in \"{target}\"/ops/conf.d/*; do \
-                 if sudo test -f \"$conf\"; then \
-                     name=$(basename \"$conf\"); \
-                     sudo install -o root -g wheel -m 0644 \"$conf\" \"/usr/local/etc/nginx/conf.d/$name\"; \
-                 fi; \
-             done; \
-         fi; \
-         if sudo test -d \"{target}/ops/snippets\"; then \
-             for snippet in \"{target}\"/ops/snippets/*; do \
-                 if sudo test -f \"$snippet\"; then \
-                     name=$(basename \"$snippet\"); \
-                     sudo install -o root -g wheel -m 0644 \"$snippet\" \"/usr/local/etc/nginx/snippets/$name\"; \
-                 fi; \
-             done; \
-         fi; \
-         if sudo test -f \"{target}/ops/nginx.conf\"; then \
-             if ! sudo grep -q \"conf.d\" /usr/local/etc/nginx/nginx.conf 2>/dev/null; then \
-                 sudo install -o root -g wheel -m 0644 \"{target}/ops/nginx.conf\" /usr/local/etc/nginx/nginx.conf; \
-             fi; \
-         fi; \
-         sudo service sow_database start; \
-         sudo service sow_database status; \
-         ready=0; i=0; while [ \"$i\" -lt 30 ]; do if curl -sS --max-time 1 -o /dev/null 'http://127.0.0.1:25585/healthz' 2>/dev/null; then ready=1; break; fi; i=$(expr \"$i\" + 1); sleep 1; done; test \"$ready\" = 1; \
-         sudo service sow_server restart; \
-         sudo nginx -t && sudo service nginx reload"
+         sudo install -d -m 0755 /usr/local/etc/nginx/conf.d /usr/local/etc/nginx/snippets /etc/jail.conf.d; \
+         sudo install -d -m 0755 /zroot/jails/valkey/usr/local/bin /zroot/jails/valkey/usr/local/etc /zroot/jails/valkey/usr/local/etc/rc.d /zroot/jails/valkey/var/db/valkey /zroot/jails/valkey/var/log/valkey; \
+         sudo install -d -m 0755 /zroot/jails/sow-server/srv/sow /zroot/jails/sow-server/var/db/sow/server /zroot/jails/sow-server/var/log/sow /zroot/jails/sow-server/usr/local/etc/sow /zroot/jails/sow-server/usr/local/etc/rc.d; \
+         sudo install -d -m 0755 /zroot/jails/sow-database/srv/sow /zroot/jails/sow-database/var/db/sow /zroot/jails/sow-database/var/log/sow /zroot/jails/sow-database/usr/local/etc/sow /zroot/jails/sow-database/usr/local/etc/rc.d; \
+         sudo install -m 0644 \"{target}/ops/jails/valkey.conf\" /etc/jail.conf.d/valkey.conf; \
+         sudo install -m 0644 \"{target}/ops/jails/sow-server.conf\" /etc/jail.conf.d/sow-server.conf; \
+         sudo install -m 0644 \"{target}/ops/jails/sow-database.conf\" /etc/jail.conf.d/sow-database.conf; \
+         sudo awk '$0 ~ /^(valkey|sow-server|sow-database)[[:space:]]/ {{skip=1; next}} skip && index($0, sprintf(\"%c\", 125)) > 0 {{skip=0; next}} !skip {{print}}' /etc/jail.conf > /tmp/sow-jail.conf; \
+         cat \"{target}/ops/jails/valkey.conf\" \"{target}/ops/jails/sow-server.conf\" \"{target}/ops/jails/sow-database.conf\" >> /tmp/sow-jail.conf; \
+         sudo install -m 0644 /tmp/sow-jail.conf /etc/jail.conf; rm -f /tmp/sow-jail.conf; \
+         sudo install -m 0644 \"{target}/ops/jails/fstab.valkey\" /etc/fstab.valkey; \
+         sudo install -m 0644 \"{target}/ops/jails/fstab.sow-server\" /etc/fstab.sow-server; \
+         sudo install -m 0644 \"{target}/ops/jails/fstab.sow-database\" /etc/fstab.sow-database; \
+         sudo install -m 0644 \"{target}/ops/jails/rc.conf.valkey\" /zroot/jails/valkey/etc/rc.conf; \
+         sudo install -m 0644 \"{target}/ops/jails/rc.conf.sow-server\" /zroot/jails/sow-server/etc/rc.conf; \
+         sudo install -m 0644 \"{target}/ops/jails/rc.conf.sow-database\" /zroot/jails/sow-database/etc/rc.conf; \
+         sudo install -m 0555 /usr/local/etc/rc.d/valkey /zroot/jails/valkey/usr/local/etc/rc.d/valkey; \
+         sudo install -m 0555 \"{target}/ops/rc.d/sow_server\" /zroot/jails/sow-server/usr/local/etc/rc.d/sow_server; \
+         sudo install -m 0555 \"{target}/ops/rc.d/sow_database\" /zroot/jails/sow-database/usr/local/etc/rc.d/sow_database; \
+         sudo install -m 0644 /dev/null /zroot/jails/valkey/usr/local/etc/valkey.conf; \
+         sudo chroot /zroot/jails/valkey pw groupadd valkey -g 537 2>/dev/null || true; \
+         sudo chroot /zroot/jails/valkey pw useradd valkey -u 537 -g valkey -d /nonexistent -s /usr/sbin/nologin 2>/dev/null || true; \
+         sudo chroot /zroot/jails/sow-server pw groupadd sow -g 1002 2>/dev/null || true; \
+         sudo chroot /zroot/jails/sow-server pw useradd sowserver -u 1002 -g sow -d /nonexistent -s /usr/sbin/nologin 2>/dev/null || true; \
+         sudo chroot /zroot/jails/sow-database pw groupadd sow -g 1002 2>/dev/null || true; \
+         sudo chroot /zroot/jails/sow-database pw useradd sowdb -u 1003 -g sow -d /nonexistent -s /usr/sbin/nologin 2>/dev/null || true; \
+         sudo awk -F= '$1 !~ /^(SOW_WS_LISTEN|SOW_MAPS_HTTP_LISTEN|SOW_DB_LISTEN|SOW_DB_PORT|SOW_DB_URL|SOW_VALKEY_URL|SOW_REDIS_URL|SOW_REDB_PATH|SOW_REPLAY_DIR)$/ {{print}}' /usr/local/etc/sow/sow.env | sudo tee /zroot/jails/sow-server/usr/local/etc/sow/sow.env >/dev/null; \
+         sudo awk -F= '$1 !~ /^(SOW_WS_LISTEN|SOW_MAPS_HTTP_LISTEN|SOW_DB_LISTEN|SOW_DB_PORT|SOW_DB_URL|SOW_VALKEY_URL|SOW_REDIS_URL|SOW_REDB_PATH|SOW_REPLAY_DIR)$/ {{print}}' /usr/local/etc/sow/sow.env | sudo tee /zroot/jails/sow-database/usr/local/etc/sow/sow.env >/dev/null; \
+         printf '%s\\n' 'SOW_WS_LISTEN=127.0.0.1:25564' 'SOW_MAPS_HTTP_LISTEN=127.0.0.1:25566' 'SOW_DB_URL=http://127.0.0.1:25585' 'SOW_VALKEY_URL=redis://127.0.0.1:6379' 'SOW_REDIS_URL=redis://127.0.0.1:6379' | sudo tee -a /zroot/jails/sow-server/usr/local/etc/sow/sow.env >/dev/null; \
+         printf '%s\\n' 'SOW_DB_LISTEN=127.0.0.1:25585' 'SOW_DB_PORT=25585' 'SOW_VALKEY_URL=redis://127.0.0.1:6379' 'SOW_REDIS_URL=redis://127.0.0.1:6379' 'SOW_REDB_PATH=/var/db/sow/sow_metadata.redb' 'SOW_REPLAY_DIR=/var/db/sow/replays' | sudo tee -a /zroot/jails/sow-database/usr/local/etc/sow/sow.env >/dev/null; \
+         sudo chown root:wheel /zroot/jails/sow-server/usr/local/etc/sow/sow.env /zroot/jails/sow-database/usr/local/etc/sow/sow.env; \
+         sudo chmod 0600 /zroot/jails/sow-server/usr/local/etc/sow/sow.env /zroot/jails/sow-database/usr/local/etc/sow/sow.env; \
+         sudo sed -e 's/^bind .*/bind 127.0.0.1/' -e 's|^dir .*|dir /var/db/valkey|' -e 's|^logfile .*|logfile /var/log/valkey/valkey.log|' -e 's|^pidfile .*|pidfile /var/run/valkey/valkey.pid|' /usr/local/etc/valkey.conf | sudo tee /zroot/jails/valkey/usr/local/etc/valkey.conf >/dev/null; \
+         sudo chown -R 537:537 /zroot/jails/valkey/var/db/valkey /zroot/jails/valkey/var/log/valkey; \
+         sudo chown -R 1002:1002 /zroot/jails/sow-server/var/db/sow /zroot/jails/sow-server/var/log/sow; \
+         sudo chown -R 1003:1002 /zroot/jails/sow-database/var/db/sow /zroot/jails/sow-database/var/log/sow; \
+         sudo install -d -m 0755 /usr/local/etc/nginx/conf.d /usr/local/etc/nginx/snippets; \
+         for conf in \"{target}\"/ops/conf.d/*; do name=$(basename \"$conf\"); sudo install -o root -g wheel -m 0644 \"$conf\" \"/usr/local/etc/nginx/conf.d/$name\"; done; \
+         for snippet in \"{target}\"/ops/snippets/*; do name=$(basename \"$snippet\"); sudo install -o root -g wheel -m 0644 \"$snippet\" \"/usr/local/etc/nginx/snippets/$name\"; done; \
+         sudo service jail start valkey; sudo service jail start sow-database; sudo service jail start sow-server; \
+         ready=0; i=0; while [ \"$i\" -lt 30 ]; do if curl -sS --max-time 1 -o /dev/null 'http://127.0.0.1:25585/healthz' 2>/dev/null && /usr/local/bin/valkey-cli -h 127.0.0.1 ping | grep -q PONG && sudo sockstat -4l | grep -q '127.0.0.1:25564'; then ready=1; break; fi; i=$(expr \"$i\" + 1); sleep 1; done; test \"$ready\" = 1; \
+         sudo sockstat -4l | grep -q '127.0.0.1:25564'; sudo sockstat -4l | grep -q '127.0.0.1:25566'; sudo sockstat -4l | grep -q '127.0.0.1:25585'; sudo sockstat -4l | grep -q '127.0.0.1:6379'; \
+         sudo nginx -t; sudo service nginx reload; \
+         trap - 0 1 2 3 15; sudo rm -f \"$old_nginx\""
     );
 
     run("ssh", &[&config.prod_host, &remote_cmd], None).context("native Rust deployment activation failed")

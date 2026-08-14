@@ -43,6 +43,88 @@ pub struct GraphicsState {
     pub last_egui_viewport: Option<(u32, u32, f32)>,
 }
 
+/// One-shot timings for a multiplayer match handoff and loader. These events are
+/// intentionally client-local: they do not alter the wire protocol or gate Ready.
+/// The timestamps let us separate relay connection time from local engine/GPU work.
+pub struct LoadTelemetry {
+    pub started_at: Option<web_time::Instant>,
+    pub relay_connected_at: Option<web_time::Instant>,
+    pub engine_init_complete_at: Option<web_time::Instant>,
+    pub gpu_upload_complete_at: Option<web_time::Instant>,
+    pub snapshot_available_at: Option<web_time::Instant>,
+    pub ready_sent_at: Option<web_time::Instant>,
+}
+
+impl Default for LoadTelemetry {
+    fn default() -> Self {
+        Self {
+            started_at: None,
+            relay_connected_at: None,
+            engine_init_complete_at: None,
+            gpu_upload_complete_at: None,
+            snapshot_available_at: None,
+            ready_sent_at: None,
+        }
+    }
+}
+
+impl LoadTelemetry {
+    pub fn reset_for_relay_handoff(&mut self) {
+        *self = Self::default();
+        let now = web_time::Instant::now();
+        self.started_at = Some(now);
+        Self::log_phase("relay_connect_start", None, now);
+    }
+
+    pub fn mark_relay_connected(&mut self) {
+        self.mark_once("relay_connect_complete", |s| &mut s.relay_connected_at);
+    }
+
+    pub fn mark_engine_init_complete(&mut self) {
+        self.mark_once("engine_init_complete", |s| &mut s.engine_init_complete_at);
+    }
+
+    pub fn mark_gpu_upload_complete(&mut self) {
+        self.mark_once("gpu_upload_complete", |s| &mut s.gpu_upload_complete_at);
+    }
+
+    pub fn mark_snapshot_available(&mut self) {
+        self.mark_once("snapshot_available", |s| &mut s.snapshot_available_at);
+    }
+
+    pub fn mark_ready_sent(&mut self) {
+        self.mark_once("ready_sent", |s| &mut s.ready_sent_at);
+    }
+
+    fn mark_once<F>(&mut self, phase: &'static str, slot: F)
+    where
+        F: FnOnce(&mut Self) -> &mut Option<web_time::Instant>,
+    {
+        let target = slot(self);
+        if target.is_some() {
+            return;
+        }
+        let now = web_time::Instant::now();
+        *target = Some(now);
+        Self::log_phase(phase, self.started_at, now);
+    }
+
+    fn log_phase(
+        phase: &'static str,
+        started_at: Option<web_time::Instant>,
+        now: web_time::Instant,
+    ) {
+        let elapsed_ms = started_at
+            .map(|start| now.duration_since(start).as_millis())
+            .unwrap_or(0);
+        log::info!(
+            "[CLIENT TELEMETRY] phase={} elapsed_ms={}",
+            phase,
+            elapsed_ms
+        );
+    }
+}
+
 pub struct NetState {
     pub client: Option<sow_net::client::SowClient>,
     pub connect_tx: crossbeam_channel::Sender<Result<sow_net::client::SowClient, String>>,
@@ -58,6 +140,7 @@ pub struct NetState {
     pub last_ping_time: web_time::Instant,
     pub relay_connect_start: Option<web_time::Instant>,
     pub relay_retry_count: u32,
+    pub load_telemetry: LoadTelemetry,
     /// Set when the orchestrator handed us off to a game relay (Start carried
     /// relay_host). The loader uses this instead of string-matching ws_url.
     pub relay_handoff_done: bool,
@@ -381,6 +464,19 @@ pub struct SowApp {
     /// Anonymous rename entered before the first profile response arrives.
     /// It is flushed once the canonical account ID is available.
     pub pending_display_name: Option<String>,
+    /// Serializes rename writes; a newer edit waits for the database ACK.
+    pub queued_display_name: Option<String>,
+    pub display_name_save_in_flight: bool,
+    /// Prevents a profile refresh from racing an in-flight rename.
+    pub profile_request_in_flight: bool,
+    pub profile_refresh_pending: bool,
+    /// Monotonic identity request sequence; used to reject stale async responses.
+    pub identity_request_seq: u64,
+    pub profile_last_applied_request: u64,
+    /// Last server-confirmed presentation name. UI edits remain provisional until ACK.
+    pub confirmed_display_name: Option<String>,
+    /// A Join request held until the canonical account ID is available.
+    pub join_waiting_for_identity: bool,
     pub progress_match_recorded: bool,
     pub progress_stats_submitted: bool,
     pub progress_session_defeats: crate::player_progress::SessionDefeats,

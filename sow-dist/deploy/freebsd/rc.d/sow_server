@@ -53,7 +53,9 @@ sow_server_prestart()
 
 	install -d -o sowserver -g sow -m 0750 "${SOW_RELAY_LOG_DIR}"
 	install -d -o sowserver -g sow -m 0750 /var/db/sow/server
-	/usr/local/bin/valkey-cli -h 127.0.0.1 ping | grep -q PONG
+	if [ -x /usr/local/bin/valkey-cli ]; then
+		/usr/local/bin/valkey-cli -h 127.0.0.1 ping | grep -q PONG
+	fi
 }
 
 run_rc_command "$1"

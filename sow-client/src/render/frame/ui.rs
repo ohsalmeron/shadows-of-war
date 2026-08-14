@@ -338,6 +338,7 @@ impl SowApp {
         }
         render_ctx.command_encoder.present(frame);
         let sync_point = render_ctx.context.submit(&mut render_ctx.command_encoder);
+        self.net.load_telemetry.mark_gpu_upload_complete();
 
         if let Some(ref mut gp) = self.gfx.gui_painter {
             gp.after_submit(&sync_point);

@@ -3,7 +3,6 @@
 //! The value stored here is the server's canonical `account_id`.
 
 pub const ACCOUNT_ID_STORAGE_KEY: &str = "sow_account_id";
-pub const DISPLAY_NAME_STORAGE_KEY: &str = "sow_display_name";
 
 pub fn load_account_id() -> Option<String> {
     load_storage(ACCOUNT_ID_STORAGE_KEY)
@@ -15,19 +14,6 @@ pub fn save_account_id(account_id: &str) {
 
 pub fn clear_account_id() {
     clear_storage(ACCOUNT_ID_STORAGE_KEY);
-}
-
-#[cfg(target_arch = "wasm32")]
-pub fn load_display_name() -> Option<String> {
-    load_storage(DISPLAY_NAME_STORAGE_KEY)
-}
-
-pub fn save_display_name(display_name: &str) {
-    save_storage(DISPLAY_NAME_STORAGE_KEY, display_name);
-}
-
-pub fn clear_display_name() {
-    clear_storage(DISPLAY_NAME_STORAGE_KEY);
 }
 
 #[cfg(target_arch = "wasm32")]

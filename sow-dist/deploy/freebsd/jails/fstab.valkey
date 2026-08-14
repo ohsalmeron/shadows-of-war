@@ -1,0 +1,4 @@
+/usr/local/bin /zroot/jails/valkey/usr/local/bin nullfs ro 0 0
+/usr/local/etc/valkey.conf /zroot/jails/valkey/usr/local/etc/valkey.conf nullfs ro 0 0
+/var/db/valkey /zroot/jails/valkey/var/db/valkey nullfs rw 0 0
+/var/log/valkey /zroot/jails/valkey/var/log/valkey nullfs rw 0 0

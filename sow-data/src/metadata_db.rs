@@ -138,11 +138,14 @@ pub fn seed_valkey_from_redb(
             let (key, val) = item?;
             let account_id = key.value();
 
-            // Write player account record to Valkey
+            // Zero-trust storage boundary: REDB is a recovery seed, not an
+            // authority over newer Valkey account state. Never overwrite a
+            // live account during startup.
             let valkey_key = format!("sow:player:account:{}", account_id);
             let val_str = std::str::from_utf8(val.value())?;
-            let _: () = con.set(&valkey_key, val_str)?;
-            seeded_count += 1;
+            if con.set_nx::<_, _, bool>(&valkey_key, val_str)? {
+                seeded_count += 1;
+            }
 
             // Map each linked identity back to the account ID in Valkey
             if let Ok(account) = serde_json::from_slice::<crate::db::PlayerAccount>(val.value()) {
@@ -151,8 +154,9 @@ pub fn seed_valkey_from_redb(
                         "sow:player:identity:{}:{}",
                         identity.provider, identity.external_id
                     );
-                    let _: () = con.set(&identity_key, account_id)?;
-                    seeded_count += 1;
+                    if con.set_nx::<_, _, bool>(&identity_key, account_id)? {
+                        seeded_count += 1;
+                    }
                 }
             }
         }

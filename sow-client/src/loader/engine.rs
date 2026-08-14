@@ -4,6 +4,27 @@ use crate::app::SowApp;
 use sow_core::protocol::SimCommand;
 use sow_ui_kit::ClientPhase;
 
+#[cfg(target_arch = "wasm32")]
+async fn yield_to_browser() {
+    use wasm_bindgen::{closure::Closure, JsCast, JsValue};
+
+    let promise = js_sys::Promise::new(&mut |resolve, _reject| {
+        let resolve_for_callback = resolve.clone();
+        let callback = Closure::once_into_js(move || {
+            let _ = resolve_for_callback.call0(&JsValue::UNDEFINED);
+        });
+        if let Some(window) = web_sys::window() {
+            let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(
+                callback.unchecked_ref(),
+                0,
+            );
+        } else {
+            let _ = resolve.call0(&JsValue::UNDEFINED);
+        }
+    });
+    let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
+}
+
 impl SowApp {
     pub(crate) fn abort_engine_init(&mut self) {
         while self.tasks.engine_init_rx.try_recv().is_ok() {}
@@ -87,6 +108,8 @@ impl SowApp {
                 );
 
                 splash_show_loading_progress(&mut self.ui.app.splash_state, 0.1);
+                self.ui.app.splash_state.status_override =
+                    Some("Preparing battlefield".to_string());
 
                 let mut start_msg_clone = start_msg.clone();
 
@@ -146,18 +169,44 @@ impl SowApp {
                         }
                     }
 
-                    let tx_prog = tx.clone();
-                    let water = sow_core::water_components::WaterComponents::compute(
-                        &state.map,
-                        move |prog| {
-                            let _ = tx_prog.send(EngineInitEvent::Progress(prog));
-                        },
-                    );
-                    let _ = tx.send(EngineInitEvent::Complete(
-                        Box::new(state),
-                        water,
-                        Box::new(start_msg_clone),
-                    ));
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        let tx_complete = tx.clone();
+                        let tx_progress = tx.clone();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            let mut builder =
+                                sow_core::water_components::WaterComponentsBuilder::new(&state.map);
+                            loop {
+                                let (progress, result) = builder.step(16_384);
+                                let _ = tx_progress.send(EngineInitEvent::Progress(progress));
+                                if let Some(water) = result {
+                                    let _ = tx_complete.send(EngineInitEvent::Complete(
+                                        Box::new(state),
+                                        water,
+                                        Box::new(start_msg_clone),
+                                    ));
+                                    break;
+                                }
+                                yield_to_browser().await;
+                            }
+                        });
+                    }
+
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        let tx_prog = tx.clone();
+                        let water = sow_core::water_components::WaterComponents::compute(
+                            &state.map,
+                            move |prog| {
+                                let _ = tx_prog.send(EngineInitEvent::Progress(prog));
+                            },
+                        );
+                        let _ = tx.send(EngineInitEvent::Complete(
+                            Box::new(state),
+                            water,
+                            Box::new(start_msg_clone),
+                        ));
+                    }
                 };
 
                 #[cfg(target_arch = "wasm32")]
@@ -311,7 +360,10 @@ impl SowApp {
                                     continue;
                                 }
                                 log::info!("Engine initialization complete; allocating GPU memory");
+                                self.net.load_telemetry.mark_engine_init_complete();
                                 splash_show_loading_progress(&mut self.ui.app.splash_state, 0.95);
+                                self.ui.app.splash_state.status_override =
+                                    Some("Preparing graphics".to_string());
                                 self.ui.app.splash_state.frames_drawn = 0;
                                 self.ui.app.splash_state.gpu_load_step = 1;
                                 self.tasks.pending_engine_init_data =
@@ -396,6 +448,8 @@ impl SowApp {
                         self.ui.app.splash_state.frames_drawn = 0;
                         log::info!("Enter game splash: uploading map texture");
                         splash_show_loading_progress(&mut self.ui.app.splash_state, 0.98);
+                        self.ui.app.splash_state.status_override =
+                            Some("Uploading map".to_string());
 
                         // Re-insert pending data so we stay in this block until Step 4
                         self.tasks.pending_engine_init_data = Some((state, water, start_msg));
@@ -404,7 +458,10 @@ impl SowApp {
                     // Step 2 Finished: GPU Texture is uploaded!
                     self.ui.app.splash_state.gpu_load_step = 3;
                     splash_show_loading_progress(&mut self.ui.app.splash_state, 0.99);
+                    self.ui.app.splash_state.status_override =
+                        Some("Synchronizing battlefield".to_string());
                 } else if step == 3 && self.sim.current_snapshot.is_some() {
+                    self.net.load_telemetry.mark_snapshot_available();
                     let ready_to_release = if self.net.is_offline {
                         true
                     } else {
@@ -434,11 +491,14 @@ impl SowApp {
                                     let ready_msg = self.make_initial_relay_ready_message(lid, pid);
                                     let json = bincode::serialize(&ready_msg).unwrap();
                                     c.send(json);
+                                    self.net.load_telemetry.mark_ready_sent();
                                 }
                             }
                         }
                     } else {
                         splash_show_loading_progress(&mut self.ui.app.splash_state, 0.99);
+                        self.ui.app.splash_state.status_override =
+                            Some("Connecting to relay".to_string());
                         if self.ui.app.splash_state.frames_drawn.is_multiple_of(120) {
                             log::warn!(
                                 "[LOADER] Waiting for relay connection before releasing loader: is_connected={}, has_client={}, on_relay={}, my_lobby_id={:?}, my_player_id={:?}, phase={:?}",

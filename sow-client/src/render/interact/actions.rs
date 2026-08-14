@@ -38,14 +38,7 @@ impl SowApp {
                     self.ui.app.main_menu_state.show_join_browser = false;
                 }
                 UiAction::HostPrivateLobby => {
-                    let join_msg = self.make_join_message(None, true, None, None);
-                    if let Ok(json) = bincode::serialize(&join_msg) {
-                        if let Some(c) = self.net.client.as_ref() {
-                            c.send(json);
-                        }
-                    }
-                    self.ui.app.main_menu_state.is_waiting = true;
-                    self.ui.app.main_menu_state.is_lobby_host = true;
+                    self.request_join(None, true, None, None);
                 }
                 UiAction::OpenCreateGame => {
                     self.ui.app.main_menu_state.show_custom_game = true;
@@ -75,14 +68,7 @@ impl SowApp {
                         .trim()
                         .to_string();
                     if let Ok(lobby_id) = code.parse::<u64>() {
-                        let join_msg = self.make_join_message(Some(lobby_id), false, None, None);
-                        self.ui.app.main_menu_state.pending_join_lobby_id = Some(lobby_id);
-                        if let Ok(json) = bincode::serialize(&join_msg) {
-                            if let Some(c) = self.net.client.as_ref() {
-                                c.send(json);
-                            }
-                        }
-                        self.ui.app.main_menu_state.is_waiting = true;
+                        self.request_join(Some(lobby_id), false, None, None);
                         self.ui.app.main_menu_state.show_join_browser = false;
                     }
                 }
@@ -93,14 +79,7 @@ impl SowApp {
                     } else {
                         Some(password)
                     };
-                    let join_msg = self.make_join_message(Some(lobby_id), false, None, pw);
-                    self.ui.app.main_menu_state.pending_join_lobby_id = Some(lobby_id);
-                    if let Ok(json) = bincode::serialize(&join_msg) {
-                        if let Some(c) = self.net.client.as_ref() {
-                            c.send(json);
-                        }
-                    }
-                    self.ui.app.main_menu_state.is_waiting = true;
+                    self.request_join(Some(lobby_id), false, None, pw);
                     self.ui.app.main_menu_state.show_join_browser = false;
                     self.ui.app.main_menu_state.join_password_for_lobby = None;
                     self.ui.app.main_menu_state.join_password_input.clear();
@@ -269,12 +248,21 @@ impl SowApp {
         self.ui.app.main_menu_state.custom_game_password = password.clone().unwrap_or_default();
         self.ui.app.main_menu_state.pending_join_lobby_id = lobby_id;
         self.ui.app.main_menu_state.is_waiting = true;
+        let identity_ready = self.progress_account_id.is_some() || self.net.is_offline;
+        self.join_waiting_for_identity = !identity_ready || self.net.client.is_none();
 
         if let Some(c) = self.net.client.as_ref() {
-            let config_opt = Some(self.ui.app.main_menu_state.custom_game_config.clone());
-            let join_msg = self.make_join_message(lobby_id, is_private, config_opt, password);
-            if let Ok(json) = bincode::serialize(&join_msg) {
-                c.send(json);
+            if identity_ready {
+                let config_opt = Some(self.ui.app.main_menu_state.custom_game_config.clone());
+                let join_msg = self.make_join_message(lobby_id, is_private, config_opt, password);
+                if let Ok(json) = bincode::serialize(&join_msg) {
+                    c.send(json);
+                }
+                self.join_waiting_for_identity = false;
+            } else {
+                // Identity must settle before Join; otherwise the server sees a
+                // second anonymous player on every refresh/race.
+                log::info!("Queueing Join until the canonical account is loaded");
             }
         } else {
             log::info!(

@@ -1485,7 +1485,13 @@ async fn admin_status(
     .unwrap_or(serde_json::json!({"error": "task failed"}));
 
     // Query sow-database stats
-    let db_stats = match reqwest::get("http://127.0.0.1:25585/internal/stats").await {
+    let db_base = std::env::var("SOW_DB_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
+    let db_stats_url = format!(
+        "{}/internal/stats",
+        db_base.trim_end_matches('/')
+    );
+    let db_stats = match reqwest::get(&db_stats_url).await {
         Ok(r) => r
             .json::<serde_json::Value>()
             .await

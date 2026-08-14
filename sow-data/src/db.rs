@@ -22,8 +22,15 @@ const XP_PER_ASSIST: u32 = 5;
 const ACCOUNT_ID_HEX_LEN: usize = 32;
 pub const DISPLAY_NAME_MAX_CHARS: usize = 16;
 
-fn default_display_name() -> String {
-    "ANON".to_string()
+/// Generate the initial presentation name only when the client did not send one.
+/// The account ID remains the sole stable identity key.
+fn generated_display_name() -> String {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        % 1000;
+    format!("ANON{suffix:03}")
 }
 
 /// Normalize a player-facing name without making it an identity key.
@@ -140,7 +147,9 @@ impl PlayerProfile {
 pub struct PlayerAccount {
     pub id: String, // Stable canonical internal account ID
     /// Mutable player-facing name. Never used as an identity key.
-    #[serde(default = "default_display_name")]
+    // Investigation Protocol: a missing field is not the literal name "ANON".
+    // Migrate only from observed data at the anonymous-account boundary.
+    #[serde(default)]
     pub display_name: String,
     pub profile: PlayerProfile,
     pub linked_identities: Vec<LinkedIdentity>,
@@ -207,9 +216,13 @@ impl PlayerDb {
             if let Ok(mut table) = write_txn.open_table(PLAYERS_TABLE)
                 && let Ok(json) = serde_json::to_string(account)
             {
-                let _ = table.insert(account.id.as_str(), json.as_bytes());
+                if let Err(error) = table.insert(account.id.as_str(), json.as_bytes()) {
+                    error!("Failed to persist account {} to REDB: {error}", account.id);
+                }
             }
-            let _ = write_txn.commit();
+            if let Err(error) = write_txn.commit() {
+                error!("Failed to commit account {} to REDB: {error}", account.id);
+            }
         }
     }
 
@@ -233,6 +246,44 @@ impl PlayerDb {
             return Err("Account not found".into());
         };
         Ok(serde_json::from_str(&acc_json)?)
+    }
+
+    /// Replace one account only if the JSON read by this request is still the
+    /// value in Valkey. This closes the rename/stats lost-update race without
+    /// introducing another state store or a process-local lock.
+    async fn update_account_atomic<F>(
+        con: &mut redis::aio::MultiplexedConnection,
+        acc_key: &str,
+        mut mutate: F,
+    ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>>
+    where
+        F: FnMut(&mut PlayerAccount),
+    {
+        let compare_and_set = redis::Script::new(
+            r#"if redis.call('GET', KEYS[1]) == ARGV[1] then
+                    redis.call('SET', KEYS[1], ARGV[2])
+                    return 1
+                end
+                return 0"#,
+        );
+        for _ in 0..5 {
+            let Some(expected_json): Option<String> = con.get(acc_key).await? else {
+                return Err("Account not found".into());
+            };
+            let mut account: PlayerAccount = serde_json::from_str(&expected_json)?;
+            mutate(&mut account);
+            let updated_json = serde_json::to_string(&account)?;
+            let replaced: i32 = compare_and_set
+                .key(acc_key)
+                .arg(&expected_json)
+                .arg(&updated_json)
+                .invoke_async(con)
+                .await?;
+            if replaced == 1 {
+                return Ok(account);
+            }
+        }
+        Err("concurrent account update; retry".into())
     }
 
     async fn record_analytics(
@@ -288,7 +339,7 @@ impl PlayerDb {
 
         let new_account = PlayerAccount {
             id: random_id.clone(),
-            display_name: default_display_name(),
+            display_name: generated_display_name(),
             profile: PlayerProfile::default(),
             linked_identities: vec![identity.clone()],
             kind,
@@ -329,13 +380,29 @@ impl PlayerDb {
             if !is_valid_account_id(account_id) {
                 return Err("account_id must be exactly 32 hexadecimal characters".into());
             }
-            let mut account = Self::load_account(&mut con, account_id).await?;
-            if account.display_name.trim().is_empty() {
-                account.display_name = default_display_name();
-                let updated_json = serde_json::to_string(&account)?;
-                con.set::<_, _, ()>(Self::account_key(account_id), updated_json)
-                    .await?;
+            let account = Self::load_account(&mut con, account_id).await?;
+            if !account.linked_identities.is_empty() {
+                return Err("account is not anonymous".into());
+            }
+            if account.display_name.trim().is_empty() || account.display_name == "ANON" {
+                let migrated_name = requested_display_name
+                    .map(normalize_display_name)
+                    .transpose()
+                    .map_err(|error| error.to_string())?
+                    .unwrap_or_else(generated_display_name);
+                let acc_key = Self::account_key(account_id);
+                let account = Self::update_account_atomic(&mut con, &acc_key, |account| {
+                    if account.display_name.trim().is_empty() || account.display_name == "ANON" {
+                        account.display_name = migrated_name.clone();
+                        account.updated_at = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs();
+                    }
+                })
+                .await?;
                 self.save_player_account_to_redb(&account);
+                return Ok(account);
             }
             return Ok(account);
         }
@@ -344,7 +411,7 @@ impl PlayerDb {
             .map(normalize_display_name)
             .transpose()
             .map_err(|error| error.to_string())?
-            .unwrap_or_else(default_display_name);
+            .unwrap_or_else(generated_display_name);
 
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -413,7 +480,7 @@ impl PlayerDb {
             };
             let account = PlayerAccount {
                 id: random_id.clone(),
-                display_name: default_display_name(),
+                display_name: generated_display_name(),
                 profile: PlayerProfile::default(),
                 linked_identities: vec![identity.clone()],
                 kind: AccountKind::Bot,
@@ -450,17 +517,15 @@ impl PlayerDb {
         let mut con = self.get_connection().await?;
         let acc_key = Self::account_key(account_id);
 
-        if let Some(acc_json) = con.get::<_, Option<String>>(&acc_key).await? {
-            let mut account: PlayerAccount = serde_json::from_str(&acc_json)?;
-            account.profile = profile;
-            account.updated_at = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
-
-            let updated_json = serde_json::to_string(&account)?;
-            con.set::<_, _, ()>(&acc_key, updated_json).await?;
-
+        if con.exists(&acc_key).await? {
+            let account = Self::update_account_atomic(&mut con, &acc_key, |account| {
+                account.profile = profile.clone();
+                account.updated_at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+            })
+            .await?;
             self.save_player_account_to_redb(&account);
             Ok(account)
         } else {
@@ -484,17 +549,18 @@ impl PlayerDb {
         let Some(acc_json) = con.get::<_, Option<String>>(&acc_key).await? else {
             return Err("Account not found".into());
         };
-        let mut account: PlayerAccount = serde_json::from_str(&acc_json)?;
+        let account: PlayerAccount = serde_json::from_str(&acc_json)?;
         if !account.linked_identities.is_empty() {
             return Err("account is not anonymous".into());
         }
-        account.display_name = display_name;
-        account.updated_at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        let updated_json = serde_json::to_string(&account)?;
-        con.set::<_, _, ()>(&acc_key, updated_json).await?;
+        let account = Self::update_account_atomic(&mut con, &acc_key, |account| {
+            account.display_name = display_name.clone();
+            account.updated_at = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+        })
+        .await?;
         self.save_player_account_to_redb(&account);
         Ok(account)
     }
@@ -510,26 +576,24 @@ impl PlayerDb {
         let mut con = self.get_connection().await?;
         let acc_key = Self::account_key(account_id);
 
-        if let Some(acc_json) = con.get::<_, Option<String>>(&acc_key).await? {
-            let mut account: PlayerAccount = serde_json::from_str(&acc_json)?;
-            account.profile.record_match_with_kda(
-                won,
-                kda.defeats,
-                kda.kills,
-                kda.deaths,
-                kda.assists,
-            );
-            if let Some(leader) = preferred_leader {
-                account.profile.preferred_leader = Some(leader);
-            }
-            account.updated_at = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
-
-            let updated_json = serde_json::to_string(&account)?;
-            con.set::<_, _, ()>(&acc_key, updated_json).await?;
-
+        if con.exists(&acc_key).await? {
+            let account = Self::update_account_atomic(&mut con, &acc_key, |account| {
+                account.profile.record_match_with_kda(
+                    won,
+                    kda.defeats,
+                    kda.kills,
+                    kda.deaths,
+                    kda.assists,
+                );
+                if let Some(leader) = preferred_leader.clone() {
+                    account.profile.preferred_leader = Some(leader);
+                }
+                account.updated_at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+            })
+            .await?;
             self.save_player_account_to_redb(&account);
             Ok(account)
         } else {
@@ -693,7 +757,8 @@ fn is_valid_account_id(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        DISPLAY_NAME_MAX_CHARS, default_display_name, is_valid_account_id, normalize_display_name,
+        DISPLAY_NAME_MAX_CHARS, generated_display_name, is_valid_account_id,
+        normalize_display_name,
     };
 
     #[test]
@@ -718,6 +783,19 @@ mod tests {
             DISPLAY_NAME_MAX_CHARS
         );
         assert!(normalize_display_name("\n\t").is_err());
-        assert_eq!(default_display_name(), "ANON");
+        assert!(generated_display_name().starts_with("ANON"));
+    }
+
+    #[test]
+    fn missing_display_name_is_detectable_for_one_time_migration() {
+        let json = r#"{
+            "id":"0123456789abcdef0123456789abcdef",
+            "profile":{"xp":0,"level":1,"wins":0,"matches_played":0,
+              "players_defeated":0,"empires_defeated":0,"tribes_defeated":0,
+              "preferred_leader":null},
+            "linked_identities":[],"created_at":0,"updated_at":0
+        }"#;
+        let account: super::PlayerAccount = serde_json::from_str(json).unwrap();
+        assert!(account.display_name.is_empty());
     }
 }

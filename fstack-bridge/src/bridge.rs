@@ -62,6 +62,11 @@ pub enum Ev {
         fd: c_int,
         generation: u64,
         peer: SocketAddr,
+        /// Listener port that produced this connection. Zero means that the
+        /// bridge could not associate the accepted fd with a registered port.
+        listener_port: u16,
+        /// Monotonic timestamp captured immediately after ff_accept returned.
+        accepted_at: std::time::Instant,
     },
     Data { fd: c_int, guard: ZcRxGuard },
     Closed { fd: c_int },
@@ -729,6 +734,10 @@ pub unsafe extern "C" fn driver_cb(_arg: *mut c_void) -> c_int {
 }
 
 unsafe fn accept_pending(listener_fd: c_int) {
+    let listener_port = LISTENERS
+        .as_ref()
+        .and_then(|listeners| listeners.get(&listener_fd).copied())
+        .unwrap_or(0);
     loop {
         let mut peer: sockaddr_in = mem::zeroed();
         let mut peerlen: socklen_t = mem::size_of::<sockaddr_in>() as socklen_t;
@@ -736,6 +745,7 @@ unsafe fn accept_pending(listener_fd: c_int) {
         if nfd < 0 {
             break;
         }
+        let accepted_at = std::time::Instant::now();
         let peer = SocketAddr::new(
             Ipv4Addr::from(u32::from_be(peer.sin_addr.s_addr)).into(),
             u16::from_be(peer.sin_port),
@@ -758,6 +768,8 @@ unsafe fn accept_pending(listener_fd: c_int) {
             fd: nfd,
             generation: ACCEPTS,
             peer,
+            listener_port,
+            accepted_at,
         });
     }
 }

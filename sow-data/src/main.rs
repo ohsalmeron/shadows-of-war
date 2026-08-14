@@ -78,6 +78,22 @@ struct ErrorResponse {
     error: String,
 }
 
+fn account_hint(account_id: Option<&str>) -> String {
+    account_id
+        .map(|id| id.chars().take(8).collect::<String>())
+        .filter(|id| !id.is_empty())
+        .unwrap_or_else(|| "none".to_string())
+}
+
+fn identity_request_hint(headers: &HeaderMap) -> String {
+    headers
+        .get("x-sow-identity-request")
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("missing")
+        .to_string()
+}
+
 #[tokio::main]
 async fn main() {
     // Initialize logging
@@ -163,6 +179,7 @@ async fn main() {
             header::CONTENT_TYPE,
             header::AUTHORIZATION,
             header::HeaderName::from_static("x-platform-auth"),
+            header::HeaderName::from_static("x-sow-identity-request"),
         ]);
 
     // Define router
@@ -206,8 +223,19 @@ async fn handle_healthz() -> impl IntoResponse {
 /// the account is created; later renames use the explicit name endpoint.
 async fn handle_anonymous_profile(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(payload): Json<AnonymousProfileRequest>,
 ) -> impl IntoResponse {
+    let request_id = identity_request_hint(&headers);
+    info!(
+        "[identity] profile request id={request_id} account={} requested_name_len={}",
+        account_hint(payload.account_id.as_deref()),
+        payload
+            .display_name
+            .as_deref()
+            .map(|name| name.chars().count())
+            .unwrap_or(0)
+    );
     match state
         .db
         .get_or_create_anonymous(
@@ -216,7 +244,14 @@ async fn handle_anonymous_profile(
         )
         .await
     {
-        Ok(account) => (StatusCode::OK, Json(account)).into_response(),
+        Ok(account) => {
+            info!(
+                "[identity] profile ack id={request_id} account={} name_len={}",
+                account_hint(Some(&account.id)),
+                account.display_name.chars().count()
+            );
+            (StatusCode::OK, Json(account)).into_response()
+        }
         Err(error) => {
             let message = error.to_string();
             let status = if message.contains("account_id must") {
@@ -224,6 +259,12 @@ async fn handle_anonymous_profile(
             } else {
                 StatusCode::NOT_FOUND
             };
+            warn!(
+                "[identity] profile failed id={request_id} account={} status={} error={}",
+                account_hint(payload.account_id.as_deref()),
+                status,
+                message
+            );
             (status, Json(ErrorResponse { error: message })).into_response()
         }
     }
@@ -232,14 +273,28 @@ async fn handle_anonymous_profile(
 /// POST /profile/anonymous/name — persist a rename for an anonymous account.
 async fn handle_anonymous_display_name(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(payload): Json<AnonymousDisplayNameRequest>,
 ) -> impl IntoResponse {
+    let request_id = identity_request_hint(&headers);
+    info!(
+        "[identity] rename request id={request_id} account={} requested_name_len={}",
+        account_hint(Some(&payload.account_id)),
+        payload.display_name.chars().count()
+    );
     match state
         .db
         .update_anonymous_display_name(&payload.account_id, &payload.display_name)
         .await
     {
-        Ok(account) => (StatusCode::OK, Json(account)).into_response(),
+        Ok(account) => {
+            info!(
+                "[identity] rename ack id={request_id} account={} name_len={}",
+                account_hint(Some(&account.id)),
+                account.display_name.chars().count()
+            );
+            (StatusCode::OK, Json(account)).into_response()
+        }
         Err(error) => {
             let message = error.to_string();
             let status = if message.contains("account_id must") || message.contains("display_name")
@@ -248,6 +303,12 @@ async fn handle_anonymous_display_name(
             } else {
                 StatusCode::NOT_FOUND
             };
+            warn!(
+                "[identity] rename failed id={request_id} account={} status={} error={}",
+                account_hint(Some(&payload.account_id)),
+                status,
+                message
+            );
             (status, Json(ErrorResponse { error: message })).into_response()
         }
     }
@@ -297,9 +358,15 @@ async fn handle_get_profile(
     headers: HeaderMap,
     Query(query): Query<ProfileQuery>,
 ) -> impl IntoResponse {
+    let request_id = identity_request_hint(&headers);
     let provider = query.provider.trim();
     let external_id = query.external_id.trim();
     let auth_token = platform_auth_token(&headers);
+
+    info!(
+        "[identity] platform profile request id={request_id} provider={provider} external_id_len={}",
+        external_id.chars().count()
+    );
 
     if provider.is_empty() {
         return (
@@ -315,7 +382,9 @@ async fn handle_get_profile(
         match resolve_external_id(provider, external_id, auth_token.as_deref()).await {
             Ok(id) => id,
             Err(e) => {
-                warn!("Platform auth failed for /profile {provider}: {e}");
+                warn!(
+                    "[identity] platform profile failed id={request_id} provider={provider}: {e}"
+                );
                 return (StatusCode::UNAUTHORIZED, Json(ErrorResponse { error: e }))
                     .into_response();
             }
@@ -326,7 +395,14 @@ async fn handle_get_profile(
         .get_or_create(provider.to_string(), resolved_external_id)
         .await
     {
-        Ok(account) => (StatusCode::OK, Json(account)).into_response(),
+        Ok(account) => {
+            info!(
+                "[identity] platform profile ack id={request_id} account={} name_len={}",
+                account_hint(Some(&account.id)),
+                account.display_name.chars().count()
+            );
+            (StatusCode::OK, Json(account)).into_response()
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {

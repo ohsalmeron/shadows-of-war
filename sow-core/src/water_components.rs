@@ -95,3 +95,229 @@ impl WaterComponents {
         self.components.get(idx as usize).copied().unwrap_or(0)
     }
 }
+
+/// Incremental form of [`WaterComponents::compute`]. It performs bounded work
+/// per [`Self::step`] call while preserving the exact scan/BFS order of the
+/// one-shot implementation. This is used by the browser client to yield to the
+/// renderer between chunks; native callers can continue using `compute`.
+pub struct WaterComponentsBuilder {
+    width: u32,
+    height: u32,
+    terrain: Vec<crate::map::MapTile>,
+    components: Vec<u32>,
+    count: u32,
+    queue: VecDeque<u32>,
+    scan_index: usize,
+    shore_index: usize,
+    phase: BuildPhase,
+    result_taken: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BuildPhase {
+    LabelWater,
+    InheritShore,
+    Complete,
+}
+
+impl WaterComponentsBuilder {
+    pub fn new(map: &GameMap) -> Self {
+        let n = (map.width as usize) * (map.height as usize);
+        Self {
+            width: map.width,
+            height: map.height,
+            terrain: map.terrain.clone(),
+            components: vec![0; n],
+            count: 0,
+            queue: VecDeque::new(),
+            scan_index: 0,
+            shore_index: 0,
+            phase: if n == 0 {
+                BuildPhase::Complete
+            } else {
+                BuildPhase::LabelWater
+            },
+            result_taken: false,
+        }
+    }
+
+    /// Run at most `budget` tile/queue operations and return `(progress,
+    /// result)`. `result` is `Some` exactly once, when all components are ready.
+    pub fn step(&mut self, budget: usize) -> (f32, Option<WaterComponents>) {
+        if self.phase == BuildPhase::Complete {
+            if self.result_taken {
+                return (1.0, None);
+            }
+            self.result_taken = true;
+            let components = std::mem::take(&mut self.components);
+            return (
+                1.0,
+                Some(WaterComponents {
+                    components,
+                    count: self.count,
+                }),
+            );
+        }
+
+        let budget = budget.max(1);
+        let n = self.terrain.len();
+        let mut work = 0;
+
+        while work < budget {
+            match self.phase {
+                BuildPhase::LabelWater => {
+                    if let Some(t) = self.queue.pop_front() {
+                        self.visit_water_tile(t);
+                        work += 1;
+                    } else if self.scan_index < n {
+                        let start = self.scan_index;
+                        self.scan_index += 1;
+                        work += 1;
+                        if !self.terrain[start].is_land() && self.components[start] == 0 {
+                            self.count += 1;
+                            self.components[start] = self.count;
+                            self.queue.push_back(start as u32);
+                        }
+                    } else {
+                        self.phase = BuildPhase::InheritShore;
+                        self.shore_index = 0;
+                    }
+                }
+                BuildPhase::InheritShore => {
+                    if self.shore_index < n {
+                        let idx = self.shore_index;
+                        self.shore_index += 1;
+                        work += 1;
+                        self.inherit_shore(idx);
+                    } else {
+                        self.phase = BuildPhase::Complete;
+                        break;
+                    }
+                }
+                BuildPhase::Complete => break,
+            }
+        }
+
+        if self.phase == BuildPhase::Complete {
+            self.result_taken = true;
+            let components = std::mem::take(&mut self.components);
+            return (
+                1.0,
+                Some(WaterComponents {
+                    components,
+                    count: self.count,
+                }),
+            );
+        }
+
+        let progress = match self.phase {
+            BuildPhase::LabelWater => (self.scan_index as f32 / n as f32) * 0.8,
+            BuildPhase::InheritShore => 0.8 + (self.shore_index as f32 / n as f32) * 0.2,
+            BuildPhase::Complete => 1.0,
+        };
+        (progress.min(0.999), None)
+    }
+
+    fn visit_water_tile(&mut self, t: u32) {
+        let x = t % self.width;
+        let y = t / self.width;
+        let width = self.width;
+        let height = self.height;
+        let terrain = &self.terrain;
+        let components = &mut self.components;
+        let queue = &mut self.queue;
+        let component_id = self.count;
+        const NEIGHBORS: [(i32, i32); 8] = [
+            (1, 0),
+            (-1, 0),
+            (0, -1),
+            (0, 1),
+            (1, -1),
+            (-1, -1),
+            (1, 1),
+            (-1, 1),
+        ];
+        for &(dx, dy) in &NEIGHBORS {
+            let nx = x as i32 + dx;
+            let ny = y as i32 + dy;
+            if nx >= 0 && nx < width as i32 && ny >= 0 && ny < height as i32 {
+                let ni = (ny as u32 * width + nx as u32) as usize;
+                if !terrain[ni].is_land() && components[ni] == 0 {
+                    components[ni] = component_id;
+                    queue.push_back(ni as u32);
+                }
+            }
+        }
+    }
+
+    fn inherit_shore(&mut self, idx: usize) {
+        let tile = self.terrain[idx];
+        if !tile.is_land() || !tile.is_shoreline() {
+            return;
+        }
+        let x = (idx as u32) % self.width;
+        let y = (idx as u32) / self.width;
+        let mut best = 0;
+        let width = self.width;
+        let height = self.height;
+        let terrain = &self.terrain;
+        let components = &self.components;
+        const NEIGHBORS: [(i32, i32); 8] = [
+            (1, 0),
+            (-1, 0),
+            (0, -1),
+            (0, 1),
+            (1, -1),
+            (-1, -1),
+            (1, 1),
+            (-1, 1),
+        ];
+        for &(dx, dy) in &NEIGHBORS {
+            let nx = x as i32 + dx;
+            let ny = y as i32 + dy;
+            if nx >= 0 && nx < width as i32 && ny >= 0 && ny < height as i32 {
+                let ni = (ny as u32 * width + nx as u32) as usize;
+                if !terrain[ni].is_land() {
+                    let component = components[ni];
+                    if component > 0 && (best == 0 || component < best) {
+                        best = component;
+                    }
+                }
+            }
+        }
+        self.components[idx] = best;
+    }
+}
+
+#[cfg(test)]
+mod incremental_tests {
+    use super::{WaterComponents, WaterComponentsBuilder};
+    use crate::map::{GameMap, MapTile};
+
+    fn sample_map() -> GameMap {
+        let mut map = GameMap::new(11, 9);
+        for (idx, tile) in map.terrain.iter_mut().enumerate() {
+            if idx % 5 == 0 || idx / 11 == 4 {
+                *tile = MapTile::from_byte(0);
+            }
+        }
+        map
+    }
+
+    #[test]
+    fn incremental_matches_one_shot_for_multiple_budgets() {
+        let map = sample_map();
+        let expected = WaterComponents::compute(&map, |_| {});
+        for budget in [1, 2, 7, 31, 4096] {
+            let mut builder = WaterComponentsBuilder::new(&map);
+            let actual = loop {
+                let (_, result) = builder.step(budget);
+                if let Some(result) = result {
+                    break result;
+                }
+            };
+            assert_eq!(actual.components, expected.components, "budget={budget}");
+            assert_eq!(actual.count, expected.count, "budget={budget}");
+        }
+    }
+}

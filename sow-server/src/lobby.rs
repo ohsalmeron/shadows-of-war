@@ -86,7 +86,12 @@ pub fn normalize_player_name(input: &str) -> String {
         .take(16)
         .collect();
     if name.is_empty() {
-        "ANON".to_string()
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+            % 1000;
+        format!("ANON{suffix:03}")
     } else {
         name
     }
@@ -1138,6 +1143,6 @@ mod name_tests {
     fn names_are_bounded_and_control_free() {
         assert_eq!(normalize_player_name("  A\nB  "), "AB");
         assert_eq!(normalize_player_name("0123456789abcdefghi"), "0123456789abcdef");
-        assert_eq!(normalize_player_name("\n\t"), "ANON");
+        assert!(normalize_player_name("\n\t").starts_with("ANON"));
     }
 }

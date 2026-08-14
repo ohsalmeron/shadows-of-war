@@ -47,6 +47,7 @@ impl SowApp {
                     if self.ws_on_relay() {
                         self.net.relay_connect_start = None;
                         self.net.relay_retry_count = 0;
+                        self.net.load_telemetry.mark_relay_connected();
                     }
 
                     if self.ui.app.phase == sow_ui_kit::ClientPhase::Playing {
@@ -81,13 +82,31 @@ impl SowApp {
                     } else if let Some(id) = self.ui.app.main_menu_state.pending_join_lobby_id {
                         if self.ui.app.main_menu_state.is_waiting
                             && self.ui.app.main_menu_state.joined_lobby_id.is_none()
+                            && (self.progress_account_id.is_some() || self.net.is_offline)
                         {
                             log::info!("Joining lobby {} from portal invite", id);
                             let join_msg = self.make_join_message(Some(id), false, None, None);
                             if let Ok(json) = bincode::serialize(&join_msg) {
                                 client.send(json);
                             }
+                            self.join_waiting_for_identity = false;
                         }
+                    } else if self.join_waiting_for_identity
+                        && self.ui.app.main_menu_state.is_waiting
+                        && self.ui.app.main_menu_state.joined_lobby_id.is_none()
+                        && (self.progress_account_id.is_some() || self.net.is_offline)
+                    {
+                        let join_msg = self.make_join_message(
+                            None,
+                            self.ui.app.main_menu_state.custom_game_is_private,
+                            Some(self.ui.app.main_menu_state.custom_game_config.clone()),
+                            Some(self.ui.app.main_menu_state.custom_game_password.clone())
+                                .filter(|password| !password.is_empty()),
+                        );
+                        if let Ok(json) = bincode::serialize(&join_msg) {
+                            client.send(json);
+                        }
+                        self.join_waiting_for_identity = false;
                     }
                     self.net.client = Some(client);
                 }
@@ -171,6 +190,7 @@ impl SowApp {
 
         if let Some((relay_port, relay_host)) = switch_to_relay {
             self.net.relay_handoff_done = true;
+            self.net.load_telemetry.reset_for_relay_handoff();
             log::info!(
                 "[CLIENT NET] Handoff from Master Orchestrator -> Game Relay on port {} (host {:?})",
                 relay_port,

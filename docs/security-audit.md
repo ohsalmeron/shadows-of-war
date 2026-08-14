@@ -46,7 +46,8 @@ is the only external provider accepted by `GET /profile`, and its ID is
 verified from the platform token.  The legacy identity migration and all
 profile-link/conflict routes were removed; they are not compatibility paths.
 
-The canonical anonymous ID is a progress lookup key, not a secret or an
+The canonical anonymous ID is the only client-persisted identity key and a
+progress lookup key, not a secret or an
 authentication credential.  Likewise, `Join.database_account_id` is supplied
 by the client and is used for roster/reconnect/ban correlation only.  Relay
 authentication is the separate short-lived per-match ticket; no account ID
@@ -292,9 +293,10 @@ application-state namespaces were then removed:
 
 At the immediate post-reset check IONOS had zero account, identity, analytics,
 and match keys; zero replay files; and static catalog counts of 1,062 geo plus
-12 leader records.  A new `local:guest_d88…` account was created at
-08:31:25Z during the restart window (profile still has zero matches); it is
-new post-reset activity, not retained state.  Azure remains at zero replay /
+12 leader records.  A legacy `local:guest_d88…` label was observed at
+08:31:25Z during the restart window (profile still had zero matches); this is
+historical evidence, not a current account-ID format or identity contract.
+Azure remains at zero replay /
 journal files, zero Redis keys, empty dead-letter queue, four active workers,
 and empty lobby rosters on ports 8080–8083.  Historical `NRestarts` values are
 not used as the current health signal.

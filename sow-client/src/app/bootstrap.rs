@@ -81,6 +81,7 @@ impl SowApp {
 
         let stored_account_id = crate::anonymous_identity::load_account_id();
         let has_stored_account = stored_account_id.is_some();
+        let initial_display_name = app.main_menu_state.player_name.clone();
 
         let (connect_tx, connect_rx) = crossbeam_channel::unbounded();
 
@@ -129,9 +130,7 @@ impl SowApp {
 
         #[cfg(target_arch = "wasm32")]
         {
-            let fallback = crate::anonymous_identity::load_display_name()
-                .unwrap_or_else(|| app.main_menu_state.player_name.clone());
-            let identity = crate::store_portals::load_identity(&fallback);
+            let identity = crate::store_portals::load_identity(&app.main_menu_state.player_name);
             app.main_menu_state.player_name = identity.display_name;
             app.main_menu_state.name_locked = identity.name_locked;
             if let Some(id) = crate::store_portals::take_pending_invite_lobby() {
@@ -220,6 +219,7 @@ impl SowApp {
                 last_ping_time,
                 relay_connect_start: None,
                 relay_retry_count: 0,
+                load_telemetry: LoadTelemetry::default(),
                 relay_handoff_done: false,
             },
             sim: SimState {
@@ -374,6 +374,14 @@ impl SowApp {
                 String::from("local")
             },
             pending_display_name: None,
+            queued_display_name: None,
+            display_name_save_in_flight: false,
+            profile_request_in_flight: false,
+            profile_refresh_pending: false,
+            identity_request_seq: 0,
+            profile_last_applied_request: 0,
+            confirmed_display_name: Some(initial_display_name),
+            join_waiting_for_identity: false,
             progress_match_recorded: false,
             progress_stats_submitted: false,
             progress_session_defeats: crate::player_progress::SessionDefeats::default(),
@@ -384,6 +392,8 @@ impl SowApp {
             #[cfg(target_arch = "wasm32")]
             boot_ready_since: None,
         };
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut sow_app = sow_app;
         #[cfg(target_arch = "wasm32")]
         let mut sow_app = sow_app;
         #[cfg(target_arch = "wasm32")]

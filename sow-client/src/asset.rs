@@ -421,9 +421,24 @@ impl SowApp {
                     account_id,
                     display_name,
                     provider,
+                    request_id,
                 } => {
+                    if request_id < self.profile_last_applied_request {
+                        log::warn!(
+                            "[identity] ignoring stale profile response id={request_id} last_applied={}",
+                            self.profile_last_applied_request
+                        );
+                        continue;
+                    }
+                    self.profile_request_in_flight = false;
+                    self.profile_last_applied_request = request_id;
                     let old_level = self.progress.level;
                     let is_crazygames = provider == "crazygames";
+                    log::info!(
+                        "[identity] applying profile request id={request_id} provider={provider} account_len={} name_len={}",
+                        account_id.chars().count(),
+                        display_name.chars().count()
+                    );
                     self.apply_cloud_profile(progress, account_id, display_name, provider);
                     log::info!(
                         "Successfully synced profile from cloud database: level {} ({} XP)",
@@ -440,13 +455,82 @@ impl SowApp {
                     {
                         self.boot_db_settled = true;
                     }
+                    if self.join_waiting_for_identity
+                        && self.ui.app.main_menu_state.is_waiting
+                        && self.ui.app.main_menu_state.joined_lobby_id.is_none()
+                        && self.net.client.is_some()
+                    {
+                        let join_msg = self.make_join_message(
+                            self.ui.app.main_menu_state.pending_join_lobby_id,
+                            self.ui.app.main_menu_state.custom_game_is_private,
+                            Some(self.ui.app.main_menu_state.custom_game_config.clone()),
+                            Some(self.ui.app.main_menu_state.custom_game_password.clone())
+                                .filter(|password| !password.is_empty()),
+                        );
+                        if let Ok(json) = bincode::serialize(&join_msg)
+                            && let Some(client) = self.net.client.as_ref()
+                        {
+                            client.send(json);
+                            self.join_waiting_for_identity = false;
+                        }
+                    }
+                    if self.profile_refresh_pending && !self.display_name_save_in_flight {
+                        self.profile_refresh_pending = false;
+                        self.fetch_cloud_progress();
+                    }
                 }
-                crate::player_progress::DbEvent::DisplayNameSaved { display_name } => {
-                    self.ui.app.main_menu_state.player_name = display_name;
-                    self.ui.app.main_menu_state.name_locked = false;
+                crate::player_progress::DbEvent::DisplayNameSaved {
+                    account_id,
+                    display_name,
+                    request_id,
+                } => {
+                    self.display_name_save_in_flight = false;
+                    if self.progress_account_id.as_deref() != Some(account_id.as_str()) {
+                        log::error!(
+                            "[identity] ignoring rename ACK id={request_id}: account changed while request was in flight"
+                        );
+                        if let Some(confirmed) = self.confirmed_display_name.clone() {
+                            self.ui.app.main_menu_state.player_name = confirmed;
+                        }
+                        continue;
+                    }
+                    self.confirmed_display_name = Some(display_name.clone());
+                    if let Some(next_name) = self.queued_display_name.take() {
+                        // No False Victories: the UI name is provisional until the
+                        // database ACK; serialize a newer edit after this ACK.
+                        self.ui.app.main_menu_state.player_name = next_name.clone();
+                        self.save_display_name(next_name);
+                    } else {
+                        self.ui.app.main_menu_state.player_name = display_name;
+                        self.ui.app.main_menu_state.name_locked = false;
+                        if self.profile_refresh_pending {
+                            self.profile_refresh_pending = false;
+                            self.fetch_cloud_progress();
+                        }
+                    }
                 }
-                crate::player_progress::DbEvent::LoadFailed => {
-                    log::warn!("sow-database sync failed. Continuing with local offline progress.");
+                crate::player_progress::DbEvent::DisplayNameSaveFailed { request_id, status } => {
+                    self.display_name_save_in_flight = false;
+                    log::warn!(
+                        "[identity] rename request id={request_id} not acknowledged status={status:?}; restoring confirmed name"
+                    );
+                    if let Some(confirmed) = self.confirmed_display_name.clone() {
+                        self.ui.app.main_menu_state.player_name = confirmed;
+                    }
+                    if let Some(next_name) = self.queued_display_name.take() {
+                        self.ui.app.main_menu_state.player_name = next_name.clone();
+                        self.save_display_name(next_name);
+                    } else if self.profile_refresh_pending {
+                        self.profile_refresh_pending = false;
+                        self.fetch_cloud_progress();
+                    }
+                }
+                crate::player_progress::DbEvent::LoadFailed { request_id, status } => {
+                    self.profile_request_in_flight = false;
+                    self.profile_refresh_pending = false;
+                    log::warn!(
+                        "[identity] profile request id={request_id} failed status={status:?}; continuing with current identity"
+                    );
                     #[cfg(target_arch = "wasm32")]
                     {
                         self.boot_db_settled = true;

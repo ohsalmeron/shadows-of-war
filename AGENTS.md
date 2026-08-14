@@ -81,8 +81,9 @@ an unauthenticated HTTP `/internal/lobbies` request as a health probe.
 
 - Anonymous players have one canonical account ID issued by
   `POST /profile/anonymous`, stored client-side as `sow_account_id`.
-- The anonymous account also owns a persisted `display_name`. Browser refresh
-  keeps both values; clearing site storage intentionally creates a new account.
+- The anonymous account also owns a persisted `display_name`; the client does
+  not cache that name separately. Browser refresh reloads it by account ID;
+  clearing site storage intentionally creates a new account.
   Renames use `POST /profile/anonymous/name` and never change the account ID.
   CrazyGames verified identities and persistent bot accounts use
   `LinkedIdentity` records and are separate provider cases.
@@ -97,6 +98,14 @@ an unauthenticated HTTP `/internal/lobbies` request as a health probe.
   refuses them when `SOW_RELAY_TICKETS_REQUIRED=1`.
 
 ## Audit guidance
+
+### Investigation Protocol (Zero Trust)
+
+- Audit code and live state before proposing a cause; theories are not evidence.
+- Do not call a change fixed without runtime logs and a real execution path.
+- Stop at the first failed gate; never bypass the reproducible pipeline.
+- Prefer deletion and the smallest required diff over wrappers, cosmetic
+  refactors, or micro-hardening that does not reduce the actual blast radius.
 
 - Label historical reports and PRDs as historical/roadmap when their baseline
   differs from the running system.

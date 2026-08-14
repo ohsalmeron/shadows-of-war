@@ -533,172 +533,184 @@ fn draw_players_panel(
                     );
                 });
             });
-            ui.add_space(12.0);
+            ui.add_space(10.0);
 
             let remaining_h = ui.available_height().max(120.0);
             egui::ScrollArea::vertical()
                 .max_height(remaining_h)
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    ui.spacing_mut().item_spacing = egui::vec2(0.0, 8.0);
-                    for p in &lobby.players {
-                        let can_moderate = host.is_host && Some(p.player_id) != host.my_player_id;
+                    ui.spacing_mut().item_spacing = egui::vec2(0.0, 6.0);
 
-                        let row = Frame::NONE
-                            .fill(sow_ui_kit::theme::palette::surface_transparent())
-                            .stroke(Stroke::new(
-                                1.0_f32,
-                                sow_ui_kit::theme::palette::field_border(),
-                            ))
-                            .corner_radius(CornerRadius::same(8))
-                            .inner_margin(Margin::symmetric(12, 10))
-                            .show(ui, |ui| {
-                                ui.set_width(ui.available_width());
-                                ui.horizontal(|ui| {
-                                    let avatar_tex = asset_loader
-                                        .avatars
-                                        .get(&p.leader)
-                                        .or(asset_loader.avatar_fallback.as_ref());
-                                    if let Some(tex) = avatar_tex {
-                                        ui.add(
-                                            egui::Image::new(tex)
-                                                .fit_to_exact_size(egui::vec2(28.0, 28.0))
-                                                .corner_radius(CornerRadius::same(14)),
+                    if is_teams {
+                        let (red_players, blue_players): (Vec<_>, Vec<_>) = lobby
+                            .players
+                            .iter()
+                            .partition(|p| p.team == Some(sow_core::protocol::Team::Red));
+
+                        if fill_height {
+                            // Desktop Teams mode: 2 columns side-by-side (Red Left, Blue Right)
+                            ui.columns(2, |cols| {
+                                cols[0].vertical(|ui| {
+                                    ui.spacing_mut().item_spacing = egui::vec2(0.0, 6.0);
+                                    team_section_header(
+                                        ui,
+                                        "RED TEAM",
+                                        red_players.len(),
+                                        Color32::from_rgb(239, 68, 68),
+                                    );
+                                    for &p in &red_players {
+                                        draw_player_row(
+                                            ui,
+                                            p,
+                                            asset_loader,
+                                            strings,
+                                            host,
+                                            false,
+                                            is_teams,
+                                            action,
+                                            &mut name_click,
+                                            menu_open,
+                                            &mut new_menu_open,
+                                            &mut click_elsewhere,
                                         );
                                     }
-
-                                    ui.add_space(8.0);
-
-                                    let sense = if can_moderate {
-                                        egui::Sense::click()
-                                    } else {
-                                        egui::Sense::hover()
-                                    };
-                                    let mut name_resp = ui.add(
-                                        egui::Label::new(
-                                            RichText::new(&p.name)
-                                                .size(16.0)
-                                                .strong()
-                                                .color(Color32::WHITE),
-                                        )
-                                        .sense(sense),
+                                });
+                                cols[1].vertical(|ui| {
+                                    ui.spacing_mut().item_spacing = egui::vec2(0.0, 6.0);
+                                    team_section_header(
+                                        ui,
+                                        "BLUE TEAM",
+                                        blue_players.len(),
+                                        Color32::from_rgb(59, 130, 246),
                                     );
-                                    if can_moderate {
-                                        name_resp = name_resp
-                                            .on_hover_cursor(egui::CursorIcon::PointingHand);
-                                        if name_resp.clicked() {
-                                            name_click = Some(p.player_id);
-                                        }
+                                    for &p in &blue_players {
+                                        draw_player_row(
+                                            ui,
+                                            p,
+                                            asset_loader,
+                                            strings,
+                                            host,
+                                            false,
+                                            is_teams,
+                                            action,
+                                            &mut name_click,
+                                            menu_open,
+                                            &mut new_menu_open,
+                                            &mut click_elsewhere,
+                                        );
                                     }
-
-                                    ui.with_layout(
-                                        egui::Layout::right_to_left(egui::Align::Center),
-                                        |ui| {
-                                            let map_ready =
-                                                p.download_progress == 100 || p.is_ready;
-                                            if map_ready {
-                                                status_badge(
-                                                    ui,
-                                                    &strings.ready,
-                                                    Color32::from_rgb(74, 222, 128),
-                                                );
-                                            } else {
-                                                status_badge(
-                                                    ui,
-                                                    &format!("SYNCING {}%", p.download_progress),
-                                                    Color32::from_rgb(250, 204, 21),
-                                                );
-                                            }
-                                            if show_team_chips {
-                                                if let Some((label, col)) = team_chip(p.team) {
-                                                    ui.add_space(6.0);
-                                                    status_badge(ui, label, col);
-                                                }
-                                            }
-                                        },
-                                    );
-
-                                    name_resp.rect
-                                })
-                                .inner
+                                });
                             });
-
-                        if menu_open == Some(p.player_id) && can_moderate {
-                            let area =
-                                egui::Area::new(egui::Id::new(("lobby_roster_menu", p.player_id)))
-                                    .order(egui::Order::Foreground)
-                                    .fixed_pos(row.inner.left_bottom() + egui::vec2(0.0, 4.0))
-                                    .show(ui.ctx(), |ui| {
-                                        egui::Frame::menu(&ui.ctx().global_style())
-                                            .fill(Color32::from_black_alpha(235))
-                                            .stroke(Stroke::new(
-                                                1.5_f32,
-                                                sow_ui_kit::theme::palette::neon_cyan(),
-                                            ))
-                                            .corner_radius(8)
-                                            .inner_margin(Margin::symmetric(6, 6))
-                                            .show(ui, |ui| {
-                                                ui.set_min_width(140.0);
-                                                ui.spacing_mut().item_spacing =
-                                                    egui::vec2(4.0, 4.0);
-                                                let bw = 132.0_f32;
-                                                if ui
-                                            .add(
-                                                crate::widgets::ThemeButton::new(&strings.kick_btn)
-                                                    .style(
-                                                        crate::widgets::ThemeButtonStyle::Secondary,
-                                                    )
-                                                    .text_size(12.0)
-                                                    .min_size(egui::vec2(bw, 28.0)),
-                                            )
-                                            .clicked()
-                                        {
-                                            *action = Some(UiAction::KickPlayer {
-                                                lobby_id: host.lobby_id,
-                                                target_player_id: p.player_id,
-                                            });
-                                            new_menu_open = None;
-                                        }
-                                                if is_teams
-                                            && ui
-                                                .add(
-                                                    crate::widgets::ThemeButton::new(
-                                                        &strings.move_team_btn,
-                                                    )
-                                                    .style(
-                                                        crate::widgets::ThemeButtonStyle::Secondary,
-                                                    )
-                                                    .text_size(12.0)
-                                                    .min_size(egui::vec2(bw, 28.0)),
-                                                )
-                                                .clicked()
-                                        {
-                                            *action = Some(UiAction::MovePlayerTeam {
-                                                lobby_id: host.lobby_id,
-                                                target_player_id: p.player_id,
-                                            });
-                                            new_menu_open = None;
-                                        }
-                                                if ui
-                                            .add(
-                                                crate::widgets::ThemeButton::new(&strings.ban_btn)
-                                                    .style(crate::widgets::ThemeButtonStyle::Danger)
-                                                    .text_size(12.0)
-                                                    .min_size(egui::vec2(bw, 28.0)),
-                                            )
-                                            .clicked()
-                                        {
-                                            *action = Some(UiAction::BanPlayer {
-                                                lobby_id: host.lobby_id,
-                                                target_player_id: p.player_id,
-                                            });
-                                            new_menu_open = None;
-                                        }
-                                            });
-                                    });
-                            if area.response.clicked_elsewhere() {
-                                click_elsewhere = true;
+                        } else {
+                            // Mobile Teams mode: single column grouped by team
+                            team_section_header(
+                                ui,
+                                "RED TEAM",
+                                red_players.len(),
+                                Color32::from_rgb(239, 68, 68),
+                            );
+                            for &p in &red_players {
+                                draw_player_row(
+                                    ui,
+                                    p,
+                                    asset_loader,
+                                    strings,
+                                    host,
+                                    show_team_chips,
+                                    is_teams,
+                                    action,
+                                    &mut name_click,
+                                    menu_open,
+                                    &mut new_menu_open,
+                                    &mut click_elsewhere,
+                                );
                             }
+                            ui.add_space(8.0);
+                            team_section_header(
+                                ui,
+                                "BLUE TEAM",
+                                blue_players.len(),
+                                Color32::from_rgb(59, 130, 246),
+                            );
+                            for &p in &blue_players {
+                                draw_player_row(
+                                    ui,
+                                    p,
+                                    asset_loader,
+                                    strings,
+                                    host,
+                                    show_team_chips,
+                                    is_teams,
+                                    action,
+                                    &mut name_click,
+                                    menu_open,
+                                    &mut new_menu_open,
+                                    &mut click_elsewhere,
+                                );
+                            }
+                        }
+                    } else if fill_height && lobby.players.len() > 6 {
+                        // Desktop FFA/HvN long list: 2 balanced columns
+                        let mid = (lobby.players.len() + 1) / 2;
+                        let (left_players, right_players) = lobby.players.split_at(mid);
+                        ui.columns(2, |cols| {
+                            cols[0].vertical(|ui| {
+                                ui.spacing_mut().item_spacing = egui::vec2(0.0, 6.0);
+                                for p in left_players {
+                                    draw_player_row(
+                                        ui,
+                                        p,
+                                        asset_loader,
+                                        strings,
+                                        host,
+                                        show_team_chips,
+                                        is_teams,
+                                        action,
+                                        &mut name_click,
+                                        menu_open,
+                                        &mut new_menu_open,
+                                        &mut click_elsewhere,
+                                    );
+                                }
+                            });
+                            cols[1].vertical(|ui| {
+                                ui.spacing_mut().item_spacing = egui::vec2(0.0, 6.0);
+                                for p in right_players {
+                                    draw_player_row(
+                                        ui,
+                                        p,
+                                        asset_loader,
+                                        strings,
+                                        host,
+                                        show_team_chips,
+                                        is_teams,
+                                        action,
+                                        &mut name_click,
+                                        menu_open,
+                                        &mut new_menu_open,
+                                        &mut click_elsewhere,
+                                    );
+                                }
+                            });
+                        });
+                    } else {
+                        // Standard single column
+                        for p in &lobby.players {
+                            draw_player_row(
+                                ui,
+                                p,
+                                asset_loader,
+                                strings,
+                                host,
+                                show_team_chips,
+                                is_teams,
+                                action,
+                                &mut name_click,
+                                menu_open,
+                                &mut new_menu_open,
+                                &mut click_elsewhere,
+                            );
                         }
                     }
                 });
@@ -716,6 +728,182 @@ fn draw_players_panel(
     }
     if new_menu_open != menu_open {
         ui.ctx().data_mut(|d| d.insert_temp(menu_id, new_menu_open));
+    }
+}
+
+fn team_section_header(ui: &mut Ui, label: &str, count: usize, color: Color32) {
+    ui.horizontal(|ui| {
+        Frame::NONE
+            .fill(color.linear_multiply(0.18))
+            .stroke(Stroke::new(1.0_f32, color))
+            .corner_radius(CornerRadius::same(4))
+            .inner_margin(Margin::symmetric(8, 3))
+            .show(ui, |ui| {
+                ui.label(
+                    RichText::new(format!("{label} ({count})"))
+                        .size(11.0)
+                        .strong()
+                        .color(color),
+                );
+            });
+    });
+    ui.add_space(2.0);
+}
+
+fn draw_player_row(
+    ui: &mut Ui,
+    p: &sow_core::protocol::LobbyPlayerSyncState,
+    asset_loader: &crate::ui::asset_loader::AssetLoader,
+    strings: &sow_i18n::MainMenuStrings,
+    host: HostControls,
+    show_team_chips: bool,
+    is_teams: bool,
+    action: &mut Option<UiAction>,
+    name_click: &mut Option<u16>,
+    menu_open: Option<u16>,
+    new_menu_open: &mut Option<u16>,
+    click_elsewhere: &mut bool,
+) {
+    let can_moderate = host.is_host && Some(p.player_id) != host.my_player_id;
+
+    let row = Frame::NONE
+        .fill(sow_ui_kit::theme::palette::surface_transparent())
+        .stroke(Stroke::new(
+            1.0_f32,
+            sow_ui_kit::theme::palette::field_border(),
+        ))
+        .corner_radius(CornerRadius::same(8))
+        .inner_margin(Margin::symmetric(10, 8))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal(|ui| {
+                let avatar_tex = asset_loader
+                    .avatars
+                    .get(&p.leader)
+                    .or(asset_loader.avatar_fallback.as_ref());
+                if let Some(tex) = avatar_tex {
+                    ui.add(
+                        egui::Image::new(tex)
+                            .fit_to_exact_size(egui::vec2(24.0, 24.0))
+                            .corner_radius(CornerRadius::same(12)),
+                    );
+                }
+
+                ui.add_space(6.0);
+
+                let sense = if can_moderate {
+                    egui::Sense::click()
+                } else {
+                    egui::Sense::hover()
+                };
+                let mut name_resp = ui.add(
+                    egui::Label::new(
+                        RichText::new(&p.name)
+                            .size(14.0)
+                            .strong()
+                            .color(Color32::WHITE),
+                    )
+                    .sense(sense),
+                );
+                if can_moderate {
+                    name_resp = name_resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+                    if name_resp.clicked() {
+                        *name_click = Some(p.player_id);
+                    }
+                }
+
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let map_ready = p.download_progress == 100 || p.is_ready;
+                    if map_ready {
+                        status_badge(ui, &strings.ready, Color32::from_rgb(74, 222, 128));
+                    } else {
+                        status_badge(
+                            ui,
+                            &format!("SYNCING {}%", p.download_progress),
+                            Color32::from_rgb(250, 204, 21),
+                        );
+                    }
+                    if show_team_chips {
+                        if let Some((label, col)) = team_chip(p.team) {
+                            ui.add_space(4.0);
+                            status_badge(ui, label, col);
+                        }
+                    }
+                });
+
+                name_resp.rect
+            })
+            .inner
+        });
+
+    if menu_open == Some(p.player_id) && can_moderate {
+        let area = egui::Area::new(egui::Id::new(("lobby_roster_menu", p.player_id)))
+            .order(egui::Order::Foreground)
+            .fixed_pos(row.inner.left_bottom() + egui::vec2(0.0, 4.0))
+            .show(ui.ctx(), |ui| {
+                egui::Frame::menu(&ui.ctx().global_style())
+                    .fill(Color32::from_black_alpha(235))
+                    .stroke(Stroke::new(
+                        1.5_f32,
+                        sow_ui_kit::theme::palette::neon_cyan(),
+                    ))
+                    .corner_radius(8)
+                    .inner_margin(Margin::symmetric(6, 6))
+                    .show(ui, |ui| {
+                        ui.set_min_width(140.0);
+                        ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
+                        let bw = 132.0_f32;
+                        if ui
+                            .add(
+                                crate::widgets::ThemeButton::new(&strings.kick_btn)
+                                    .style(crate::widgets::ThemeButtonStyle::Secondary)
+                                    .text_size(12.0)
+                                    .min_size(egui::vec2(bw, 28.0)),
+                            )
+                            .clicked()
+                        {
+                            *action = Some(UiAction::KickPlayer {
+                                lobby_id: host.lobby_id,
+                                target_player_id: p.player_id,
+                            });
+                            *new_menu_open = None;
+                        }
+                        if is_teams
+                            && ui
+                                .add(
+                                    crate::widgets::ThemeButton::new(&strings.move_team_btn)
+                                        .style(crate::widgets::ThemeButtonStyle::Secondary)
+                                        .text_size(12.0)
+                                        .min_size(egui::vec2(bw, 28.0)),
+                                )
+                                .clicked()
+                        {
+                            *action = Some(UiAction::MovePlayerTeam {
+                                lobby_id: host.lobby_id,
+                                target_player_id: p.player_id,
+                            });
+                            *new_menu_open = None;
+                        }
+                        if ui
+                            .add(
+                                crate::widgets::ThemeButton::new(&strings.ban_btn)
+                                    .style(crate::widgets::ThemeButtonStyle::Danger)
+                                    .text_size(12.0)
+                                    .min_size(egui::vec2(bw, 28.0)),
+                            )
+                            .clicked()
+                        {
+                            *action = Some(UiAction::BanPlayer {
+                                lobby_id: host.lobby_id,
+                                target_player_id: p.player_id,
+                            });
+                            *new_menu_open = None;
+                        }
+                    });
+            });
+        if area.response.clicked_elsewhere() {
+            *click_elsewhere = true;
+        }
     }
 }
 

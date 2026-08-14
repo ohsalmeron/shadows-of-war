@@ -1,7 +1,10 @@
 use super::state::SowApp;
 
-fn default_display_name() -> String {
-    "ANON".to_string()
+fn account_hint(account_id: Option<&str>) -> String {
+    account_id
+        .map(|id| id.chars().take(8).collect::<String>())
+        .filter(|id| !id.is_empty())
+        .unwrap_or_else(|| "none".to_string())
 }
 
 fn fetch_anonymous_profile_request(
@@ -10,6 +13,7 @@ fn fetch_anonymous_profile_request(
     requested_display_name: Option<String>,
     tx: crossbeam_channel::Sender<crate::player_progress::DbEvent>,
     reset_stale_id: bool,
+    request_id: u64,
 ) {
     #[derive(serde::Serialize)]
     struct AnonymousProfileRequest {
@@ -17,67 +21,113 @@ fn fetch_anonymous_profile_request(
         display_name: Option<String>,
     }
 
+    let retry_display_name = requested_display_name.clone();
     let payload = AnonymousProfileRequest {
         account_id: account_id.clone(),
         display_name: requested_display_name,
     };
     let Ok(body) = serde_json::to_vec(&payload) else {
-        log::error!("Failed to serialize anonymous profile request");
+        log::error!(
+            "[identity] profile request id={request_id} serialize_failed account={}",
+            account_hint(account_id.as_deref())
+        );
+        let _ = tx.send(crate::player_progress::DbEvent::LoadFailed {
+            request_id,
+            status: None,
+        });
         return;
     };
     let mut request = ehttp::Request::post(&url, body);
     request.headers.insert("Content-Type", "application/json");
-    log::info!("Fetching canonical anonymous account from sow-database");
+    request
+        .headers
+        .insert("X-SOW-Identity-Request", request_id.to_string());
+    log::info!(
+        "[identity] profile request id={request_id} start account={} reset_stale_id={reset_stale_id}",
+        account_hint(account_id.as_deref())
+    );
     ehttp::fetch(request, move |result| match result {
         Ok(res) if res.ok => {
             #[derive(serde::Deserialize)]
             struct DbAccount {
                 id: String,
-                #[serde(default = "default_display_name")]
+                #[serde(default)]
                 display_name: String,
                 profile: crate::player_progress::PlayerProgress,
             }
             match serde_json::from_slice::<DbAccount>(&res.bytes) {
                 Ok(account) => {
                     crate::anonymous_identity::save_account_id(&account.id);
-                    crate::anonymous_identity::save_display_name(&account.display_name);
+                    log::info!(
+                        "[identity] profile request id={request_id} ack account={} name_len={}",
+                        account_hint(Some(&account.id)),
+                        account.display_name.chars().count()
+                    );
                     let _ = tx.send(crate::player_progress::DbEvent::ProfileLoaded {
                         progress: account.profile,
                         account_id: account.id,
                         display_name: account.display_name,
                         provider: "anonymous".to_string(),
+                        request_id,
                     });
                 }
                 Err(error) => {
-                    log::error!("Failed to parse anonymous profile JSON: {error}");
-                    let _ = tx.send(crate::player_progress::DbEvent::LoadFailed);
+                    log::error!("[identity] profile request id={request_id} parse_failed: {error}");
+                    let _ = tx.send(crate::player_progress::DbEvent::LoadFailed {
+                        request_id,
+                        status: Some(res.status),
+                    });
                 }
             }
         }
         Ok(res) => {
             if res.status == 404 && reset_stale_id && account_id.is_some() {
                 log::warn!(
-                    "Stored anonymous account was not found; issuing a fresh canonical account"
+                    "[identity] profile request id={request_id} missing_account account={} action=create_replacement",
+                    account_hint(account_id.as_deref())
                 );
                 crate::anonymous_identity::clear_account_id();
-                crate::anonymous_identity::clear_display_name();
-                fetch_anonymous_profile_request(url, None, None, tx, false);
+                // The current UI name is the only client-side presentation value. The
+                // server persists it with the newly issued account ID.
+                fetch_anonymous_profile_request(
+                    url,
+                    None,
+                    retry_display_name,
+                    tx,
+                    false,
+                    request_id,
+                );
                 return;
             }
             log::warn!(
-                "sow-database anonymous profile responded with HTTP {}",
-                res.status
+                "[identity] profile request id={request_id} failed status={} account={}",
+                res.status,
+                account_hint(account_id.as_deref())
             );
-            let _ = tx.send(crate::player_progress::DbEvent::LoadFailed);
+            let _ = tx.send(crate::player_progress::DbEvent::LoadFailed {
+                request_id,
+                status: Some(res.status),
+            });
         }
         Err(error) => {
-            log::error!("Anonymous profile request failed: {error}");
-            let _ = tx.send(crate::player_progress::DbEvent::LoadFailed);
+            log::error!("[identity] profile request id={request_id} network_failed: {error}");
+            let _ = tx.send(crate::player_progress::DbEvent::LoadFailed {
+                request_id,
+                status: None,
+            });
         }
     });
 }
 
 impl SowApp {
+    fn next_identity_request_id(&mut self) -> u64 {
+        self.identity_request_seq = self.identity_request_seq.wrapping_add(1);
+        if self.identity_request_seq == 0 {
+            self.identity_request_seq = 1;
+        }
+        self.identity_request_seq
+    }
+
     fn apply_platform_auth(request: &mut ehttp::Request) {
         if let Some(token) = crate::store_portals::load_identity("Player")
             .auth_token
@@ -87,7 +137,20 @@ impl SowApp {
         }
     }
 
-    pub(crate) fn fetch_cloud_progress(&self) {
+    pub(crate) fn fetch_cloud_progress(&mut self) {
+        if self.display_name_save_in_flight {
+            self.profile_refresh_pending = true;
+            log::debug!(
+                "[identity] profile refresh queued behind rename request; account={}",
+                account_hint(self.progress_account_id.as_deref())
+            );
+            return;
+        }
+        if self.profile_request_in_flight {
+            self.profile_refresh_pending = true;
+            log::debug!("[identity] profile refresh coalesced behind in-flight request");
+            return;
+        }
         let identity = crate::store_portals::load_identity("Player");
         let provider = identity.provider.to_string();
         let Some(ext_id) = identity
@@ -99,6 +162,8 @@ impl SowApp {
             self.fetch_anonymous_progress();
             return;
         };
+        let request_id = self.next_identity_request_id();
+        self.profile_request_in_flight = true;
         let db_url = self.asset_config.database_base.clone();
 
         let encoded_provider =
@@ -112,11 +177,17 @@ impl SowApp {
             encoded_id
         );
 
-        log::info!("Fetching profile from sow-database: {provider}/{ext_id}");
+        log::info!(
+            "[identity] profile request id={request_id} start provider={provider} external_id_len={}",
+            ext_id.chars().count()
+        );
         let tx = self.tasks.db_tx.clone();
         let profile_provider = provider.clone();
         let mut request = ehttp::Request::get(&url);
         Self::apply_platform_auth(&mut request);
+        request
+            .headers
+            .insert("X-SOW-Identity-Request", request_id.to_string());
 
         ehttp::fetch(
             request,
@@ -126,7 +197,7 @@ impl SowApp {
                         #[derive(serde::Deserialize)]
                         struct DbAccount {
                             id: String,
-                            #[serde(default = "default_display_name")]
+                            #[serde(default)]
                             display_name: String,
                             profile: crate::player_progress::PlayerProgress,
                         }
@@ -137,27 +208,44 @@ impl SowApp {
                                     account_id: account.id,
                                     display_name: account.display_name,
                                     provider: profile_provider,
+                                    request_id,
                                 });
                             }
                             Err(e) => {
-                                log::error!("Failed to parse database profile JSON: {}", e);
-                                let _ = tx.send(crate::player_progress::DbEvent::LoadFailed);
+                                log::error!(
+                                    "[identity] profile request id={request_id} parse_failed: {e}"
+                                );
+                                let _ = tx.send(crate::player_progress::DbEvent::LoadFailed {
+                                    request_id,
+                                    status: Some(res.status),
+                                });
                             }
                         }
                     } else {
-                        log::warn!("sow-database responded with HTTP {}", res.status);
-                        let _ = tx.send(crate::player_progress::DbEvent::LoadFailed);
+                        log::warn!(
+                            "[identity] profile request id={request_id} failed status={}",
+                            res.status
+                        );
+                        let _ = tx.send(crate::player_progress::DbEvent::LoadFailed {
+                            request_id,
+                            status: Some(res.status),
+                        });
                     }
                 }
                 Err(e) => {
-                    log::error!("sow-database request failed: {}", e);
-                    let _ = tx.send(crate::player_progress::DbEvent::LoadFailed);
+                    log::error!("[identity] profile request id={request_id} network_failed: {e}");
+                    let _ = tx.send(crate::player_progress::DbEvent::LoadFailed {
+                        request_id,
+                        status: None,
+                    });
                 }
             },
         );
     }
 
-    fn fetch_anonymous_progress(&self) {
+    fn fetch_anonymous_progress(&mut self) {
+        let request_id = self.next_identity_request_id();
+        self.profile_request_in_flight = true;
         let url = format!(
             "{}/profile/anonymous",
             self.asset_config.database_base.trim_end_matches('/')
@@ -169,6 +257,7 @@ impl SowApp {
             Some(self.ui.app.main_menu_state.player_name.clone()),
             tx,
             true,
+            request_id,
         );
     }
 
@@ -176,6 +265,19 @@ impl SowApp {
         let display_name = display_name.trim().to_string();
         if display_name.is_empty() {
             log::warn!("Refusing to save an empty display name");
+            return;
+        }
+        if self.profile_request_in_flight {
+            self.queued_display_name = Some(display_name);
+            log::debug!(
+                "[identity] rename queued behind profile request account={}",
+                account_hint(self.progress_account_id.as_deref())
+            );
+            return;
+        }
+        if self.display_name_save_in_flight {
+            self.queued_display_name = Some(display_name);
+            log::debug!("[identity] newer rename queued behind in-flight rename");
             return;
         }
         if self.progress_provider != "anonymous" {
@@ -195,6 +297,10 @@ impl SowApp {
             log::warn!("Cannot save display name before anonymous account is loaded");
             return;
         };
+        let request_id = self.next_identity_request_id();
+        let account_hint_value = account_hint(Some(&account_id));
+        let requested_name_len = display_name.chars().count();
+        self.display_name_save_in_flight = true;
         let url = format!(
             "{}/profile/anonymous/name",
             self.asset_config.database_base.trim_end_matches('/')
@@ -207,7 +313,7 @@ impl SowApp {
         #[derive(serde::Deserialize)]
         struct DbAccount {
             id: String,
-            #[serde(default = "default_display_name")]
+            #[serde(default)]
             display_name: String,
         }
         let body = match serde_json::to_vec(&RenameRequest {
@@ -216,31 +322,73 @@ impl SowApp {
         }) {
             Ok(body) => body,
             Err(error) => {
-                log::error!("Failed to serialize display-name update: {error}");
+                log::error!(
+                    "[identity] rename request id={request_id} serialize_failed account={account_hint_value}: {error}"
+                );
+                self.display_name_save_in_flight = false;
+                let _ =
+                    self.tasks
+                        .db_tx
+                        .send(crate::player_progress::DbEvent::DisplayNameSaveFailed {
+                            request_id,
+                            status: None,
+                        });
                 return;
             }
         };
         let tx = self.tasks.db_tx.clone();
         let mut request = ehttp::Request::post(&url, body);
         request.headers.insert("Content-Type", "application/json");
+        request
+            .headers
+            .insert("X-SOW-Identity-Request", request_id.to_string());
+        log::info!(
+            "[identity] rename request id={request_id} start account={account_hint_value} name_len={requested_name_len}"
+        );
         ehttp::fetch(request, move |result| match result {
             Ok(response) if response.ok => {
                 match serde_json::from_slice::<DbAccount>(&response.bytes) {
                     Ok(account) => {
                         crate::anonymous_identity::save_account_id(&account.id);
-                        crate::anonymous_identity::save_display_name(&account.display_name);
+                        log::info!(
+                            "[identity] rename request id={request_id} ack account={} name_len={}",
+                            account_hint(Some(&account.id)),
+                            account.display_name.chars().count()
+                        );
                         let _ = tx.send(crate::player_progress::DbEvent::DisplayNameSaved {
+                            account_id: account.id,
                             display_name: account.display_name,
+                            request_id,
                         });
                     }
-                    Err(error) => log::error!("Failed to parse display-name response: {error}"),
+                    Err(error) => {
+                        log::error!(
+                            "[identity] rename request id={request_id} parse_failed: {error}"
+                        );
+                        let _ = tx.send(crate::player_progress::DbEvent::DisplayNameSaveFailed {
+                            request_id,
+                            status: Some(response.status),
+                        });
+                    }
                 }
             }
-            Ok(response) => log::warn!(
-                "Anonymous display-name update responded with HTTP {}",
-                response.status
-            ),
-            Err(error) => log::error!("Anonymous display-name update failed: {error}"),
+            Ok(response) => {
+                log::warn!(
+                    "[identity] rename request id={request_id} failed status={} account={account_hint_value}",
+                    response.status
+                );
+                let _ = tx.send(crate::player_progress::DbEvent::DisplayNameSaveFailed {
+                    request_id,
+                    status: Some(response.status),
+                });
+            }
+            Err(error) => {
+                log::error!("[identity] rename request id={request_id} network_failed: {error}");
+                let _ = tx.send(crate::player_progress::DbEvent::DisplayNameSaveFailed {
+                    request_id,
+                    status: None,
+                });
+            }
         });
     }
 
@@ -263,15 +411,17 @@ impl SowApp {
         self.progress_account_id = Some(account_id);
         self.progress_provider = provider;
         if self.progress_provider == "anonymous" {
-            let pending_display_name = self.pending_display_name.take();
+            let pending_display_name = self
+                .pending_display_name
+                .take()
+                .or_else(|| self.queued_display_name.take());
+            self.confirmed_display_name = Some(display_name.clone());
             self.ui.app.main_menu_state.player_name = pending_display_name
                 .clone()
                 .unwrap_or_else(|| display_name.clone());
             self.ui.app.main_menu_state.name_locked = false;
             if let Some(pending_display_name) = pending_display_name {
                 self.save_display_name(pending_display_name);
-            } else {
-                crate::anonymous_identity::save_display_name(&display_name);
             }
         }
         if !self.progress.has_history() && portal.has_history() {

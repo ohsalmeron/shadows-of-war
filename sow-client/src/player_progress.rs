@@ -48,11 +48,21 @@ pub enum DbEvent {
         account_id: String,
         display_name: String,
         provider: String,
+        request_id: u64,
     },
     DisplayNameSaved {
+        account_id: String,
         display_name: String,
+        request_id: u64,
     },
-    LoadFailed,
+    DisplayNameSaveFailed {
+        request_id: u64,
+        status: Option<u16>,
+    },
+    LoadFailed {
+        request_id: u64,
+        status: Option<u16>,
+    },
 }
 
 impl PlayerProgress {

@@ -1,0 +1,2 @@
+valkey_enable="YES"
+valkey_config="/usr/local/etc/valkey.conf"

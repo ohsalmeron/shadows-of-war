@@ -1959,10 +1959,24 @@ async fn bridge_worker(registry: Registry) {
     loop {
         while let Some(ev) = rx.pop() {
             match ev {
-                Ev::Accept { fd, generation, peer } => {
+                Ev::Accept {
+                    fd,
+                    generation,
+                    peer,
+                    listener_port,
+                    accepted_at,
+                } => {
                     let (tx, rx_conn) = mpsc::channel(BRIDGE_RX_CAP);
                     conns.insert(fd, tx);
-                    tokio::spawn(ws_task(fd, generation, peer, rx_conn, registry.clone()));
+                    tokio::spawn(ws_task(
+                        fd,
+                        generation,
+                        peer,
+                        listener_port,
+                        accepted_at,
+                        rx_conn,
+                        registry.clone(),
+                    ));
                 }
                 Ev::Data { fd, guard } => match conns.get(&fd) {
                     Some(tx) => {
@@ -2059,6 +2073,8 @@ async fn ws_task(
     fd: c_int,
     generation: u64,
     peer: SocketAddr,
+    listener_port: u16,
+    accepted_at: Instant,
     rx: mpsc::Receiver<bridge::ZcRxGuard>,
     registry: Registry,
 ) {
@@ -2067,6 +2083,29 @@ async fn ws_task(
         peer, fd, generation
     );
     let conn = bridge::Conn::new(fd, generation, rx);
+    let accept_to_task_us = accepted_at.elapsed().as_micros();
+    let tls_started = Instant::now();
+    let mut tls_us = 0u128;
+
+    // These timings are intentionally emitted once per connection, without
+    // payloads or credentials. They distinguish bridge scheduling, TLS, WS,
+    // and first-frame delays while keeping the hot packet path unchanged.
+    let log_handshake_timing =
+        |result: &str, tls_us: u128, ws_us: u128, first_frame_us: u128| {
+        info!(
+            "[relay] handshake_timing worker={} port={} peer={} fd={} generation={} accept_to_task_us={} tls_us={} ws_us={} first_frame_us={} result={}",
+            WORKER_QUEUE_ID.load(Ordering::Relaxed),
+            listener_port,
+            peer,
+            fd,
+            generation,
+            accept_to_task_us,
+            tls_us,
+            ws_us,
+            first_frame_us,
+            result
+        );
+    };
 
     // TLS handshake (if cert configured), then WebSocket upgrade.
     let stream = if let Some(acceptor) = TLS_ACCEPTOR.get().and_then(|o| o.as_ref()) {
@@ -2076,13 +2115,20 @@ async fn ws_task(
         )
         .await
         {
-            Ok(Ok(tls)) => MaybeTlsConn::Tls(tls),
+            Ok(Ok(tls)) => {
+                tls_us = tls_started.elapsed().as_micros();
+                MaybeTlsConn::Tls(tls)
+            }
             Ok(Err(e)) => {
+                tls_us = tls_started.elapsed().as_micros();
                 warn!("[tls] handshake fail fd={} err={}", fd, e);
+                log_handshake_timing("tls_error", tls_us, 0, 0);
                 return;
             }
             Err(_) => {
+                tls_us = tls_started.elapsed().as_micros();
                 warn!("[tls] handshake timeout fd={} peer={}", fd, peer);
+                log_handshake_timing("tls_timeout", tls_us, 0, 0);
                 return;
             }
         }
@@ -2090,6 +2136,7 @@ async fn ws_task(
         MaybeTlsConn::Plain(conn)
     };
 
+    let ws_started = Instant::now();
     let ws = match tokio::time::timeout(
         Duration::from_secs(HANDSHAKE_TIMEOUT_SECS),
         tokio_tungstenite::accept_async(stream),
@@ -2098,14 +2145,19 @@ async fn ws_task(
     {
         Ok(Ok(ws)) => ws,
         Ok(Err(e)) => {
+            let ws_us = ws_started.elapsed().as_micros();
             warn!("[ws] handshake fail fd={} err={}", fd, e);
+            log_handshake_timing("ws_error", tls_us, ws_us, 0);
             return;
         }
         Err(_) => {
+            let ws_us = ws_started.elapsed().as_micros();
             warn!("[ws] handshake timeout fd={} peer={}", fd, peer);
+            log_handshake_timing("ws_timeout", tls_us, ws_us, 0);
             return;
         }
     };
+    let ws_us = ws_started.elapsed().as_micros();
 
     let (mut write, mut read) = ws.split();
     let (direct_tx, mut direct_rx) = mpsc::channel::<Arc<Vec<u8>>>(PER_CLIENT_CHANNEL);
@@ -2113,6 +2165,8 @@ async fn ws_task(
     // First frame decides the role. The optional bot/backfill orchestrator (or
     // an operations client) sends nothing: classify it after a short grace
     // period.
+    let first_frame_started = Instant::now();
+    let first_frame_us: u128;
     let role: Option<Role>;
     match tokio::time::timeout(
         Duration::from_secs(ORCHESTRATOR_GRACE_SECS),
@@ -2121,6 +2175,7 @@ async fn ws_task(
     .await
     {
         Ok(Some(Ok(Message::Binary(b)))) => {
+            first_frame_us = first_frame_started.elapsed().as_micros();
             match bincode::deserialize::<ClientMessage>(&b) {
                 Ok(ClientMessage::Ready { lobby_id, player_id }) => {
                     role = try_ready_register(
@@ -2205,21 +2260,51 @@ async fn ws_task(
                 }
             }
         }
-        Ok(Some(Ok(_))) => role = None,
+        Ok(Some(Ok(_))) => {
+            first_frame_us = first_frame_started.elapsed().as_micros();
+            role = None;
+        }
         Ok(Some(Err(e))) => {
+            first_frame_us = first_frame_started.elapsed().as_micros();
             warn!("[ws] recv err fd={} err={}", fd, e);
+            log_handshake_timing("first_frame_error", tls_us, ws_us, first_frame_us);
             return;
         }
         Ok(None) => {
+            first_frame_us = first_frame_started.elapsed().as_micros();
+            log_handshake_timing(
+                "closed_before_first_frame",
+                tls_us,
+                ws_us,
+                first_frame_us,
+            );
             return;
         }
         Err(_) => {
+            first_frame_us = first_frame_started.elapsed().as_micros();
             // Nothing in the grace window → optional orchestration/operations
             // WS (the bot/backfill compatibility client uses this feed).
+            log_handshake_timing(
+                "orchestrator_grace_timeout",
+                tls_us,
+                ws_us,
+                first_frame_us,
+            );
             orchestrator_task(&mut write, &mut read, &registry).await;
             return;
         }
     }
+
+    log_handshake_timing(
+        if role.is_some() {
+            "success"
+        } else {
+            "invalid_first_frame"
+        },
+        tls_us,
+        ws_us,
+        first_frame_us,
+    );
 
     // A connection that sent a player frame but did not resolve to a lobby
     // owned by this worker is never a valid game session. Close it explicitly

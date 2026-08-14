@@ -1,0 +1,2 @@
+sow_database_enable="YES"
+sow_database_env_file="/usr/local/etc/sow/sow.env"

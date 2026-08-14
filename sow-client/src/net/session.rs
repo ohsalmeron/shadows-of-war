@@ -99,6 +99,7 @@ impl SowApp {
         self.ui.app.main_menu_state.is_waiting = false;
         self.ui.app.main_menu_state.pending_join_lobby_id = None;
         self.ui.app.main_menu_state.joined_lobby_id = None;
+        self.join_waiting_for_identity = false;
         self.ui.app.hud_state.sync_state = None;
         self.sim.my_lobby_id = None;
         self.sim.my_player_id = None;
