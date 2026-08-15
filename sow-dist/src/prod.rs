@@ -89,6 +89,8 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
 
     if !plan.any() {
         println!("  no production component changed; no restart performed");
+        verify_control_host(&config, &plan)?;
+        retain_releases(&config)?;
         verify_public(paths, &config, &release)?;
         println!("✅ Production already serves the requested content");
         return Ok(());
@@ -528,7 +530,7 @@ fn activate_control_host(
     let relay_tickets_required = env_or("SOW_RELAY_TICKETS_REQUIRED", "1");
     let env_update = if runtime_env {
         format!(
-            "mkdir -p /tmp/sow-env-update; for f in /usr/local/etc/sow/sow.env /zroot/jails/sow-server/usr/local/etc/sow/sow.env /zroot/jails/sow-database/usr/local/etc/sow/sow.env; do t=$(mktemp /tmp/sow.env.XXXXXX); if sudo test -f \"$f\"; then sudo grep -v -E '^(SOW_DB_SECRET|SOW_RELAY_CONTROL_SECRET|SOW_RELAY_HOST|SOW_RELAY_WORKERS|SOW_RELAY_WORKER_COUNT|SOW_RELAY_MGMT_URL|SOW_RELAY_MGMT_SCHEME|SOW_RELAY_MGMT_RESOLVE_IP|SOW_RELAY_TICKETS_REQUIRED)=' \"$f\" > \"$t\" || true; else : > \"$t\"; fi; printf '%s\\n' SOW_RELAY_HOST={relay_host} SOW_RELAY_WORKERS={relay_workers} SOW_RELAY_WORKER_COUNT={relay_worker_count} SOW_RELAY_MGMT_URL={relay_mgmt_url} SOW_RELAY_MGMT_SCHEME={relay_mgmt_scheme} SOW_RELAY_MGMT_RESOLVE_IP={relay_mgmt_resolve_ip} SOW_RELAY_TICKETS_REQUIRED={relay_tickets_required} | sudo tee -a \"$t\" >/dev/null; printf '%s' 'SOW_DB_SECRET=' | sudo tee -a \"$t\" >/dev/null; sudo cat {db_secret} | sudo tee -a \"$t\" >/dev/null; printf '%s\\n' 'SOW_RELAY_CONTROL_SECRET=' | sudo tee -a \"$t\" >/dev/null; sudo cat {control_secret} | sudo tee -a \"$t\" >/dev/null; sudo install -o root -g wheel -m 0600 \"$t\" \"$f\"; rm -f \"$t\"; done; rm -rf /tmp/sow-env-update",
+            "mkdir -p /tmp/sow-env-update; for f in /usr/local/etc/sow/sow.env /zroot/jails/sow-server/usr/local/etc/sow/sow.env /zroot/jails/sow-database/usr/local/etc/sow/sow.env; do t=$(mktemp /tmp/sow.env.XXXXXX); if sudo test -f \"$f\"; then sudo grep -v -E '^(SOW_DB_SECRET|SOW_RELAY_CONTROL_SECRET|SOW_RELAY_HOST|SOW_RELAY_WORKERS|SOW_RELAY_WORKER_COUNT|SOW_RELAY_MGMT_URL|SOW_RELAY_MGMT_SCHEME|SOW_RELAY_MGMT_RESOLVE_IP|SOW_RELAY_TICKETS_REQUIRED)=|^[0-9a-fA-F]{{64}}$' \"$f\" > \"$t\" || true; else : > \"$t\"; fi; printf '%s\\n' SOW_RELAY_HOST={relay_host} SOW_RELAY_WORKERS={relay_workers} SOW_RELAY_WORKER_COUNT={relay_worker_count} SOW_RELAY_MGMT_URL={relay_mgmt_url} SOW_RELAY_MGMT_SCHEME={relay_mgmt_scheme} SOW_RELAY_MGMT_RESOLVE_IP={relay_mgmt_resolve_ip} SOW_RELAY_TICKETS_REQUIRED={relay_tickets_required} | sudo tee -a \"$t\" >/dev/null; printf '%s' 'SOW_DB_SECRET=' | sudo tee -a \"$t\" >/dev/null; sudo cat {db_secret} | sudo tee -a \"$t\" >/dev/null; printf '\\n' | sudo tee -a \"$t\" >/dev/null; printf '%s' 'SOW_RELAY_CONTROL_SECRET=' | sudo tee -a \"$t\" >/dev/null; sudo cat {control_secret} | sudo tee -a \"$t\" >/dev/null; printf '\\n' | sudo tee -a \"$t\" >/dev/null; sudo install -o root -g wheel -m 0600 \"$t\" \"$f\"; rm -f \"$t\"; done; rm -rf /tmp/sow-env-update",
             relay_host = shell_quote(&relay_host),
             relay_workers = shell_quote(&relay_workers),
             relay_worker_count = shell_quote(&relay_worker_count),
@@ -578,7 +580,7 @@ sudo install -o root -g wheel -m 0555 "$target/ops/rc.d/sow_server" /zroot/jails
 sudo install -o root -g wheel -m 0555 "$target/ops/rc.d/sow_database" /zroot/jails/sow-database/usr/local/etc/rc.d/sow_database
 link="/srv/sow/.current.$$"
 sudo ln -s "releases/__ID__" "$link"
-sudo mv -f "$link" /srv/sow/current
+sudo mv -hf "$link" /srv/sow/current
 if __NGINX_RELOAD__; then
     for f in "$target"/ops/conf.d/*; do [ -f "$f" ] || continue; sudo install -o root -g wheel -m 0644 "$f" "/usr/local/etc/nginx/conf.d/$(basename "$f")"; done
     for f in "$target"/ops/snippets/*; do [ -f "$f" ] || continue; sudo install -o root -g wheel -m 0644 "$f" "/usr/local/etc/nginx/snippets/$(basename "$f")"; done
@@ -659,7 +661,7 @@ fn stage_secret(host: &str, secret: &str, remote_path: &str) -> Result<()> {
 
 fn verify_control_host(config: &Config, plan: &ComponentPlan) -> Result<()> {
     let mut checks = String::from(
-        "set -eu; sudo jexec sow-database service sow_database status >/dev/null; sudo jexec sow-server service sow_server status >/dev/null; curl -fsS --max-time 5 http://127.0.0.1:25585/healthz >/dev/null; /usr/local/bin/valkey-cli -h 127.0.0.1 ping | grep -q PONG; sudo sockstat -4l | grep -q '127.0.0.1:25564'",
+        "set -eu; sudo jexec sow-database service sow_database status >/dev/null; sudo jexec sow-server service sow_server status >/dev/null; curl -fsS --retry 10 --retry-delay 1 --retry-connrefused --max-time 5 http://127.0.0.1:25585/healthz >/dev/null; /usr/local/bin/valkey-cli -h 127.0.0.1 ping | grep -q PONG; sudo sockstat -4l | grep -q '127.0.0.1:25564'",
     );
     if plan.web || plan.ops {
         checks.push_str("; sudo nginx -t");
@@ -669,7 +671,7 @@ fn verify_control_host(config: &Config, plan: &ComponentPlan) -> Result<()> {
 
 fn retain_releases(config: &Config) -> Result<()> {
     let command = format!(
-        "set -eu; current=$(sudo readlink /srv/sow/current 2>/dev/null || true); case \"$current\" in releases/*) current_path=\"/srv/sow/$current\" ;; *) current_path=\"$current\" ;; esac; i=0; for dir in $(sudo ls -dt {REMOTE_RELEASES}/* 2>/dev/null || true); do i=$((i+1)); [ $i -le 5 ] && continue; [ \"$current_path\" = \"$dir\" ] && continue; case \"$dir\" in {REMOTE_RELEASES}/*) sudo rm -rf -- \"$dir\" ;; esac; done"
+        "set -eu; current=$(sudo readlink /srv/sow/current 2>/dev/null || true); case \"$current\" in releases/*) current_path=\"/srv/sow/$current\" ;; *) current_path=\"$current\" ;; esac; i=0; for dir in $(sudo ls -dt {REMOTE_RELEASES}/* 2>/dev/null || true); do i=$((i+1)); [ $i -le 5 ] && continue; [ \"$current_path\" = \"$dir\" ] && continue; case \"$dir\" in {REMOTE_RELEASES}/*) sudo rm -rf -- \"$dir\" ;; esac; done; sudo find {REMOTE_RELEASES} -maxdepth 2 -type l -name '.current.*' -delete"
     );
     run("ssh", &[&config.control_host, &command], None).context("release retention failed")
 }
