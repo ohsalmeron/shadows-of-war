@@ -1,6 +1,87 @@
 use super::super::*;
 use super::emoji::*;
 
+/// Scaling factors relative to base territory font render size.
+pub const HUMAN_AVATAR_SCALE: f32 = 3.2;
+pub const BOT_AVATAR_SCALE: f32 = 1.8;
+pub const NATION_AVATAR_SCALE: f32 = 1.8;
+pub const BADGE_SCALE: f32 = 1.8;
+pub const TROOPS_SCALE: f32 = 1.30;
+
+/// Computed dimensions for a single nameplate instance (Poka-Yoke architecture).
+/// Decouples font size calculations from avatar and badge geometry so future
+/// modifiers cannot confuse text bounds with avatar diameters.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct NameplateMetrics {
+    /// Continuous render size derived from territory and zoom.
+    pub render_size: f32,
+    /// Quantized font size for egui glyph layout.
+    pub font_size: f32,
+    /// Scale factor reconciling continuous GPU rendering with quantized egui font layout.
+    pub text_scale: f32,
+    /// On-screen diameter of the avatar circle in screen px (0.0 if disabled/hidden).
+    pub avatar_diameter: f32,
+    /// On-screen radius of the avatar circle (avatar_diameter / 2.0).
+    pub avatar_radius: f32,
+    /// Size of flanking status badges (📨, 🤝, 🗡️).
+    pub badge_size: f32,
+    /// Font size for troops text.
+    pub troops_font_size: f32,
+    /// Continuous render size for troops text.
+    pub troops_render_size: f32,
+}
+
+impl NameplateMetrics {
+    #[inline]
+    pub fn compute(
+        scaled_size: f32,
+        player_type: sow_core::player::PlayerType,
+        show_bot_avatars: bool,
+    ) -> Self {
+        let render_size = scaled_size.max(7.0);
+        let font_size = if render_size > 20.0 {
+            (render_size / 2.0).round() * 2.0
+        } else {
+            render_size.round()
+        }
+        .max(7.0);
+        let text_scale = render_size / font_size;
+
+        let avatar_scale = match player_type {
+            sow_core::player::PlayerType::Human => HUMAN_AVATAR_SCALE,
+            sow_core::player::PlayerType::Bot => {
+                if show_bot_avatars {
+                    BOT_AVATAR_SCALE
+                } else {
+                    0.0
+                }
+            }
+            sow_core::player::PlayerType::Nation => NATION_AVATAR_SCALE,
+        };
+
+        let avatar_diameter = if avatar_scale > 0.0 {
+            (render_size * avatar_scale).max(4.0)
+        } else {
+            0.0
+        };
+
+        let badge_size = render_size * BADGE_SCALE;
+        let troops_render_size = render_size * TROOPS_SCALE;
+        let troops_font_size = (font_size * TROOPS_SCALE).round().max(2.0);
+
+        Self {
+            render_size,
+            font_size,
+            text_scale,
+            avatar_diameter,
+            avatar_radius: avatar_diameter / 2.0,
+            badge_size,
+            troops_font_size,
+            troops_render_size,
+        }
+    }
+}
+
 /// World-anchored nameplate font size in screen px. `nameplate_size * zoom_scaled` is the
 /// territory's on-screen side length, so the plate shrinks as you zoom out and grows with
 /// territory — it always occupies the same fraction of the land it labels. Humans keep a
@@ -16,7 +97,7 @@ pub(crate) fn nameplate_font_px(
     if is_human {
         world_px.clamp(8.0, cfg.nameplate_max_font)
     } else {
-        world_px.min(cfg.nameplate_max_font * 0.6)
+        world_px.min(cfg.nameplate_max_font)
     }
 }
 
@@ -131,24 +212,15 @@ pub(crate) fn render(
                 full_labels_drawn += 1;
             }
 
-            // Continuous size drives ALL geometry and the GPU SDF text (which scales smoothly
-            // at any fractional size), so the plate grows/shrinks as smoothly as the camera.
-            let render_size = scaled_size.max(7.0);
-            // `font_size` is quantized ONLY for egui's CPU glyph atlas (name/troops measurement
-            // + the non-GPU fallback), keeping distinct FontIds bounded. Measured metrics are
-            // scaled back to render_size via `text_scale`, so quantization never shows on screen.
-            let font_size = if render_size > 20.0 {
-                (render_size / 2.0).round() * 2.0
-            } else {
-                render_size.round()
-            }
-            .max(7.0);
-            let text_scale = render_size / font_size;
-            let is_bot = player.player_type == sow_core::player::PlayerType::Bot;
-            let mut avatar_size = (render_size * 2.2).max(4.0);
-            if is_bot && !show_bot_avatars {
-                avatar_size = 0.0;
-            }
+            let metrics = NameplateMetrics::compute(
+                scaled_size,
+                player.player_type,
+                show_bot_avatars,
+            );
+            let render_size = metrics.render_size;
+            let font_size = metrics.font_size;
+            let text_scale = metrics.text_scale;
+            let avatar_size = metrics.avatar_diameter;
             // Check alliance status with the player
             let mut is_allied = false;
             let mut is_heart_flashing = false;
@@ -193,8 +265,8 @@ pub(crate) fn render(
                 sow_core::player::display_name(player.id, &player.name, player.player_type)
             };
 
-            let troops_render_size = render_size * 1.30;
-            let troops_font_size = (font_size * 1.30).round().max(2.0);
+            let troops_render_size = metrics.troops_render_size;
+            let troops_font_size = metrics.troops_font_size;
             let troops_font_id = egui::FontId::proportional(troops_font_size);
 
             let prepared_name = sow_ui_kit::widgets::prepare_name(painter, &display_name, &font_id);
@@ -242,7 +314,7 @@ pub(crate) fn render(
             let avatar_cy = content_top + avatar_size / 2.0;
 
             // Badge sizing / positioning beside avatar.
-            let badge_size = render_size * 1.8;
+            let badge_size = metrics.badge_size;
             let left_x = center.x - avatar_size / 2.0 - badge_size / 2.0 - 3.0;
             let right_x = center.x + avatar_size / 2.0 + badge_size / 2.0 + 3.0;
 
@@ -314,7 +386,7 @@ pub(crate) fn render(
 
             // --- Avatar (centered on top) ---
             if avatar_size > 0.0 {
-                let avatar_r = avatar_size / 2.0;
+                let avatar_r = metrics.avatar_radius;
                 if let Some(tr) = gfx.text_renderer.as_mut() {
                     crate::hud::avatar::draw_player_avatar_gpu(
                         tr,
@@ -559,5 +631,49 @@ mod tests {
             tiny_bot_font >= 7.0,
             "should stay readable, not hide: {tiny_bot_font}"
         );
+    }
+
+    #[test]
+    fn pokayoke_human_avatar_is_significantly_larger_than_bots() {
+        let scaled_size = 14.0;
+        let human_metrics = NameplateMetrics::compute(
+            scaled_size,
+            sow_core::player::PlayerType::Human,
+            true,
+        );
+        let bot_metrics = NameplateMetrics::compute(
+            scaled_size,
+            sow_core::player::PlayerType::Bot,
+            true,
+        );
+        let nation_metrics = NameplateMetrics::compute(
+            scaled_size,
+            sow_core::player::PlayerType::Nation,
+            true,
+        );
+
+        // Human avatar must be >= 1.5x larger than bot and nation icons
+        assert!(
+            human_metrics.avatar_diameter >= bot_metrics.avatar_diameter * 1.5,
+            "Human avatar ({}) must be significantly larger than bot avatar ({})",
+            human_metrics.avatar_diameter,
+            bot_metrics.avatar_diameter
+        );
+        assert_eq!(bot_metrics.avatar_diameter, nation_metrics.avatar_diameter);
+
+        // Bot avatars can be disabled via dev settings, human avatars stay visible
+        let bot_hidden_metrics = NameplateMetrics::compute(
+            scaled_size,
+            sow_core::player::PlayerType::Bot,
+            false,
+        );
+        assert_eq!(bot_hidden_metrics.avatar_diameter, 0.0);
+
+        let human_unaffected_metrics = NameplateMetrics::compute(
+            scaled_size,
+            sow_core::player::PlayerType::Human,
+            false,
+        );
+        assert!(human_unaffected_metrics.avatar_diameter > 0.0);
     }
 }
