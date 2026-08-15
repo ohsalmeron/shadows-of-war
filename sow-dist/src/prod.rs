@@ -83,7 +83,11 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
     println!("  release {}", release.id);
 
     println!("==> 4/8 Compare deployed manifest");
-    let plan = remote_plan(&config, &release)?;
+    let mut plan = remote_plan(&config, &release)?;
+    if maps_catalog_path_drift(&config)? {
+        println!("  runtime env drift: SOW_MAPS_CATALOG_PATH");
+        plan.ops = true;
+    }
     println!("  plan: {plan:?}");
     println!("  relay: held; pipeline has no safe drain contract yet");
 
@@ -475,6 +479,19 @@ fn remote_plan(config: &Config, release: &Release) -> Result<ComponentPlan> {
     })
 }
 
+fn maps_catalog_path_drift(config: &Config) -> Result<bool> {
+    let expected = env_or("SOW_MAPS_CATALOG_PATH", "/var/db/sow/server/catalog.bin");
+    let remote = output(
+        "ssh",
+        &[
+            &config.control_host,
+            r#"for f in /usr/local/etc/sow/sow.env /zroot/jails/sow-server/usr/local/etc/sow/sow.env /zroot/jails/sow-database/usr/local/etc/sow/sow.env; do if sudo test -f "$f"; then sudo awk -F= '$1=="SOW_MAPS_CATALOG_PATH"{print $2}' "$f"; fi; done"#,
+        ],
+    )?;
+    let values = remote.lines().map(str::trim).collect::<Vec<_>>();
+    Ok(values.len() != 3 || values.iter().any(|value| *value != expected))
+}
+
 fn parse_components(text: &str) -> BTreeMap<String, String> {
     text.lines()
         .filter_map(|line| line.split_once('='))
@@ -528,9 +545,13 @@ fn activate_control_host(
     let relay_mgmt_scheme = env_or("SOW_RELAY_MGMT_SCHEME", "https");
     let relay_mgmt_resolve_ip = env_or("SOW_RELAY_MGMT_RESOLVE_IP", "20.230.49.9");
     let relay_tickets_required = env_or("SOW_RELAY_TICKETS_REQUIRED", "1");
+    let maps_root = env_or("SOW_MAPS_ROOT", "/srv/sow/current/maps");
+    let maps_catalog_path = env_or("SOW_MAPS_CATALOG_PATH", "/var/db/sow/server/catalog.bin");
     let env_update = if runtime_env {
         format!(
-            "mkdir -p /tmp/sow-env-update; for f in /usr/local/etc/sow/sow.env /zroot/jails/sow-server/usr/local/etc/sow/sow.env /zroot/jails/sow-database/usr/local/etc/sow/sow.env; do t=$(mktemp /tmp/sow.env.XXXXXX); if sudo test -f \"$f\"; then sudo grep -v -E '^(SOW_DB_SECRET|SOW_RELAY_CONTROL_SECRET|SOW_RELAY_HOST|SOW_RELAY_WORKERS|SOW_RELAY_WORKER_COUNT|SOW_RELAY_MGMT_URL|SOW_RELAY_MGMT_SCHEME|SOW_RELAY_MGMT_RESOLVE_IP|SOW_RELAY_TICKETS_REQUIRED)=|^[0-9a-fA-F]{{64}}$' \"$f\" > \"$t\" || true; else : > \"$t\"; fi; printf '%s\\n' SOW_RELAY_HOST={relay_host} SOW_RELAY_WORKERS={relay_workers} SOW_RELAY_WORKER_COUNT={relay_worker_count} SOW_RELAY_MGMT_URL={relay_mgmt_url} SOW_RELAY_MGMT_SCHEME={relay_mgmt_scheme} SOW_RELAY_MGMT_RESOLVE_IP={relay_mgmt_resolve_ip} SOW_RELAY_TICKETS_REQUIRED={relay_tickets_required} | sudo tee -a \"$t\" >/dev/null; printf '%s' 'SOW_DB_SECRET=' | sudo tee -a \"$t\" >/dev/null; sudo cat {db_secret} | sudo tee -a \"$t\" >/dev/null; printf '\\n' | sudo tee -a \"$t\" >/dev/null; printf '%s' 'SOW_RELAY_CONTROL_SECRET=' | sudo tee -a \"$t\" >/dev/null; sudo cat {control_secret} | sudo tee -a \"$t\" >/dev/null; printf '\\n' | sudo tee -a \"$t\" >/dev/null; sudo install -o root -g wheel -m 0600 \"$t\" \"$f\"; rm -f \"$t\"; done; rm -rf /tmp/sow-env-update",
+            "mkdir -p /tmp/sow-env-update; for f in /usr/local/etc/sow/sow.env /zroot/jails/sow-server/usr/local/etc/sow/sow.env /zroot/jails/sow-database/usr/local/etc/sow/sow.env; do t=$(mktemp /tmp/sow.env.XXXXXX); if sudo test -f \"$f\"; then sudo grep -v -E '^(SOW_MAPS_ROOT|SOW_MAPS_CATALOG_PATH|SOW_DB_SECRET|SOW_RELAY_CONTROL_SECRET|SOW_RELAY_HOST|SOW_RELAY_WORKERS|SOW_RELAY_WORKER_COUNT|SOW_RELAY_MGMT_URL|SOW_RELAY_MGMT_SCHEME|SOW_RELAY_MGMT_RESOLVE_IP|SOW_RELAY_TICKETS_REQUIRED)=|^[0-9a-fA-F]{{64}}$' \"$f\" > \"$t\" || true; else : > \"$t\"; fi; printf '%s\\n' SOW_MAPS_ROOT={maps_root} SOW_MAPS_CATALOG_PATH={maps_catalog_path} SOW_RELAY_HOST={relay_host} SOW_RELAY_WORKERS={relay_workers} SOW_RELAY_WORKER_COUNT={relay_worker_count} SOW_RELAY_MGMT_URL={relay_mgmt_url} SOW_RELAY_MGMT_SCHEME={relay_mgmt_scheme} SOW_RELAY_MGMT_RESOLVE_IP={relay_mgmt_resolve_ip} SOW_RELAY_TICKETS_REQUIRED={relay_tickets_required} | sudo tee -a \"$t\" >/dev/null; printf '%s' 'SOW_DB_SECRET=' | sudo tee -a \"$t\" >/dev/null; sudo cat {db_secret} | sudo tee -a \"$t\" >/dev/null; printf '\\n' | sudo tee -a \"$t\" >/dev/null; printf '%s' 'SOW_RELAY_CONTROL_SECRET=' | sudo tee -a \"$t\" >/dev/null; sudo cat {control_secret} | sudo tee -a \"$t\" >/dev/null; printf '\\n' | sudo tee -a \"$t\" >/dev/null; sudo install -o root -g wheel -m 0600 \"$t\" \"$f\"; rm -f \"$t\"; done; rm -rf /tmp/sow-env-update",
+            maps_root = shell_quote(&maps_root),
+            maps_catalog_path = shell_quote(&maps_catalog_path),
             relay_host = shell_quote(&relay_host),
             relay_workers = shell_quote(&relay_workers),
             relay_worker_count = shell_quote(&relay_worker_count),
@@ -661,7 +682,7 @@ fn stage_secret(host: &str, secret: &str, remote_path: &str) -> Result<()> {
 
 fn verify_control_host(config: &Config, plan: &ComponentPlan) -> Result<()> {
     let mut checks = String::from(
-        "set -eu; sudo jexec sow-database service sow_database status >/dev/null; sudo jexec sow-server service sow_server status >/dev/null; curl -fsS --retry 10 --retry-delay 1 --retry-connrefused --max-time 5 http://127.0.0.1:25585/healthz >/dev/null; /usr/local/bin/valkey-cli -h 127.0.0.1 ping | grep -q PONG; sudo sockstat -4l | grep -q '127.0.0.1:25564'",
+        "set -eu; sudo jexec sow-database service sow_database status >/dev/null; sudo jexec sow-server service sow_server status >/dev/null; i=0; until curl -fsS --max-time 5 http://127.0.0.1:25585/healthz >/dev/null; do i=$((i+1)); [ \"$i\" -ge 15 ] && exit 1; sleep 1; done; /usr/local/bin/valkey-cli -h 127.0.0.1 ping | grep -q PONG; sudo sockstat -4l | grep -q '127.0.0.1:25564'",
     );
     if plan.web || plan.ops {
         checks.push_str("; sudo nginx -t");
