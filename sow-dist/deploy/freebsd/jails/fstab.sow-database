@@ -1,3 +1,0 @@
-/srv/sow /zroot/jails/sow-database/srv/sow nullfs ro 0 0
-/var/db/sow /zroot/jails/sow-database/var/db/sow nullfs rw 0 0
-/var/log/sow /zroot/jails/sow-database/var/log/sow nullfs rw 0 0

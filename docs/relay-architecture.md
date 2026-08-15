@@ -83,20 +83,16 @@ fix (this doc's era) removed the branch and gave the relay its own TLS.
 
 ## Pipeline (./sow p)
 
-`sow-dist/src/relay.rs` is the relay deploy step:
-1. rsync repo → Azure VM, `cargo build --release -p sow-relay`
-2. writes worker wrapper + systemd units + drop-in (includes TLS env)
-3. copies local cert (`SOW_RELAY_TLS_CERT_LOCAL`) to
-   `/usr/local/etc/sow/relay.{crt,key}`
-4. restarts workers, verifies mgmt :8080-8083
+`./sow p` now owns the control-host release lifecycle only: build, package,
+hash, stage, atomically activate, restart only affected jail services, and
+verify. Relay workers are deliberately not restarted by this path. A relay
+deployment requires a real drain/ownership protocol first; killing a worker
+with active games is not an acceptable fallback.
 
-`sow-dist/src/prod.rs` `sync_relay_env` writes
-`SOW_RELAY_HOST`/`SOW_RELAY_WORKERS` into IONOS
-`/usr/local/etc/sow/sow.env`. It does not restart the server while merely
-synchronizing configuration; the final activation step waits for database
-readiness and then performs the controlled service restart. The worker `host`
-field is what players receive as `relay_host` — it MUST be the TLS hostname,
-not the IP.
+The worker catalog (`SOW_RELAY_HOST`/`SOW_RELAY_WORKERS`) is runtime
+configuration for `sow-server` and is synchronized only when a server-side
+runtime component changes. The advertised `host` remains the TLS hostname,
+not a raw IP.
 
 ## Operations
 
@@ -117,16 +113,9 @@ not the IP.
 
 Cert expires 90 days after issuance (see `notAfter`). Renewal:
 
-```sh
-certbot renew --dns-cloudflare --dns-cloudflare-credentials <cf.ini>
-./sow p   # re-deploys cert + restarts relay workers
-```
-
-There is NO automatic timer wired up yet — run the two commands above
-(or set up `certbot.timer` + a `./sow p` cron). The cert source lives on the
-machine that issued it (`/etc/letsencrypt`); losing it only loses the renewal
-history, not the deployed cert — but you cannot renew without a Cloudflare
-API token for the shadowsofwar.io zone.
+Renewal and relay-worker restart are a separate operational lifecycle. Do not
+use `./sow p` as a relay restart workaround; the production pipeline will not
+destroy active games to install a certificate.
 
 ## Disaster recovery (from a dead laptop)
 
@@ -140,12 +129,7 @@ regenerable.
 3. restore Cloudflare API token from vault → ~/.cloudflared/cert.pem.bak format:
    {"zoneID":"1e4d2979bf3209a3d03a3248a116da3c","accountID":"...",
     "apiToken":"cfut_..."}                    # or create a fresh token in CF UI
-4. certbot certonly --dns-cloudflare ... -d relay.shadowsofwar.io
-5. ./sow p                                     # deploys relay + IONOS
-6. if the Azure VM is also gone:
-   az login && ./sow-dist/deploy/azure/create_dpdk_vm.sh && ./sow p
+4. restore or provision the relay VM using the infrastructure provider's
+   separate, reviewed provisioning process
+5. run `./sow p` for the control-host release only
 ```
-
-The relay VM script (`create_dpdk_vm.sh`) recreates the exact 2-NIC topology
-(mgmt 10.0.1.4/20.230.49.9, data 10.0.2.4/20.122.128.185, NSG, hugepages
-sysctl.d/90-hugepages.conf). Idempotent.

@@ -1,2 +1,0 @@
-sow_server_enable="YES"
-sow_server_env_file="/usr/local/etc/sow/sow.env"

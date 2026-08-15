@@ -3932,7 +3932,6 @@ name = "sow-dist"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "axum",
  "brotli",
  "hex",
  "minifier",
@@ -3941,9 +3940,6 @@ dependencies = [
  "sha2",
  "sow-i18n",
  "tempfile",
- "tokio",
- "tower-http",
- "url",
  "walkdir",
  "wasm-bindgen-cli-support",
 ]

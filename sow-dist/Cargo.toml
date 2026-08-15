@@ -14,14 +14,10 @@ anyhow = "1"
 brotli = { workspace = true }
 minifier = { workspace = true }
 serde_json = { workspace = true }
-url = { workspace = true }
 sha2 = "0.10"
 rand = { workspace = true }
 hex = { workspace = true }
 walkdir = "2"
 wasm-bindgen-cli-support = { workspace = true }
 tempfile = { workspace = true }
-axum = { workspace = true }
-tokio = { workspace = true, features = ["net"] }
-tower-http = { workspace = true }
 sow-i18n = { workspace = true }

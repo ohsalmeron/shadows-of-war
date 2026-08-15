@@ -46,16 +46,18 @@ hostnames, paths and compatibility behavior are not production instructions.
 
 ## Deploy pipeline (`./sow p`)
 
-1. Preflight release directory, sudo and checksums on the target hosts.
-2. Build WASM locally and FreeBSD binaries on the `freebsd` build VM.
-3. Assemble a content-addressed release.
-4. Upload and activate through the pipeline activator.
-5. Restart only the services affected by the release, wait for database
-   readiness before starting `sow-server`, and verify health/public reachability.
+1. Run read-only preflight on the control host and FreeBSD builder.
+2. Build WASM locally and FreeBSD binaries on the dedicated builder.
+3. Assemble an immutable release with final component hashes.
+4. Compare the release manifest with `/srv/sow/current/COMPONENTS`.
+5. Stage only after the plan is known; activate with an atomic symlink swap.
+6. Restart only the affected jail service and verify jail-aware health.
+7. Retain the five newest releases and perform public verification.
 
-`./sow b` is an optional backfill/bot test workflow; it is not a production
-deployment path. Backfill hosts are test capacity and are not part of the live
-IONOS + Azure relay topology unless explicitly enabled.
+The relay is deliberately not restarted by this pipeline until a real drain
+contract exists. A relay change must not silently destroy active games.
+There is no production backfill subcommand. `./sow p` is the only production
+deployment path; `./sow` without a subcommand runs the native client.
 
 ## Read-only debugging
 

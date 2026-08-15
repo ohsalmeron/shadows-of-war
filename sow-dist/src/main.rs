@@ -7,10 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::{env, fs};
 
-mod local;
 mod prod;
-mod relay;
-mod status;
 
 const WASM_OPT_TAG: &str = "oz-cli-v1";
 
@@ -33,19 +30,6 @@ fn run(cmd: &str, args: &[&str], cwd: Option<&Path>) -> Result<()> {
         bail!("{cmd} failed");
     }
     Ok(())
-}
-
-/// Stage a secret on a remote host without putting its value in the command
-/// line or the pipeline log. The caller's remote command is responsible for
-/// consuming and deleting the file.
-fn stage_secret(host: &str, secret: &str, remote_path: &str) -> Result<()> {
-    let mut file = tempfile::NamedTempFile::new().context("create secret staging file")?;
-    file.write_all(secret.as_bytes())?;
-    file.as_file().sync_all()?;
-    fs::set_permissions(file.path(), fs::Permissions::from_mode(0o600))?;
-    let local_path = file.path().to_str().context("secret path is not UTF-8")?;
-    let destination = format!("{host}:{remote_path}");
-    run("scp", &["-q", local_path, &destination], None)
 }
 
 fn output(cmd: &str, args: &[&str]) -> Result<String> {
@@ -77,7 +61,6 @@ struct Paths {
     assets_static: PathBuf,
     dist_play: PathBuf,
     dist_cg: PathBuf,
-    dist_dev: PathBuf,
     wasm_input: PathBuf,
     wasm_cache: PathBuf,
 }
@@ -100,7 +83,6 @@ impl Paths {
             assets_static: root.join("assets/static"),
             dist_play: root.join("dist/play"),
             dist_cg: root.join("dist/crazygames"),
-            dist_dev: root.join("dist/site-dev"),
             root,
         })
     }
@@ -618,14 +600,8 @@ fn package_cg(play_dir: &Path, out: &Path, paths: &Paths) -> Result<()> {
     // CrazyGames package deliberately exposes stable .br names.  Rewrite
     // every HTML reference after the rename; otherwise the upload contains
     // valid files that the entrypoint can never load.
-    html_out = html_out.replace(
-        &format!("sow_client_{jh}.js"),
-        "sow_client.js.br",
-    );
-    html_out = html_out.replace(
-        &format!("sow_client_{wh}_bg.wasm"),
-        "sow_client_bg.wasm.br",
-    );
+    html_out = html_out.replace(&format!("sow_client_{jh}.js"), "sow_client.js.br");
+    html_out = html_out.replace(&format!("sow_client_{wh}_bg.wasm"), "sow_client_bg.wasm.br");
     fs::write(&idx, html_out)?;
 
     let manifest_path = out.join("game-manifest.json");
@@ -769,8 +745,8 @@ fn rotate_deployment_secrets(root: &Path) -> Result<()> {
     let parent = path
         .parent()
         .context("secret environment has no parent directory")?;
-    let mut temp = tempfile::NamedTempFile::new_in(parent)
-        .context("create temporary secret environment")?;
+    let mut temp =
+        tempfile::NamedTempFile::new_in(parent).context("create temporary secret environment")?;
     temp.write_all(output.as_bytes())?;
     temp.as_file().sync_all()?;
     fs::set_permissions(temp.path(), fs::Permissions::from_mode(0o600))?;
@@ -793,59 +769,24 @@ fn main() -> Result<()> {
 
     let paths = Paths::discover()?;
     let mut cmd = String::new();
-    let mut port = 8787u16;
-    let mut build_only = false;
     let mut bump = false;
-    let mut _max_bots = 10usize;
-    let mut _max_match_secs = 300u64;
-    let mut _max_lobbies = 0usize;
-    let mut _allow_empty_lobbies = false;
 
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
-            "-p" | "--port" => {
-                i += 1;
-                if i < args.len() {
-                    port = args[i].parse().unwrap_or(8787);
-                }
-            }
-            "--build-only" => build_only = true,
             "-v" | "--version" => bump = true,
-            "--max-bots" => {
-                i += 1;
-                if i < args.len() {
-                    _max_bots = args[i].parse().unwrap_or(10);
-                }
-            }
-            "--max-match-secs" => {
-                i += 1;
-                if i < args.len() {
-                    _max_match_secs = args[i].parse().unwrap_or(300);
-                }
-            }
-            "--max-lobbies" => {
-                i += 1;
-                if i < args.len() {
-                    _max_lobbies = args[i].parse().unwrap_or(0);
-                }
-            }
-            "--allow-empty" => _allow_empty_lobbies = true,
             "--rotate-secrets" => {}
             _ if cmd.is_empty() => cmd = args[i].clone(),
-            _ => {}
+            other => bail!("unknown argument: {other}"),
         }
         i += 1;
     }
 
     match cmd.as_str() {
-        "l" | "local" | "localsite" | "ls" => local::execute(&paths, port, build_only),
         "p" | "prod" | "play" => prod::execute(&paths, bump),
-        "r" | "relay" => relay::execute(&paths),
         "native" | "n" | "" => cmd_native(&paths),
-        "status" | "st" => status::execute(),
         _ => {
-            eprintln!("Usage: ./sow [l|p|r|status|native]");
+            eprintln!("Usage: ./sow [p|native]");
             std::process::exit(1);
         }
     }
