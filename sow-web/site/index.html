@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shadows of War — Tactical MMORTS</title>
+  <meta name="description" content="Shadows of War: Multi-civilization tactical real-time strategy game.">
+  <link rel="canonical" href="https://shadowsofwar.io/">
+  <meta name="robots" content="index, follow">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Shadows of War">
+  <meta property="og:title" content="Shadows of War — Tactical MMORTS">
+  <meta property="og:description" content="Multi-civilization tactical real-time strategy game. Play free in your browser.">
+  <meta property="og:url" content="https://shadowsofwar.io/">
+  <meta property="og:image" content="https://shadowsofwar.io/assets/cdn/ui/sow-splash-desktop.webp">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Shadows of War — Tactical MMORTS">
+  <meta name="twitter:description" content="Multi-civilization tactical real-time strategy game. Play free in your browser.">
+  <meta name="twitter:image" content="https://shadowsofwar.io/assets/cdn/ui/sow-splash-desktop.webp">
+  <link rel="icon" type="image/svg+xml" href="/sow.svg">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "VideoGame",
+    "name": "Shadows of War",
+    "description": "Multi-civilization tactical real-time strategy game played in the browser.",
+    "genre": ["Strategy", "RTS", "MMORTS"],
+    "gamePlatform": "Web Browser",
+    "playMode": "MultiPlayer",
+    "url": "https://shadowsofwar.io/",
+    "image": "https://shadowsofwar.io/assets/cdn/ui/sow-splash-desktop.webp",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@500;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body class="bg-[#090b10] text-zinc-100 font-sans antialiased overflow-x-hidden selection:bg-cyan-500 selection:text-black">
+
+  <!-- TOP COMMAND NAVBAR (Sticky Glass Bar) -->
+  <nav class="fixed top-0 left-0 right-0 z-50 bg-[#090b10]/85 backdrop-blur-md border-b border-zinc-800/80 px-6 h-18 flex items-center justify-between">
+    <!-- Brand Logo -->
+    <a href="#" class="flex items-center gap-3 group" data-view="home">
+      <img src="/sow.svg" alt="Shadows of War" class="h-8 w-auto transition-transform group-hover:scale-105" />
+    </a>
+
+    <!-- Navigation Tabs -->
+    <div class="hidden md:flex items-center gap-1 bg-zinc-900/90 border border-zinc-800 p-1 rounded-full text-xs font-mono">
+      <button class="nav-tab px-5 py-2 rounded-full font-bold transition-all text-zinc-400 hover:text-white active" data-view="home">OVERVIEW</button>
+      <button class="nav-tab px-5 py-2 rounded-full font-bold transition-all text-zinc-400 hover:text-white" data-view="arena">PLAY</button>
+      <button class="nav-tab px-5 py-2 rounded-full font-bold transition-all text-zinc-400 hover:text-white" data-view="heroes">EMPIRES</button>
+      <button class="nav-tab px-5 py-2 rounded-full font-bold transition-all text-zinc-400 hover:text-white" data-view="compendium">ARCHIVE</button>
+      <button class="nav-tab px-5 py-2 rounded-full font-bold transition-all text-zinc-400 hover:text-white" data-view="atlas">MAP</button>
+    </div>
+
+    <!-- Actions & Status -->
+    <div class="flex items-center gap-4">
+      <div class="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-950/60 border border-emerald-500/30 text-[11px] font-mono text-emerald-400">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span>SERVERS ONLINE</span>
+      </div>
+
+      <button class="nav-tab px-6 py-2.5 rounded-full bg-white text-zinc-950 font-extrabold text-xs tracking-wider uppercase hover:bg-zinc-200 transition-all shadow-lg" data-view="arena">
+        PLAY NOW
+      </button>
+
+      <button id="mobile-menu-btn" class="md:hidden text-xl p-2 text-zinc-300">
+        ☰
+      </button>
+    </div>
+  </nav>
+
+  <!-- NOTIFICATION TOAST -->
+  <div id="toast-notify" class="fixed bottom-6 right-6 z-50 bg-zinc-900 border border-zinc-700 text-white px-5 py-3 rounded-2xl text-xs font-mono shadow-2xl hidden items-center gap-3">
+    <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+    <span id="toast-msg">Action completed.</span>
+  </div>
+
+  <!-- MAIN SUBVIEW CONTAINER -->
+  <main class="pt-24 min-h-screen">
+    
+    <!-- SUBVIEW 1: OVERVIEW (SMASH STAGE 100VH VIEWPORT) -->
+    <section class="subview-section active" id="view-home">
+      <div class="max-w-7xl mx-auto px-6 py-8 min-h-[calc(100vh-6rem)] flex flex-col justify-center">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+          
+          <!-- LEFT COLUMN: TITLES & SMASH ROSTER GRID -->
+          <div class="lg:col-span-7 flex flex-col justify-center">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[11px] font-mono text-amber-400 mb-6 w-fit">
+              <span class="font-bold">// TACTICAL MMORTS</span>
+            </div>
+
+            <h1 class="text-5xl sm:text-7xl lg:text-8xl font-black uppercase tracking-tight leading-none text-white mb-4">
+              SHADOWS OF WAR
+            </h1>
+
+            <p class="text-sm sm:text-base font-mono text-cyan-400 uppercase tracking-widest mb-6 font-bold">
+              CUANDO LA HISTORIA COLISIONA
+            </p>
+
+            <p class="text-zinc-400 text-base font-light leading-relaxed mb-8 max-w-xl">
+              ELIGE A TU LEYENDA. ROMPE LA HISTORIA. 12 imperios en un mismo stage. ¿César vs Ragnar? Que gane el mejor.
+            </p>
+
+            <!-- Roster Picker Container (6x2 Grid) -->
+            <div class="mb-8">
+              <div class="flex items-center justify-between text-xs font-mono text-zinc-500 uppercase mb-3">
+                <span>SELECT LEADER</span>
+                <span id="roster-count-label">12 EMPIRES AVAILABLE</span>
+              </div>
+
+              <div class="smash-roster-container p-3 rounded-2xl bg-zinc-900/60 border border-zinc-800">
+                <div class="grid grid-cols-6 gap-2.5" id="smash-roster-strip">
+                  <!-- Injected via app.js -->
+                </div>
+              </div>
+            </div>
+
+            <!-- Quick Action Buttons -->
+            <div class="flex flex-wrap gap-4">
+              <button id="btn-copy-build" class="px-6 py-3 rounded-xl bg-zinc-900 border border-zinc-700 text-zinc-200 font-mono text-xs font-bold hover:bg-zinc-800 hover:text-white transition-all">
+                Copy Build
+              </button>
+              <button id="btn-compare-modal" class="px-6 py-3 rounded-xl bg-zinc-900 border border-zinc-700 text-zinc-200 font-mono text-xs font-bold hover:bg-zinc-800 hover:text-white transition-all">
+                Compare Factions
+              </button>
+            </div>
+          </div>
+
+          <!-- RIGHT COLUMN: LEADER SPOTLIGHT STAGE -->
+          <div class="lg:col-span-5 flex justify-center">
+            <div class="w-full max-w-md rounded-3xl border border-zinc-800 bg-zinc-900/40 p-6 relative overflow-hidden group shadow-2xl backdrop-blur-md">
+              <!-- Radial Glow Backdrop -->
+              <div class="absolute -inset-10 bg-gradient-to-tr from-cyan-500/20 via-amber-500/10 to-transparent blur-3xl opacity-60 pointer-events-none"></div>
+
+              <!-- Leader Portrait Container -->
+              <div class="relative h-96 w-full rounded-2xl overflow-hidden bg-zinc-950 mb-6 border border-zinc-800">
+                <img id="hero-main-img" src="/assets/cdn/leaders/caesar_desktop.webp" alt="Julius Caesar" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
+                <div class="absolute inset-0 bg-gradient-to-t from-[#090b10] via-transparent to-transparent"></div>
+                
+                <div class="absolute bottom-4 left-4 right-4">
+                  <span class="text-[10px] font-mono text-amber-400 uppercase tracking-widest font-bold block mb-1" id="hero-main-title">ROMAN EMPIRE</span>
+                  <h2 class="text-3xl font-extrabold text-white uppercase tracking-tight" id="hero-main-name">JULIUS CAESAR</h2>
+                </div>
+              </div>
+
+              <!-- Leader Stats Breakdown -->
+              <div class="space-y-3 font-mono text-xs mb-6">
+                <div>
+                  <div class="flex justify-between text-zinc-400 mb-1">
+                    <span>OFFENSE</span>
+                    <span id="stat-offense">85%</span>
+                  </div>
+                  <div class="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                    <div id="bar-offense" class="h-full bg-cyan-400 rounded-full" style="width: 85%"></div>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="flex justify-between text-zinc-400 mb-1">
+                    <span>DEFENSE</span>
+                    <span id="stat-defense">90%</span>
+                  </div>
+                  <div class="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                    <div id="bar-defense" class="h-full bg-amber-400 rounded-full" style="width: 90%"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- CTA for Selected Leader -->
+              <button class="nav-tab w-full py-4 rounded-xl bg-white text-zinc-950 font-black text-xs uppercase tracking-wider hover:bg-zinc-200 transition-all flex items-center justify-center gap-2" data-view="arena">
+                <span>DEPLOY WITH THIS LEADER</span>
+                <span>→</span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- SUBVIEW 2: PLAY / ARENA ENTRY -->
+    <section class="subview-section hidden" id="view-arena">
+      <div class="max-w-5xl mx-auto px-6 py-16">
+        <div class="flex flex-col items-center justify-center text-center rounded-3xl border border-zinc-800 bg-zinc-900/40 px-8 py-20">
+          <h2 class="text-4xl font-extrabold uppercase tracking-tight text-white mb-4">ENTER THE BATTLEFIELD</h2>
+          <p class="text-zinc-400 text-sm font-mono mb-8">The full WASM client runs on its own dedicated arena.</p>
+          <a href="/play/" class="px-10 py-4 rounded-full bg-white text-zinc-950 font-extrabold text-sm tracking-wider uppercase hover:bg-zinc-200 transition-all shadow-lg">PLAY NOW — FREE</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- SUBVIEW 3: EMPIRES ROSTER -->
+    <section class="subview-section hidden" id="view-heroes">
+      <div class="max-w-7xl mx-auto px-6 py-12">
+        <h2 class="text-3xl font-extrabold uppercase tracking-tight text-white mb-8">CIVILIZATIONS & EMPIRES</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="empires-grid">
+          <!-- Injected via app.js -->
+        </div>
+      </div>
+    </section>
+
+    <!-- SUBVIEW 4: COMPENDIUM ARCHIVE -->
+    <section class="subview-section hidden" id="view-compendium">
+      <div class="max-w-5xl mx-auto px-6 py-12">
+        <h2 class="text-3xl font-extrabold uppercase tracking-tight text-white mb-8">ARCHIVE & MECHANICS</h2>
+        <div class="space-y-6 text-zinc-300 text-sm font-light leading-relaxed">
+          <div class="p-8 rounded-3xl border border-zinc-800 bg-zinc-900/40">
+            <h3 class="text-xl font-bold text-white mb-3">Deterministic Engine</h3>
+            <p>Engineered entirely in Rust compiled to WebAssembly for strict lockstep tick rate synchronization.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SUBVIEW 5: MAP ATLAS -->
+    <section class="subview-section hidden" id="view-atlas">
+      <div class="max-w-7xl mx-auto px-6 py-12">
+        <h2 class="text-3xl font-extrabold uppercase tracking-tight text-white mb-8">WORLD MAP ATLAS</h2>
+        <div class="w-full h-[70vh] rounded-3xl bg-zinc-950 border border-zinc-800 flex items-center justify-center text-zinc-500 font-mono text-xs">
+          OpenStreetMap World Map Data Viewer
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="./data.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>

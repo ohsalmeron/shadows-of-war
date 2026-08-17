@@ -65,5 +65,4 @@ com.unity.textmeshpro/
 # Astro site build files and output
 sow-web/.astro/
 sow-web/node_modules/
-/sow-web/site/
 sow-backfill/

@@ -1,0 +1,69 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-main: #090b10;
+  --panel-bg: #11151e;
+  --accent-cyan: #06b6d4;
+  --accent-gold: #eab308;
+  --border-color: rgba(255, 255, 255, 0.08);
+}
+
+body {
+  background-color: var(--bg-main);
+  color: #f4f4f5;
+  font-family: 'Inter', sans-serif;
+  overflow-x: hidden;
+}
+
+h1, h2, h3, h4, .font-heading {
+  font-family: 'Outfit', sans-serif;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Subview Toggling */
+.subview-section {
+  display: none;
+}
+.subview-section.active {
+  display: block;
+}
+
+/* Nav Tab Active State */
+.nav-tab.active {
+  background-color: #ffffff;
+  color: #090b10;
+}
+
+/* Roster Item Cell Styling */
+.smash-roster-item {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  background-color: #11151e;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.smash-roster-item:hover {
+  transform: translateY(-2px);
+  border-color: #06b6d4;
+  box-shadow: 0 0 15px rgba(6, 182, 212, 0.3);
+}
+
+.smash-roster-item.active {
+  border-color: #eab308;
+  box-shadow: 0 0 20px rgba(234, 179, 8, 0.4);
+}
+
+.smash-roster-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}

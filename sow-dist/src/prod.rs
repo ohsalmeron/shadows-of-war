@@ -83,7 +83,7 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
     })?;
 
     println!("==> 3/8 Package immutable release");
-    let release = assemble_release(paths, &paths.dist_play, &backend, &version)?;
+    let release = assemble_release(paths, &paths.dist_web, &backend, &version)?;
     println!("  release {}", release.id);
 
     println!("==> Runtime prerequisites");
@@ -449,7 +449,7 @@ fn verify_relay_control_path(config: &Config) -> Result<()> {
 fn build_web(paths: &Paths, version: &str) -> Result<()> {
     compile_wasm(paths, false)?;
     let fingerprint = input_fingerprint(
-        "web-v3",
+        "web-v4",
         version,
         &[
             &paths.wasm_input,
@@ -459,20 +459,21 @@ fn build_web(paths: &Paths, version: &str) -> Result<()> {
             &paths.assets_static,
             &paths.root.join("sow-i18n/src"),
             &paths.root.join("sow-i18n/strings"),
-            &paths.root.join("sow-server/src/admin_dashboard.html"),
+            &paths.root.join("sow-web/site"),
         ],
     )?;
     let cache = paths.root.join("dist/.sow-state/web-package");
     let cached = fs::read_to_string(&cache).is_ok_and(|value| value.trim() == fingerprint)
-        && paths.dist_play.join("play/index.html").is_file()
-        && paths.dist_cg.join("play/index.html").is_file()
-        && verify_layout(&paths.dist_play).is_ok();
+        && paths.dist_web.join("play/index.html").is_file()
+        && paths.dist_cg.join("index.html").is_file()
+        && verify_layout(&paths.dist_web).is_ok()
+        && verify_cg_layout(&paths.dist_cg).is_ok();
     if cached {
         println!("==> Web package unchanged — reusing dist");
         return Ok(());
     }
-    package_self(paths, &paths.dist_play, version)?;
-    package_cg(&paths.dist_play, &paths.dist_cg, paths)?;
+    package_self(paths, &paths.dist_web, version)?;
+    package_cg(&paths.dist_web, &paths.dist_cg, paths, version)?;
     fs::create_dir_all(cache.parent().context("web cache parent missing")?)?;
     fs::write(cache, format!("{fingerprint}\n"))?;
     Ok(())
@@ -633,7 +634,10 @@ fn assemble_release(paths: &Paths, web: &Path, binaries: &Path, version: &str) -
     }
     fs::write(work.join("ops/conf.d/shadowsofwar.io.conf"), nginx_site)?;
 
-    require_file(&work.join("web/play/index.html"), "web index")?;
+    require_file(&work.join("web/index.html"), "website index")?;
+    require_file(&work.join("web/play/index.html"), "game index")?;
+    require_file(&work.join("web/robots.txt"), "robots.txt")?;
+    require_file(&work.join("web/sitemap.xml"), "sitemap.xml")?;
     require_file(&work.join("web/game-manifest.json"), "game manifest")?;
     require_file(&work.join("maps/world/map.bin"), "server map")?;
 
@@ -921,7 +925,7 @@ fn stage_secret(host: &str, secret: &str, remote_path: &str) -> Result<()> {
 
 fn verify_control_host(config: &Config, plan: &ComponentPlan) -> Result<()> {
     let mut checks = String::from(
-        "set -eu; sudo jexec sow-database service sow_database status >/dev/null; sudo jexec sow-server service sow_server status >/dev/null; i=0; until curl -fsS --max-time 5 http://127.0.0.1:25585/healthz >/dev/null; do i=$((i+1)); [ \"$i\" -ge 15 ] && exit 1; sleep 1; done; /usr/local/bin/valkey-cli -h 127.0.0.1 ping | grep -q PONG; sudo sockstat -4l | grep -q '127.0.0.1:25564'",
+        "set -eu; sudo jexec sow-database service sow_database status >/dev/null; sudo jexec sow-server service sow_server status >/dev/null; i=0; until curl -fsS --max-time 5 http://127.0.0.1:25585/healthz >/dev/null; do i=$((i+1)); [ \"$i\" -ge 180 ] && exit 1; sleep 1; done; /usr/local/bin/valkey-cli -h 127.0.0.1 ping | grep -q PONG; sudo sockstat -4l | grep -q '127.0.0.1:25564'",
     );
     if plan.web || plan.ops {
         checks.push_str("; sudo nginx -t");
@@ -941,18 +945,17 @@ fn verify_public(paths: &Paths, config: &Config, release: &Release) -> Result<()
     let url = format!("{}/game-manifest.json", config.public_origin);
     match output("curl", &["-fsS", "--max-time", "20", &url]) {
         Ok(manifest) if manifest.trim() == local_manifest.trim() => {
-            run(
-                "curl",
-                &[
-                    "-fsS",
-                    "--max-time",
-                    "20",
-                    "-o",
-                    "/dev/null",
-                    &format!("{}/play/", config.public_origin),
-                ],
-                Some(&paths.root),
-            )?;
+            for url in [
+                format!("{}/", config.public_origin),
+                format!("{}/play/", config.public_origin),
+            ] {
+                run(
+                    "curl",
+                    &["-fsS", "--max-time", "20", "-o", "/dev/null", &url],
+                    Some(&paths.root),
+                )
+                .with_context(|| format!("public origin check failed for {url}"))?;
+            }
             println!("  public origin verified for {}", release.id);
             Ok(())
         }

@@ -59,7 +59,7 @@ struct Paths {
     assets_cdn: PathBuf,
     assets_maps: PathBuf,
     assets_static: PathBuf,
-    dist_play: PathBuf,
+    dist_web: PathBuf,
     dist_cg: PathBuf,
     wasm_input: PathBuf,
     wasm_cache: PathBuf,
@@ -81,7 +81,7 @@ impl Paths {
             assets_cdn: root.join("assets/cdn"),
             assets_maps: root.join("assets/maps"),
             assets_static: root.join("assets/static"),
-            dist_play: root.join("dist/play"),
+            dist_web: root.join("dist/web"),
             dist_cg: root.join("dist/crazygames"),
             root,
         })
@@ -106,24 +106,6 @@ fn copy_dir(src: &Path, dst: &Path) -> Result<()> {
     fs::create_dir_all(dst)?;
     for e in fs::read_dir(src)? {
         let e = e?;
-        let to = dst.join(e.file_name());
-        if e.path().is_dir() {
-            copy_dir(&e.path(), &to)?;
-        } else {
-            fs::copy(e.path(), to)?;
-        }
-    }
-    Ok(())
-}
-
-fn copy_dir_ex(src: &Path, dst: &Path, ex: &[&str]) -> Result<()> {
-    fs::create_dir_all(dst)?;
-    for e in fs::read_dir(src)? {
-        let e = e?;
-        let n = e.file_name().to_string_lossy().to_string();
-        if ex.contains(&n.as_str()) {
-            continue;
-        }
         let to = dst.join(e.file_name());
         if e.path().is_dir() {
             copy_dir(&e.path(), &to)?;
@@ -369,7 +351,11 @@ fn build_index(
                 "register('../sw.js', { scope: '../' })"
             },
         );
-    let index = out.join("play/index.html");
+    let index = if cg {
+        out.join("index.html")
+    } else {
+        out.join("play/index.html")
+    };
     fs::create_dir_all(index.parent().unwrap())?;
     fs::write(&index, &html)?;
     let loader =
@@ -471,7 +457,69 @@ fn verify_layout(dir: &Path) -> Result<()> {
     if !dir.join(format!("{j}.br")).is_file() {
         bail!("missing {j}.br");
     }
+    // Webroot contract: marketing site at the root, game under play/.
+    for required in [
+        "index.html",
+        "play/index.html",
+        "robots.txt",
+        "sitemap.xml",
+        "app.js",
+        "styles.css",
+        "data.js",
+        "sow.svg",
+    ] {
+        if !dir.join(required).is_file() {
+            bail!("webroot missing {}", required);
+        }
+    }
+    if dir.join("admin").exists() {
+        bail!("webroot must not contain admin/ (dashboard was removed)");
+    }
     println!("✅ Dist layout OK ({})", dir.display());
+    Ok(())
+}
+
+fn verify_cg_layout(dir: &Path) -> Result<()> {
+    for required in [
+        "index.html",
+        "sow_client.js.br",
+        "sow_client_bg.wasm.br",
+        "sow.svg",
+        "loader.js",
+        "sw.js",
+        "game-manifest.json",
+        "sdk/store_portals.js",
+        "locales/en",
+    ] {
+        if !dir.join(required).is_file() {
+            bail!("crazygames bundle missing {}", required);
+        }
+    }
+    // The bundle is a whitelist; these must never ride along again.
+    for forbidden in ["maps", "assets", "admin", "play"] {
+        if dir.join(forbidden).exists() {
+            bail!("crazygames bundle must not contain {forbidden}/");
+        }
+    }
+    let html = fs::read_to_string(dir.join("index.html"))?;
+    for needle in [
+        "sdk.crazygames.com/crazygames-sdk-v3.js",
+        "SOW_MAPS_URL = \"https://shadowsofwar.io/maps\"",
+        "SOW_ASSETS_URL = \"https://shadowsofwar.io/assets\"",
+        "sow_client.js.br",
+        "sow_client_bg.wasm.br",
+    ] {
+        if !html.contains(needle) {
+            bail!("crazygames index.html missing: {}", needle);
+        }
+    }
+    // No uncompressed client artifacts may ship to the portal.
+    for e in fs::read_dir(dir)? {
+        let n = e?.file_name().to_string_lossy().into_owned();
+        if (n.ends_with("_bg.wasm") || n == "sow_client.js") && !n.ends_with(".br") {
+            bail!("crazygames bundle contains uncompressed artifact {n}");
+        }
+    }
     Ok(())
 }
 
@@ -518,15 +566,30 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
     write_sw(out, version, &js, &wasm, &ts)?;
     write_manifest(out, version, &js, &wasm, &ts)?;
 
-    let admin = out.join("admin/dashboard");
-    fs::create_dir_all(&admin)?;
-    let src = paths.root.join("sow-server/src/admin_dashboard.html");
-    if src.is_file() {
-        fs::copy(&src, admin.join("index.html"))?;
-        println!("✅ Admin dashboard copied");
-    } else {
-        eprintln!("⚠️  Admin dashboard not found");
+    // Marketing website at the webroot root (game shell lives under play/).
+    let site = paths.root.join("sow-web/site");
+    for name in ["index.html", "app.js", "styles.css", "data.js"] {
+        let src = site.join(name);
+        if !src.is_file() {
+            bail!("website source missing: {}", src.display());
+        }
+        fs::copy(&src, out.join(name))?;
     }
+    fs::write(
+        out.join("robots.txt"),
+        "User-agent: *\nAllow: /\n\nSitemap: https://shadowsofwar.io/sitemap.xml\n",
+    )?;
+    fs::write(
+        out.join("sitemap.xml"),
+        concat!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n",
+            "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n",
+            "  <url><loc>https://shadowsofwar.io/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>\n",
+            "  <url><loc>https://shadowsofwar.io/play/</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>\n",
+            "</urlset>\n",
+        ),
+    )?;
+    println!("✅ Website staged at webroot root");
 
     prune_qs(out)?;
     verify_layout(out)?;
@@ -534,101 +597,95 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
     Ok(())
 }
 
-fn package_cg(play_dir: &Path, out: &Path, paths: &Paths) -> Result<()> {
-    if out.exists() {
-        fs::remove_dir_all(out)?;
-    }
-    copy_dir(play_dir, out)?;
-
-    // Find hash names in the cloned output, rename to un-hashed
+fn package_cg(play_dir: &Path, out: &Path, paths: &Paths, version: &str) -> Result<()> {
+    // The portal bundle is a strict whitelist: index.html, the brotli client
+    // pair, and the shell essentials. Everything else (maps, assets, admin)
+    // streams from the production CDN at runtime. Never clone dist/web here.
     let (mut jh, mut wh) = (String::new(), String::new());
-    let mut entries: Vec<_> = fs::read_dir(out)?.filter_map(Result::ok).collect();
-    entries.sort_by_key(|e| e.file_name());
-    for e in &entries {
-        let n = e.file_name().to_string_lossy().to_string();
-        if n.starts_with("sow_client_")
-            && n.ends_with(".js")
-            && !n.ends_with(".br")
-            && jh.is_empty()
-        {
+    for e in fs::read_dir(play_dir)? {
+        let n = e?.file_name().to_string_lossy().into_owned();
+        if n.starts_with("sow_client_") && n.ends_with(".js") && !n.ends_with(".br") {
             jh = n
                 .trim_start_matches("sow_client_")
                 .trim_end_matches(".js")
                 .to_string();
-            fs::rename(e.path(), out.join("sow_client.js"))?;
         }
-        if n.ends_with("_bg.wasm") && !n.ends_with(".br") && wh.is_empty() {
+        if n.ends_with("_bg.wasm") && !n.ends_with(".br") {
             wh = n
                 .trim_end_matches("_bg.wasm")
                 .trim_start_matches("sow_client_")
                 .to_string();
-            fs::rename(e.path(), out.join("sow_client_bg.wasm"))?;
         }
     }
-    // Rename .br sidecars
-    if !jh.is_empty() {
-        let br = out.join(format!("sow_client_{jh}.js.br"));
-        if br.is_file() {
-            fs::rename(&br, out.join("sow_client.js.br"))?;
-        }
-    }
-    if !wh.is_empty() {
-        let br = out.join(format!("sow_client_{wh}_bg.wasm.br"));
-        if br.is_file() {
-            fs::rename(&br, out.join("sow_client_bg.wasm.br"))?;
-        }
-    }
-
     if jh.is_empty() || wh.is_empty() {
         bail!("CrazyGames package is missing hashed client artifacts");
     }
 
-    // Patch index.html: inject SDK, replace PORTAL slots
-    let idx = out.join("play/index.html");
+    if out.exists() {
+        fs::remove_dir_all(out)?;
+    }
+    fs::create_dir_all(out)?;
+
+    fs::copy(
+        play_dir.join(format!("sow_client_{jh}.js.br")),
+        out.join("sow_client.js.br"),
+    )?;
+    fs::copy(
+        play_dir.join(format!("sow_client_{wh}_bg.wasm.br")),
+        out.join("sow_client_bg.wasm.br"),
+    )?;
+    copy_shell(paths, out)?;
+    export_locales(out)?;
+    write_sw(
+        out,
+        version,
+        "sow_client.js.br",
+        "sow_client_bg.wasm.br",
+        &jh,
+    )?;
+    fs::write(
+        out.join("game-manifest.json"),
+        format!(
+            r#"{{"js":"sow_client.js.br","wasm":"sow_client_bg.wasm.br","build_ts":"{jh}","version":"{version}"}}"#
+        ),
+    )?;
+    build_index(
+        paths,
+        out,
+        version,
+        &format!("sow_client_{jh}.js"),
+        &format!("sow_client_{wh}_bg.wasm"),
+        &jh,
+        true,
+    )?;
+
+    // Patch index.html: hashed names -> stable .br names, inject portal SDK
+    // and boot overrides (maps AND assets resolve against the prod CDN).
+    let idx = out.join("index.html");
     let html = fs::read_to_string(&idx)?;
     let mut lines: Vec<String> = html.lines().map(String::from).collect();
+    let (mut sdk, mut boot) = (false, false);
     for line in &mut lines {
         if line.contains("PORTAL_SDK_SLOT") {
             *line = "    <script src=\"https://sdk.crazygames.com/crazygames-sdk-v3.js\"></script>"
                 .to_string();
+            sdk = true;
         } else if line.contains("PORTAL_BOOT_SLOT") {
-            *line = "        window.SOW_PORTAL = \"crazygames\"; window.SOW_WS_URL = \"wss://shadowsofwar.io/ws/\"; window.SOW_MAPS_URL = \"https://shadowsofwar.io/maps\";".to_string();
+            *line = "        window.SOW_PORTAL = \"crazygames\"; window.SOW_WS_URL = \"wss://shadowsofwar.io/ws/\"; window.SOW_MAPS_URL = \"https://shadowsofwar.io/maps\"; window.SOW_ASSETS_URL = \"https://shadowsofwar.io/assets\";".to_string();
+            boot = true;
         }
     }
-    let mut html_out = lines.join("\n");
-    // The cloned play bundle uses content-hashed names, while the
-    // CrazyGames package deliberately exposes stable .br names.  Rewrite
-    // every HTML reference after the rename; otherwise the upload contains
-    // valid files that the entrypoint can never load.
-    html_out = html_out.replace(&format!("sow_client_{jh}.js"), "sow_client.js.br");
-    html_out = html_out.replace(&format!("sow_client_{wh}_bg.wasm"), "sow_client_bg.wasm.br");
-    fs::write(&idx, html_out)?;
-
-    let manifest_path = out.join("game-manifest.json");
-    let manifest = fs::read_to_string(&manifest_path)?
+    if !sdk || !boot {
+        bail!("CrazyGames index.html is missing portal slots (sdk={sdk} boot={boot})");
+    }
+    let html_out = lines
+        .join("\n")
         .replace(&format!("sow_client_{jh}.js"), "sow_client.js.br")
         .replace(&format!("sow_client_{wh}_bg.wasm"), "sow_client_bg.wasm.br");
-    fs::write(manifest_path, manifest)?;
+    fs::write(&idx, html_out)?;
 
-    // Remove uncompressed wasm/js (keep only .br)
-    for e in fs::read_dir(out)? {
-        let e = e?;
-        let n = e.file_name().to_string_lossy().to_string();
-        if (n.ends_with("_bg.wasm") || (n.starts_with("sow_client_") && n.ends_with(".js")))
-            && !n.ends_with(".br")
-        {
-            let _ = fs::remove_file(e.path());
-        }
-    }
-
-    // Stage static assets (no maps)
-    let sd = out.join("assets/static");
-    if sd.exists() {
-        fs::remove_dir_all(&sd)?;
-    }
-    fs::create_dir_all(sd.parent().unwrap())?;
-    copy_dir_ex(&paths.assets_static, &sd, &["maps"])?;
-    println!("✅ CrazyGames bundle ready: {}", out.display());
+    verify_cg_layout(out)?;
+    println!("✅ CrazyGames bundle ready (whitelist): {}", out.display());
     Ok(())
 }
 

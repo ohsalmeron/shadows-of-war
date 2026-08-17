@@ -1100,12 +1100,6 @@ async fn main() {
                 axum::routing::get(catalog_json_handler),
             )
             .route("/lobbies.json", axum::routing::get(lobbies_json_handler))
-            .route(
-                "/admin/dashboard",
-                axum::routing::get(|| async {
-                    axum::response::Html(include_str!("admin_dashboard.html"))
-                }),
-            )
             .route("/admin/api/status", axum::routing::get(admin_status))
             .with_state(state);
 
