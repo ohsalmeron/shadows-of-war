@@ -124,6 +124,11 @@ impl SowApp {
                 }
             }
         }
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(win) = self.gfx.window.as_ref() {
+            self.ui.app.settings_state.is_fullscreen = win.fullscreen().is_some();
+        }
+
         let egui_output = egui_ctx.run_ui(self.ui.raw_input.clone(), |ctx| {
             let insets = ctx.input(|i| i.safe_area_insets());
             self.ui.app.hud_state.safe_area_top = insets.0.top;

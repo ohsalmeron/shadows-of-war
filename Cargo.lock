@@ -3934,6 +3934,7 @@ dependencies = [
  "anyhow",
  "brotli",
  "hex",
+ "hmac",
  "minifier",
  "rand",
  "serde_json",

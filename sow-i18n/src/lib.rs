@@ -141,6 +141,7 @@ pub struct SettingsStrings {
     pub reduced_motion_help: String,
     pub show_fps_ping: String,
     pub show_fps_ping_help: String,
+    pub fullscreen: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

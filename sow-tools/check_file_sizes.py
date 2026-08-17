@@ -39,6 +39,9 @@ CRATES: dict[str, set[Path]] = {
         # CLI grew past 750 with the multi-worker relay deploy rework
         # (worker catalog, relay subcommand, prod/relay modules).
         ROOT / "sow-dist" / "src" / "main.rs",
+        # Grew past 750 with relay runtime guards (ensure/verify relay, control
+        # clock + secret, worker health checks) in ./sow p.
+        ROOT / "sow-dist" / "src" / "prod.rs",
     },
 }
 

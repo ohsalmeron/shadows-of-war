@@ -20,6 +20,7 @@ pub struct SettingsState {
     pub reduced_motion: bool,
     pub show_fps_ping: bool,
     pub custom_theme: bool,
+    pub is_fullscreen: bool,
 }
 
 impl Default for SettingsState {
@@ -34,6 +35,7 @@ impl Default for SettingsState {
             reduced_motion: false,
             show_fps_ping: false,
             custom_theme: true,
+            is_fullscreen: false,
         }
     }
 }
@@ -147,6 +149,16 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) ->
                         touch_applied(state);
                     }
                     ui.end_row();
+
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        ui.label(RichText::new(&strings.fullscreen).color(palette::text_muted()));
+                        if ui.checkbox(&mut state.is_fullscreen, "").changed() {
+                            touch_applied(state);
+                            action = Some(UiAction::SetFullscreen(state.is_fullscreen));
+                        }
+                        ui.end_row();
+                    }
                 });
 
             if state

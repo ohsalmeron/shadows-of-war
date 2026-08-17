@@ -3,13 +3,19 @@ use egui::{Color32, RichText, Vec2};
 use sow_ui_kit::theme::dev_config::DevConfig;
 
 impl SowApp {
-    pub(super) fn render_dev_sidebar(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
+    pub(super) fn render_dev_sidebar(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         let mut cfg = DevConfig::get();
+        let max_height = (ctx.content_rect().height() - ui.cursor().top() - 20.0).max(120.0);
 
-        ui.vertical(|ui| {
-            ui.style_mut().spacing.slider_width = 80.0;
-            ui.style_mut().spacing.item_spacing = Vec2::new(3.0, 3.0);
-            ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
+        egui::ScrollArea::vertical()
+            .id_salt("dev_sidebar_scroll")
+            .max_height(max_height)
+            .auto_shrink([false, true])
+            .show(ui, |ui| {
+                ui.vertical(|ui| {
+                    ui.style_mut().spacing.slider_width = 80.0;
+                    ui.style_mut().spacing.item_spacing = Vec2::new(3.0, 3.0);
+                    ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
 
             ui.horizontal(|ui| {
                 ui.label(
@@ -363,7 +369,8 @@ impl SowApp {
                 },
             );
         });
+    });
 
-        DevConfig::set(cfg);
-    }
+    DevConfig::set(cfg);
+}
 }

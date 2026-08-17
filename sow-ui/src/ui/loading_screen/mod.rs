@@ -110,11 +110,11 @@ pub fn draw(
         state.random_speed = 0.7 + r * 0.6;
     }
 
-    // Target caps at 0.9 while loading in background, and only fully finishes to 1.0 when done
+    // Target caps at 0.95 while loading in background, and only fully finishes to 1.0 when done
     let target = if state.done {
         1.0f32
     } else {
-        (state.progress * 0.9).clamp(0.0, 0.9)
+        state.progress.clamp(0.0, 0.95)
     };
 
     if state.visual_progress < target {

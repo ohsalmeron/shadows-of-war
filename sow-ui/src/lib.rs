@@ -60,4 +60,6 @@ pub enum UiAction {
         lobby_id: u64,
         target_player_id: u16,
     },
+    /// Native desktop fullscreen toggle.
+    SetFullscreen(bool),
 }

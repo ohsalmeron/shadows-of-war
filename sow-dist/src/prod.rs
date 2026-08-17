@@ -1,10 +1,12 @@
 use super::*;
+use hmac::{Hmac, Mac};
 use serde_json::json;
 use std::collections::BTreeMap;
 
 const BUILD_HOST: &str = "freebsd";
 const BUILD_ROOT: &str = "/home/bizkit/shadows-of-war";
 const CONTROL_HOST: &str = "ionos";
+const RELAY_HOST: &str = "relay";
 const REMOTE_STAGE: &str = "/home/bizkit/.sow-deploy";
 const REMOTE_RELEASES: &str = "/srv/sow/releases";
 const PUBLIC_ORIGIN: &str = "https://shadowsofwar.io";
@@ -15,6 +17,7 @@ struct Config {
     build_host: String,
     build_root: String,
     control_host: String,
+    relay_host: String,
     remote_stage: String,
     public_origin: String,
     require_public: bool,
@@ -26,6 +29,7 @@ impl Config {
             build_host: env_or_alias("SOW_FREEBSD_BUILDER_HOST", "SOW_BUILD_HOST", BUILD_HOST),
             build_root: env_or("SOW_FREEBSD_BUILDER_ROOT", BUILD_ROOT),
             control_host: env_or_alias("SOW_CONTROL_HOST", "SOW_PROD_HOST", CONTROL_HOST),
+            relay_host: env_or("SOW_RELAY_DEPLOY_HOST", RELAY_HOST),
             remote_stage: env_or("SOW_REMOTE_STAGE", REMOTE_STAGE),
             public_origin: env_or("SOW_PUBLIC_ORIGIN", PUBLIC_ORIGIN)
                 .trim_end_matches('/')
@@ -82,6 +86,12 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
     let release = assemble_release(paths, &paths.dist_play, &backend, &version)?;
     println!("  release {}", release.id);
 
+    println!("==> Runtime prerequisites");
+    ensure_relay_runtime(&config)?;
+    ensure_control_clock(&config)?;
+    verify_control_runtime_secret(&config)?;
+    verify_relay_control_path(&config)?;
+
     println!("==> 4/8 Compare deployed manifest");
     let mut plan = remote_plan(&config, &release)?;
     if maps_catalog_path_drift(&config)? {
@@ -94,6 +104,9 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
     if !plan.any() {
         println!("  no production component changed; no restart performed");
         verify_control_host(&config, &plan)?;
+        verify_relay_runtime(&config)?;
+        verify_control_runtime_secret(&config)?;
+        verify_relay_control_path(&config)?;
         retain_releases(&config)?;
         verify_public(paths, &config, &release)?;
         println!("✅ Production already serves the requested content");
@@ -108,6 +121,9 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
 
     println!("==> 7/8 Healthcheck and retain");
     verify_control_host(&config, &plan)?;
+    verify_relay_runtime(&config)?;
+    verify_control_runtime_secret(&config)?;
+    verify_relay_control_path(&config)?;
     retain_releases(&config)?;
 
     println!("==> 8/8 Public verification");
@@ -204,7 +220,230 @@ fn preflight(paths: &Paths, config: &Config) -> Result<()> {
         ],
         None,
     )
-    .context("FreeBSD builder preflight failed")
+    .context("FreeBSD builder preflight failed")?;
+    run(
+        "ssh",
+        &[
+            &config.relay_host,
+            "command -v sudo >/dev/null && command -v systemctl >/dev/null && command -v curl >/dev/null",
+        ],
+        None,
+    )
+    .context("relay host preflight failed")
+}
+
+fn relay_worker_count() -> Result<usize> {
+    let count = env_or("SOW_RELAY_WORKER_COUNT", "4")
+        .parse::<usize>()
+        .context("SOW_RELAY_WORKER_COUNT must be an integer")?;
+    if !(1..=64).contains(&count) {
+        bail!("SOW_RELAY_WORKER_COUNT must be between 1 and 64");
+    }
+    Ok(count)
+}
+
+fn relay_runtime_command(start_missing: bool) -> Result<String> {
+    let count = relay_worker_count()?;
+    let units = (0..count)
+        .map(|id| format!("sow-relay@{id}.service"))
+        .collect::<Vec<_>>();
+    let mut command = String::from("set -eu; active=0;");
+    for unit in &units {
+        command.push_str(&format!(
+            " if systemctl is-active --quiet {unit}; then active=$((active+1)); fi;"
+        ));
+    }
+    if start_missing {
+        command.push_str(&format!(
+            " if [ \"$active\" -eq 0 ]; then sudo systemctl enable sow-relay.service >/dev/null; sudo systemctl stop sow-relay.service >/dev/null 2>&1 || true; sudo timeout 60s systemctl start sow-relay.service; elif [ \"$active\" -ne {count} ]; then echo 'partial relay worker failure; refusing unsafe DPDK recovery' >&2; exit 78; else sudo systemctl enable sow-relay.service >/dev/null; fi;"
+        ));
+    }
+    command.push_str(" systemctl is-enabled --quiet sow-relay.service; systemctl is-active --quiet sow-relay.service; systemctl is-enabled --quiet chrony.service; systemctl is-active --quiet chrony.service; test \"$(timedatectl show -p NTPSynchronized --value)\" = yes;");
+    for id in 0..count {
+        let unit = format!("sow-relay@{id}.service");
+        command.push_str(&format!(
+            " test \"$(systemctl show {unit} -p ActiveState --value)\" = active; test \"$(systemctl show {unit} -p Result --value)\" = success; test \"$(systemctl show {unit} -p ExecMainStatus --value)\" = 0;"
+        ));
+        let port = 8080 + id;
+        let retry = if start_missing {
+            " --retry 10 --retry-connrefused --retry-delay 1"
+        } else {
+            ""
+        };
+        command.push_str(&format!(
+            " curl -kfsS --max-time 5{retry} https://127.0.0.1:{port}/healthz >/dev/null;"
+        ));
+    }
+    Ok(command)
+}
+
+fn ensure_relay_runtime(config: &Config) -> Result<()> {
+    let command = relay_runtime_command(true)?;
+    run("ssh", &[&config.relay_host, &command], None)
+        .context("relay workers could not be made healthy")?;
+    println!("  relay workers healthy");
+    Ok(())
+}
+
+fn verify_relay_runtime(config: &Config) -> Result<()> {
+    let command = relay_runtime_command(false)?;
+    run("ssh", &[&config.relay_host, &command], None).context("relay worker healthcheck failed")
+}
+
+fn clock_skew_seconds(config: &Config) -> Result<u64> {
+    let (control, relay) = std::thread::scope(|scope| {
+        let control = scope.spawn(|| output("ssh", &[&config.control_host, "date -u +%s"]));
+        let relay = scope.spawn(|| output("ssh", &[&config.relay_host, "date -u +%s"]));
+        let control = control
+            .join()
+            .map_err(|_| anyhow::anyhow!("control clock check panicked"))??;
+        let relay = relay
+            .join()
+            .map_err(|_| anyhow::anyhow!("relay clock check panicked"))??;
+        Ok::<_, anyhow::Error>((control, relay))
+    })?;
+    let control = control
+        .parse::<u64>()
+        .context("control host returned an invalid UNIX timestamp")?;
+    let relay = relay
+        .parse::<u64>()
+        .context("relay host returned an invalid UNIX timestamp")?;
+    Ok(control.abs_diff(relay))
+}
+
+fn control_clock_configured(config: &Config) -> Result<bool> {
+    let check = r#"cfg=/etc/rc.conf.d/ntpd; if sudo test -f "$cfg" && sudo grep -qx 'ntpd_enable="YES"' "$cfg" && sudo grep -qx 'ntpd_sync_on_start="YES"' "$cfg" && sudo service ntpd onestatus >/dev/null 2>&1; then echo ok; else echo drift; fi"#;
+    Ok(output("ssh", &[&config.control_host, check])? == "ok")
+}
+
+fn ensure_control_clock(config: &Config) -> Result<()> {
+    let configured = control_clock_configured(config)?;
+    let skew = clock_skew_seconds(config)?;
+    if !configured || skew > 5 {
+        println!("  control clock drift detected ({skew}s); synchronizing through pipeline");
+        let configure = r#"set -eu
+cfg=/etc/rc.conf.d/ntpd
+if ! sudo test -f "$cfg" || ! sudo grep -qx 'ntpd_enable="YES"' "$cfg" || ! sudo grep -qx 'ntpd_sync_on_start="YES"' "$cfg"; then
+    if sudo test -e "$cfg"; then sudo cp -p "$cfg" "$cfg.bak_$(date +%s)"; fi
+    tmp=$(mktemp /tmp/sow-ntpd.XXXXXX)
+    trap 'rm -f "$tmp"' EXIT
+    if sudo test -f "$cfg"; then sudo grep -v -E '^ntpd_(enable|sync_on_start)=' "$cfg" > "$tmp" || true; fi
+    printf '%s\n' 'ntpd_enable="YES"' 'ntpd_sync_on_start="YES"' >> "$tmp"
+    sudo install -o root -g wheel -m 0644 "$tmp" "$cfg"
+fi
+sudo service ntpd onestop >/dev/null 2>&1 || true
+sudo /bin/timeout 60 /usr/sbin/ntpd -gq
+sudo service ntpd onestart
+sudo service ntpd onestatus >/dev/null"#;
+        run("ssh", &[&config.control_host, configure], None)
+            .context("control-host clock synchronization failed")?;
+    }
+    if !control_clock_configured(config)? {
+        bail!("control-host NTP is not configured and running");
+    }
+    let skew = clock_skew_seconds(config)?;
+    if skew > 5 {
+        bail!("control/relay clock skew remains {skew}s after synchronization");
+    }
+    println!("  control/relay clock skew {skew}s");
+    Ok(())
+}
+
+fn relay_management_workers() -> Result<Vec<(String, u16)>> {
+    let raw = env::var("SOW_RELAY_WORKERS")
+        .context("SOW_RELAY_WORKERS must configure every relay worker")?;
+    let mut workers = Vec::new();
+    for (id, spec) in raw.split(',').enumerate() {
+        let fields = spec.trim().split(':').collect::<Vec<_>>();
+        if fields.len() != 3 || fields[1].is_empty() {
+            bail!("SOW_RELAY_WORKERS contains an invalid entry at index {id}");
+        }
+        let port = fields[2]
+            .parse::<u16>()
+            .with_context(|| format!("invalid relay management port at index {id}"))?;
+        workers.push((fields[1].to_string(), port));
+    }
+    if workers.len() != relay_worker_count()? {
+        bail!(
+            "SOW_RELAY_WORKERS has {} entries but SOW_RELAY_WORKER_COUNT is {}",
+            workers.len(),
+            relay_worker_count()?
+        );
+    }
+    Ok(workers)
+}
+
+fn verify_control_runtime_secret(config: &Config) -> Result<()> {
+    let secret = env::var("SOW_RELAY_CONTROL_SECRET")?;
+    let expected = format!("{:x}", Sha256::digest(secret.as_bytes()));
+    let command = r#"set -eu
+pid=$(sudo jexec sow-server pgrep -xo sow-server)
+value=$(sudo procstat -e "$pid" | tr ' ' '\n' | sed -n 's/^SOW_RELAY_CONTROL_SECRET=//p')
+test -n "$value"
+printf %s "$value" | sha256 -q"#;
+    let actual = output("ssh", &[&config.control_host, command])?;
+    if actual != expected {
+        bail!("running sow-server relay control secret does not match deployment secret");
+    }
+    Ok(())
+}
+
+fn verify_relay_control_path(config: &Config) -> Result<()> {
+    type HmacSha256 = Hmac<Sha256>;
+
+    let secret = env::var("SOW_RELAY_CONTROL_SECRET")?;
+    let scheme = env_or("SOW_RELAY_MGMT_SCHEME", "https");
+    if scheme != "https" {
+        bail!("SOW_RELAY_MGMT_SCHEME must be https in production");
+    }
+    let resolve_ip = env::var("SOW_RELAY_MGMT_RESOLVE_IP")
+        .context("SOW_RELAY_MGMT_RESOLVE_IP is required for relay verification")?;
+    let path = "/internal/metrics";
+    let worker_count = relay_worker_count()?;
+    for (worker_id, (host, port)) in relay_management_workers()?.into_iter().enumerate() {
+        let timestamp = output("ssh", &[&config.control_host, "date -u +%s"])?;
+        let mut nonce_bytes = [0u8; 16];
+        rand::rngs::OsRng.fill_bytes(&mut nonce_bytes);
+        let nonce = hex::encode(nonce_bytes);
+        let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+            .map_err(|_| anyhow::anyhow!("invalid relay control secret"))?;
+        mac.update(b"GET\n");
+        mac.update(path.as_bytes());
+        mac.update(b"\n");
+        mac.update(timestamp.as_bytes());
+        mac.update(b"\n");
+        mac.update(nonce.as_bytes());
+        mac.update(b"\n");
+        let signature = hex::encode(mac.finalize().into_bytes());
+        let url = format!("https://{host}:{port}{path}");
+        let resolve = format!("{host}:{port}:{resolve_ip}");
+        let command = format!(
+            "curl -fsS --max-time 5 --resolve {} -H {} -H {} -H {} {}",
+            shell_quote(&resolve),
+            shell_quote(&format!("X-SOW-Timestamp: {timestamp}")),
+            shell_quote(&format!("X-SOW-Nonce: {nonce}")),
+            shell_quote(&format!("X-SOW-Signature: {signature}")),
+            shell_quote(&url),
+        );
+        let response = output("ssh", &[&config.control_host, &command])
+            .with_context(|| format!("authenticated relay probe failed for worker port {port}"))?;
+        let metrics: serde_json::Value = serde_json::from_str(&response)
+            .with_context(|| format!("worker port {port} returned invalid metrics"))?;
+        if metrics.get("queue_id").and_then(serde_json::Value::as_u64) != Some(worker_id as u64)
+            || metrics
+                .get("queue_count")
+                .and_then(serde_json::Value::as_u64)
+                != Some(worker_count as u64)
+        {
+            bail!(
+                "relay worker port {port} reports queue_id/queue_count {:?}/{:?}, expected {worker_id}/{worker_count}",
+                metrics.get("queue_id"),
+                metrics.get("queue_count")
+            );
+        }
+    }
+    println!("  authenticated IONOS -> relay control path verified");
+    Ok(())
 }
 
 fn build_web(paths: &Paths, version: &str) -> Result<()> {

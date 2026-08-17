@@ -107,9 +107,8 @@ impl SowApp {
                     map_name
                 );
 
-                splash_show_loading_progress(&mut self.ui.app.splash_state, 0.1);
-                self.ui.app.splash_state.status_override =
-                    Some("Preparing battlefield".to_string());
+                splash_show_loading_progress(&mut self.ui.app.splash_state, 0.05);
+                self.ui.app.splash_state.status_override = None;
 
                 let mut start_msg_clone = start_msg.clone();
 
@@ -351,7 +350,7 @@ impl SowApp {
                                 splash_show_loading(&mut self.ui.app.splash_state);
                             }
                             EngineInitEvent::Progress(prog) => {
-                                self.ui.app.splash_state.progress = prog;
+                                self.ui.app.splash_state.progress = 0.05 + (prog * 0.45);
                             }
                             EngineInitEvent::Complete(state, water, start_msg) => {
                                 if self.ui.app.splash_state.job
@@ -361,9 +360,8 @@ impl SowApp {
                                 }
                                 log::info!("Engine initialization complete; allocating GPU memory");
                                 self.net.load_telemetry.mark_engine_init_complete();
-                                splash_show_loading_progress(&mut self.ui.app.splash_state, 0.95);
-                                self.ui.app.splash_state.status_override =
-                                    Some("Preparing graphics".to_string());
+                                splash_show_loading_progress(&mut self.ui.app.splash_state, 0.55);
+                                self.ui.app.splash_state.status_override = None;
                                 self.ui.app.splash_state.frames_drawn = 0;
                                 self.ui.app.splash_state.gpu_load_step = 1;
                                 self.tasks.pending_engine_init_data =
@@ -447,9 +445,8 @@ impl SowApp {
                         self.ui.app.splash_state.gpu_load_step = 2;
                         self.ui.app.splash_state.frames_drawn = 0;
                         log::info!("Enter game splash: uploading map texture");
-                        splash_show_loading_progress(&mut self.ui.app.splash_state, 0.98);
-                        self.ui.app.splash_state.status_override =
-                            Some("Uploading map".to_string());
+                        splash_show_loading_progress(&mut self.ui.app.splash_state, 0.70);
+                        self.ui.app.splash_state.status_override = None;
 
                         // Re-insert pending data so we stay in this block until Step 4
                         self.tasks.pending_engine_init_data = Some((state, water, start_msg));
@@ -457,9 +454,8 @@ impl SowApp {
                 } else if step == 2 && !self.gfx.needs_first_upload {
                     // Step 2 Finished: GPU Texture is uploaded!
                     self.ui.app.splash_state.gpu_load_step = 3;
-                    splash_show_loading_progress(&mut self.ui.app.splash_state, 0.99);
-                    self.ui.app.splash_state.status_override =
-                        Some("Synchronizing battlefield".to_string());
+                    splash_show_loading_progress(&mut self.ui.app.splash_state, 0.80);
+                    self.ui.app.splash_state.status_override = None;
                 } else if step == 3 && self.sim.current_snapshot.is_some() {
                     self.net.load_telemetry.mark_snapshot_available();
                     let ready_to_release = if self.net.is_offline {
@@ -472,6 +468,7 @@ impl SowApp {
 
                     if ready_to_release {
                         self.ui.app.splash_state.gpu_load_step = 4;
+                        self.ui.app.splash_state.progress = 1.0;
                         self.ui.app.splash_state.done = true;
                         if self.ui.app.splash_state.target_phase.is_none() {
                             self.ui.app.splash_state.target_phase =
@@ -496,9 +493,12 @@ impl SowApp {
                             }
                         }
                     } else {
-                        splash_show_loading_progress(&mut self.ui.app.splash_state, 0.99);
-                        self.ui.app.splash_state.status_override =
-                            Some("Connecting to relay".to_string());
+                        let p = self.ui.app.splash_state.progress;
+                        if p < 0.95 {
+                            let inc = ((0.95 - p) * 0.03).clamp(0.001, 0.02);
+                            splash_show_loading_progress(&mut self.ui.app.splash_state, p + inc);
+                        }
+                        self.ui.app.splash_state.status_override = None;
                         if self.ui.app.splash_state.frames_drawn.is_multiple_of(120) {
                             log::warn!(
                                 "[LOADER] Waiting for relay connection before releasing loader: is_connected={}, has_client={}, on_relay={}, my_lobby_id={:?}, my_player_id={:?}, phase={:?}",

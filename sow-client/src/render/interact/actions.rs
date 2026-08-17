@@ -147,6 +147,18 @@ impl SowApp {
                 UiAction::ToggleSettings => {
                     // Handle settings toggle if it's there
                 }
+                UiAction::SetFullscreen(fullscreen) => {
+                    self.ui.app.settings_state.is_fullscreen = fullscreen;
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if let Some(win) = self.gfx.window.as_ref() {
+                        let mode = if fullscreen {
+                            Some(winit::monitor::Fullscreen::Borderless(None))
+                        } else {
+                            None
+                        };
+                        win.set_fullscreen(mode);
+                    }
+                }
                 UiAction::ToggleCredits => {
                     self.ui.app.is_credits_open = !self.ui.app.is_credits_open;
                 }

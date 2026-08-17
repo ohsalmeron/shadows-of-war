@@ -56,6 +56,24 @@ impl SowApp {
             WindowEvent::KeyboardInput { event, .. } => {
                 let pressed = event.state == ElementState::Pressed;
 
+                if pressed {
+                    if let winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::F11) =
+                        event.physical_key
+                    {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        if let Some(win) = self.gfx.window.as_ref() {
+                            let new_fs = win.fullscreen().is_none();
+                            self.ui.app.settings_state.is_fullscreen = new_fs;
+                            let mode = if new_fs {
+                                Some(winit::monitor::Fullscreen::Borderless(None))
+                            } else {
+                                None
+                            };
+                            win.set_fullscreen(mode);
+                        }
+                    }
+                }
+
                 if !self.input.input_focused
                     && !self.ui.egui_ctx.egui_wants_keyboard_input()
                     && self.ui.app.phase == ClientPhase::Playing
