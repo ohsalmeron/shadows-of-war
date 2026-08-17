@@ -575,6 +575,15 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
         }
         fs::copy(&src, out.join(name))?;
     }
+    // Fingerprint site assets (styles/app/data) with a content hash so edge and
+    // browser caches never serve a stale version after a redeploy.
+    for name in ["styles.css", "app.js", "data.js"] {
+        let hash = file_sha256(&out.join(name))?;
+        let versioned = format!("{name}?v={}", &hash[..10]);
+        let html = out.join("index.html");
+        let content = fs::read_to_string(&html)?;
+        fs::write(&html, content.replace(name, &versioned))?;
+    }
     fs::write(
         out.join("robots.txt"),
         "User-agent: *\nAllow: /\n\nSitemap: https://shadowsofwar.io/sitemap.xml\n",

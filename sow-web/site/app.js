@@ -382,7 +382,7 @@ async function loadCompendiumData() {
 
 // Render Empires Grid (3 Columns)
 function renderLeadersGrid(list) {
-  const container = document.getElementById("legends-grid");
+  const container = document.getElementById("empires-grid");
   if (!container) return;
 
   container.innerHTML = list.map((hero) => {
