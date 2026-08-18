@@ -633,4 +633,88 @@ mod bot_iq_alliance_tests {
             "standard tribe buildings must not be deleted by income tick"
         );
     }
+
+    // ── Food chain + tier semantics regression tests ──────────────────────
+    // The AI personality system must key on (player_type, is_ai_controlled)
+    // via `ai_tier` — NOT on `bot_id % N` arithmetic, which used to mint
+    // accidental élite tribes and bottom-band ghosts that inverted the chain.
+
+    #[test]
+    fn test_ai_tier_resolves_from_type_not_id() {
+        use crate::intent::nation::profile::{AiTier, ai_tier};
+        use crate::player::PlayerType;
+
+        // Ghost = Human + is_ai_controlled, regardless of id.
+        assert_eq!(ai_tier(PlayerType::Human, true), Some(AiTier::Ghost));
+        assert_eq!(ai_tier(PlayerType::Human, false), None); // real human: no AI
+        // Nation and Bot map by type, never by id.
+        assert_eq!(ai_tier(PlayerType::Nation, false), Some(AiTier::Nation));
+        assert_eq!(ai_tier(PlayerType::Bot, false), Some(AiTier::Tribe));
+        assert_eq!(ai_tier(PlayerType::Bot, true), Some(AiTier::Tribe));
+        // A tribe with an "élite-looking" id must STILL be a tribe (no id%100 carve-out).
+        assert_eq!(ai_tier(PlayerType::Bot, false), Some(AiTier::Tribe));
+    }
+
+    #[test]
+    fn test_ghost_iq_higher_than_nation_higher_than_tribe() {
+        use crate::game_config::GameConfig;
+        use crate::player::Player;
+
+        let config = GameConfig::default();
+        // Same id across types — tier must come from type, not id.
+        // Tribe band (50-85), Nation (130-160), Ghost (160-180) — no overlap,
+        // so the food chain is strictly Ghost > Nation > Tribe.
+        let mut max = |f: &dyn Fn(u16) -> Player| {
+            let mut lo = u32::MAX;
+            let mut hi = 0u32;
+            for id in [1u16, 2, 3, 5, 7, 11, 13, 99, 400] {
+                let p = f(id);
+                lo = lo.min(p.iq);
+                hi = hi.max(p.iq);
+            }
+            (lo, hi)
+        };
+        // Tribes: PlayerType::Bot via new_bot
+        let (_, t_hi) = max(&|id| Player::new_bot(id, "t".into(), [1.0; 3], &config));
+        // Ghost: new_human + is_ai_controlled sets band in spawn_human; emulate by
+        // asserting the deterministic band function directly is in-range.
+        // Use spawn_human through the engine to keep it honest.
+        let mut g = crate::engine::SowEngine::new(
+            GameState::new(1, 16, 16, config.clone()),
+            WaterComponents::default(),
+        );
+        g.spawn_human(
+            5,
+            "ghost".into(),
+            [1.0, 0.0, 0.0],
+            None,
+            crate::player::Civilization::ALL[0],
+            crate::player::Leader::ALL[0],
+            true,
+        );
+        let ghost_iq = g.state.player(5).unwrap().iq;
+        assert!(
+            (160..=180).contains(&ghost_iq),
+            "ghost IQ {} must be in top band 160-180",
+            ghost_iq
+        );
+
+        // Nation band 130-160
+        let n = Player::new_nation(9, "n".into(), [1.0; 3], &config);
+        assert!((130..=160).contains(&n.iq), "nation IQ {} must be 130-160", n.iq);
+
+        // Tribe: no actor may ever roll a nation/ghost-level IQ.
+        assert!(
+            t_hi <= 85,
+            "tribe IQ ceiling {} must be <= 85 (no accidental élite tribes)",
+            t_hi
+        );
+        // And the food chain strictness:
+        assert!(
+            ghost_iq > n.iq,
+            "ghost {} must out-IQ nation {}",
+            ghost_iq,
+            n.iq
+        );
+    }
 }

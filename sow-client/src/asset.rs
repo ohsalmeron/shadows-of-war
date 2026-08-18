@@ -528,13 +528,12 @@ impl SowApp {
                 crate::player_progress::DbEvent::LoadFailed { request_id, status } => {
                     self.profile_request_in_flight = false;
                     self.profile_refresh_pending = false;
-                    log::warn!(
-                        "[identity] profile request id={request_id} failed status={status:?}; continuing with current identity"
+                    // No fallback: continuing without an identity once masked a
+                    // 403 from a misrouted endpoint and booted the wrong mode.
+                    // A failed identity load is a hard failure — crash loudly.
+                    panic!(
+                        "[identity] profile request id={request_id} failed status={status:?} — no fallback, refusing to continue without identity"
                     );
-                    #[cfg(target_arch = "wasm32")]
-                    {
-                        self.boot_db_settled = true;
-                    }
                 }
             }
         }

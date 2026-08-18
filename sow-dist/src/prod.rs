@@ -449,7 +449,7 @@ fn verify_relay_control_path(config: &Config) -> Result<()> {
 fn build_web(paths: &Paths, version: &str) -> Result<()> {
     compile_wasm(paths, false)?;
     let fingerprint = input_fingerprint(
-        "web-v4",
+        "web-v6",
         version,
         &[
             &paths.wasm_input,
@@ -925,7 +925,7 @@ fn stage_secret(host: &str, secret: &str, remote_path: &str) -> Result<()> {
 
 fn verify_control_host(config: &Config, plan: &ComponentPlan) -> Result<()> {
     let mut checks = String::from(
-        "set -eu; sudo jexec sow-database service sow_database status >/dev/null; sudo jexec sow-server service sow_server status >/dev/null; i=0; until curl -fsS --max-time 5 http://127.0.0.1:25585/healthz >/dev/null; do i=$((i+1)); [ \"$i\" -ge 180 ] && exit 1; sleep 1; done; /usr/local/bin/valkey-cli -h 127.0.0.1 ping | grep -q PONG; sudo sockstat -4l | grep -q '127.0.0.1:25564'",
+        "set -eu; sudo jexec sow-database service sow_database status >/dev/null; sudo jexec sow-server service sow_server status >/dev/null; i=0; until curl -fsS --max-time 5 http://127.0.0.1:25585/healthz >/dev/null; do i=$((i+1)); [ \"$i\" -ge 180 ] && exit 1; sleep 1; done; /usr/local/bin/valkey-cli -h 127.0.0.1 ping | grep -q PONG; j=0; until sudo sockstat -4l | grep -q '127.0.0.1:25564'; do j=$((j+1)); [ \"$j\" -ge 180 ] && exit 1; sleep 1; done",
     );
     if plan.web || plan.ops {
         checks.push_str("; sudo nginx -t");

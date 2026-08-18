@@ -96,35 +96,10 @@ impl SowApp {
         #[cfg(target_arch = "wasm32")]
         let ime_bridge = crate::ime::WasmImeBridge::new();
 
-        let ws_url = std::env::var("SOW_WS_URL")
-            .unwrap_or_else(|_| "wss://ws.shadowsofwar.io/ws/".to_string());
-        #[cfg(target_arch = "wasm32")]
-        let ws_url = {
-            let mut ws_url = ws_url;
-            if let Some(window) = web_sys::window() {
-                let mut found_in_js = false;
-                if let Ok(val) =
-                    js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("SOW_WS_URL"))
-                {
-                    if let Some(s) = val.as_string() {
-                        ws_url = s;
-                        found_in_js = true;
-                    }
-                }
-                if !found_in_js {
-                    if let Ok(host) = window.location().host() {
-                        let protocol =
-                            if window.location().protocol().unwrap_or_default() == "https:" {
-                                "wss"
-                            } else {
-                                "ws"
-                            };
-                        ws_url = format!("{}://{}/ws/", protocol, host);
-                    }
-                }
-            }
-            ws_url
-        };
+        // Strict endpoint config: SOW_WS_URL must be declared by the shell
+        // (wasm) or the environment (native). No default, no deriving from
+        // window.location — a guessed host once pointed at the wrong origin.
+        let ws_url = crate::asset_config::require_endpoint("SOW_WS_URL");
         app.main_menu_state.server_address = ws_url.clone();
         let orchestrator_url = ws_url.clone();
 

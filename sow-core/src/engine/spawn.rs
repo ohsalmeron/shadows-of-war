@@ -288,11 +288,10 @@ impl SowEngine {
         let mut rng = WyRand::new(self.state.seed.wrapping_add(player_id as u64));
         let config = self.state.config.clone();
 
-        // Ghost (is_ai_controlled) Humans get a varied, high-average IQ so
-        // they act with personality through the unified AI scheduler instead
-        // of sitting inert at the flat default (100). Deterministic per
-        // (seed, player_id) → lockstep-safe across clients. Tiers by id give
-        // emergent personality differentiation (elite / strong / capable / solid).
+        // Ghost (is_ai_controlled) Humans are TOP of the food chain — the
+        // novice's guide. Single top band (above nations, far above tribes);
+        // no id-based tiers. Deterministic per (seed, player_id) →
+        // lockstep-safe across clients.
         let ghost_iq: Option<u32> = if is_ai_controlled {
             use crate::rng::NextIntExt;
             let mut iq_rng = WyRand::new(
@@ -301,15 +300,7 @@ impl SowEngine {
                     .wrapping_add(player_id as u64)
                     .wrapping_add(0xA11CE),
             );
-            Some(if player_id.is_multiple_of(100) {
-                iq_rng.next_int(140, 180) as u32
-            } else if player_id.is_multiple_of(10) {
-                iq_rng.next_int(120, 140) as u32
-            } else if player_id.is_multiple_of(4) {
-                iq_rng.next_int(110, 130) as u32
-            } else {
-                iq_rng.next_int(100, 120) as u32
-            })
+            Some(iq_rng.next_int(160, 181) as u32)
         } else {
             None
         };
@@ -338,6 +329,9 @@ impl SowEngine {
             player.civilization = civilization;
             player.leader = leader;
             player.is_ai_controlled = is_ai_controlled;
+            if let Some(iq) = ghost_iq {
+                player.iq = iq;
+            }
             self.state.register_player(player);
             return;
         }
@@ -348,6 +342,9 @@ impl SowEngine {
             player.civilization = civilization;
             player.leader = leader;
             player.is_ai_controlled = is_ai_controlled;
+            if let Some(iq) = ghost_iq {
+                player.iq = iq;
+            }
             self.state.spawn_player(player, sx, sy);
         } else {
             log::warn!("Failed to spawn Human {} - no room!", player_id);

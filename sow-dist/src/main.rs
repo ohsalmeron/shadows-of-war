@@ -310,7 +310,17 @@ fn build_index(
         .replace("__JS_FILE__", js)
         .replace("__WASM_FILE__", wasm)
         .replace("__BUILD_TS__", ts)
-        .replace("__ASSETS_UI_BASE__", "/assets/cdn/ui/")
+        .replace(
+            "__ASSETS_UI_BASE__",
+            if cg {
+                // Portal iframe: relative paths resolve against the game CDN,
+                // but the whitelist bundle ships no assets — point straight at
+                // the production CDN (served with ACAO for cross-origin reads).
+                "https://shadowsofwar.io/assets/cdn/ui/"
+            } else {
+                "/assets/cdn/ui/"
+            },
+        )
         .replace(
             "href=\"./sow.svg\"",
             if cg {
@@ -349,6 +359,23 @@ fn build_index(
                 "register('sw.js', { scope: '/' })"
             } else {
                 "register('../sw.js', { scope: '../' })"
+            },
+        )
+        .replace(
+            "/* PORTAL_BOOT_SLOT: SOW_PORTAL / SOW_WS_URL overrides injected by sow-dist crazygames. */",
+            &if cg {
+                // CG keeps the marker: package_cg injects the portal boot line.
+                "/* PORTAL_BOOT_SLOT */".to_string()
+            } else {
+                // Production shell declares every endpoint explicitly — the
+                // client resolves strict config only (no fallbacks).
+                concat!(
+                    "window.SOW_WS_URL = \"wss://shadowsofwar.io/ws/\"; ",
+                    "window.SOW_MAPS_URL = \"https://shadowsofwar.io/maps\"; ",
+                    "window.SOW_ASSETS_URL = \"https://shadowsofwar.io/assets\"; ",
+                    "window.SOW_DATABASE_URL = \"https://shadowsofwar.io/api\";"
+                )
+                .to_string()
             },
         );
     let index = if cg {
@@ -480,10 +507,13 @@ fn verify_layout(dir: &Path) -> Result<()> {
 }
 
 fn verify_cg_layout(dir: &Path) -> Result<()> {
+    // Portal entry points are the UNCOMPRESSED pair (restored June design):
+    // a native `import()` of a `.br` URL only works if the CDN serves it with
+    // Content-Encoding: br + a JS MIME, which the CrazyGames CDN does not.
     for required in [
         "index.html",
-        "sow_client.js.br",
-        "sow_client_bg.wasm.br",
+        "sow_client.js",
+        "sow_client_bg.wasm",
         "sow.svg",
         "loader.js",
         "sw.js",
@@ -506,18 +536,11 @@ fn verify_cg_layout(dir: &Path) -> Result<()> {
         "sdk.crazygames.com/crazygames-sdk-v3.js",
         "SOW_MAPS_URL = \"https://shadowsofwar.io/maps\"",
         "SOW_ASSETS_URL = \"https://shadowsofwar.io/assets\"",
-        "sow_client.js.br",
-        "sow_client_bg.wasm.br",
+        "sow_client.js",
+        "sow_client_bg.wasm",
     ] {
         if !html.contains(needle) {
             bail!("crazygames index.html missing: {}", needle);
-        }
-    }
-    // No uncompressed client artifacts may ship to the portal.
-    for e in fs::read_dir(dir)? {
-        let n = e?.file_name().to_string_lossy().into_owned();
-        if (n.ends_with("_bg.wasm") || n == "sow_client.js") && !n.ends_with(".br") {
-            bail!("crazygames bundle contains uncompressed artifact {n}");
         }
     }
     Ok(())
@@ -582,7 +605,7 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
         let versioned = format!("{name}?v={}", &hash[..10]);
         let html = out.join("index.html");
         let content = fs::read_to_string(&html)?;
-        fs::write(&html, content.replace(name, &versioned))?;
+        fs::write(&html, content.replace(&format!("./{name}"), &format!("./{versioned}")))?;
     }
     fs::write(
         out.join("robots.txt"),
@@ -635,27 +658,21 @@ fn package_cg(play_dir: &Path, out: &Path, paths: &Paths, version: &str) -> Resu
     }
     fs::create_dir_all(out)?;
 
+    // Portal entry points are the UNCOMPRESSED pair (restored June design):
+    // CG's CDN does not serve `.br` as an importable module. The .js/.wasm
+    // plain files load natively via import()/fetch on any static host.
+    fs::copy(play_dir.join(format!("sow_client_{jh}.js")), out.join("sow_client.js"))?;
     fs::copy(
-        play_dir.join(format!("sow_client_{jh}.js.br")),
-        out.join("sow_client.js.br"),
-    )?;
-    fs::copy(
-        play_dir.join(format!("sow_client_{wh}_bg.wasm.br")),
-        out.join("sow_client_bg.wasm.br"),
+        play_dir.join(format!("sow_client_{wh}_bg.wasm")),
+        out.join("sow_client_bg.wasm"),
     )?;
     copy_shell(paths, out)?;
     export_locales(out)?;
-    write_sw(
-        out,
-        version,
-        "sow_client.js.br",
-        "sow_client_bg.wasm.br",
-        &jh,
-    )?;
+    write_sw(out, version, "sow_client.js", "sow_client_bg.wasm", &jh)?;
     fs::write(
         out.join("game-manifest.json"),
         format!(
-            r#"{{"js":"sow_client.js.br","wasm":"sow_client_bg.wasm.br","build_ts":"{jh}","version":"{version}"}}"#
+            r#"{{"js":"sow_client.js","wasm":"sow_client_bg.wasm","build_ts":"{jh}","version":"{version}"}}"#
         ),
     )?;
     build_index(
@@ -668,7 +685,7 @@ fn package_cg(play_dir: &Path, out: &Path, paths: &Paths, version: &str) -> Resu
         true,
     )?;
 
-    // Patch index.html: hashed names -> stable .br names, inject portal SDK
+    // Patch index.html: hashed names -> stable PLAIN names, inject portal SDK
     // and boot overrides (maps AND assets resolve against the prod CDN).
     let idx = out.join("index.html");
     let html = fs::read_to_string(&idx)?;
@@ -680,7 +697,7 @@ fn package_cg(play_dir: &Path, out: &Path, paths: &Paths, version: &str) -> Resu
                 .to_string();
             sdk = true;
         } else if line.contains("PORTAL_BOOT_SLOT") {
-            *line = "        window.SOW_PORTAL = \"crazygames\"; window.SOW_WS_URL = \"wss://shadowsofwar.io/ws/\"; window.SOW_MAPS_URL = \"https://shadowsofwar.io/maps\"; window.SOW_ASSETS_URL = \"https://shadowsofwar.io/assets\";".to_string();
+            *line = "        window.SOW_PORTAL = \"crazygames\"; window.SOW_WS_URL = \"wss://shadowsofwar.io/ws/\"; window.SOW_MAPS_URL = \"https://shadowsofwar.io/maps\"; window.SOW_ASSETS_URL = \"https://shadowsofwar.io/assets\"; window.SOW_DATABASE_URL = \"https://shadowsofwar.io/api\";".to_string();
             boot = true;
         }
     }
@@ -689,8 +706,8 @@ fn package_cg(play_dir: &Path, out: &Path, paths: &Paths, version: &str) -> Resu
     }
     let html_out = lines
         .join("\n")
-        .replace(&format!("sow_client_{jh}.js"), "sow_client.js.br")
-        .replace(&format!("sow_client_{wh}_bg.wasm"), "sow_client_bg.wasm.br");
+        .replace(&format!("sow_client_{jh}.js"), "sow_client.js")
+        .replace(&format!("sow_client_{wh}_bg.wasm"), "sow_client_bg.wasm");
     fs::write(&idx, html_out)?;
 
     verify_cg_layout(out)?;
@@ -704,7 +721,11 @@ fn cmd_native(paths: &Paths) -> Result<()> {
         .current_dir(&paths.root)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
-        .env("VERBOSE", "1");
+        .env("VERBOSE", "1")
+        .env("SOW_WS_URL", "wss://shadowsofwar.io/ws/")
+        .env("SOW_MAPS_URL", "https://shadowsofwar.io/maps")
+        .env("SOW_ASSETS_URL", "https://shadowsofwar.io/assets")
+        .env("SOW_DATABASE_URL", "https://shadowsofwar.io/api");
     if !c.spawn()?.wait()?.success() {
         bail!("client failed");
     }

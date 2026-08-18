@@ -29,8 +29,8 @@
 
     <!-- PORTAL_SDK_SLOT: CrazyGames SDK <script> injected by sow-dist crazygames only. -->
 
-    <link rel="modulepreload" href="/__JS_FILE__">
-    <link rel="preload" href="/__WASM_FILE__" as="fetch" type="application/wasm" crossorigin="anonymous" fetchpriority="high">
+    <link rel="modulepreload" href="./__JS_FILE__">
+    <link rel="preload" href="./__WASM_FILE__" as="fetch" type="application/wasm" crossorigin="anonymous" fetchpriority="high">
     <link rel="preload" href="__ASSETS_UI_BASE__sow-splash-desktop.webp?v=__BUILD_TS__" as="image" type="image/webp" media="(min-width: 600px)" fetchpriority="high">
     <link rel="preload" href="__ASSETS_UI_BASE__sow-splash-mobile.webp?v=__BUILD_TS__" as="image" type="image/webp" media="(max-width: 599px)" fetchpriority="high">
     <link rel="preload" href="__ASSETS_UI_BASE__loader_empty.webp?v=__BUILD_TS__" as="image" type="image/webp" fetchpriority="high">
@@ -179,33 +179,12 @@
     <script type="text/javascript">
         window.SOW_BUILD_TS = "__BUILD_TS__";
         window.SOW_BUILD_VERSION = "__VERSION__";
-        /* Streamed maps/assets from prod nginx /maps and /assets (single source of truth). */
-        window.SOW_MAPS_URL = window.SOW_MAPS_URL || "/maps";
-        window.SOW_ASSETS_URL = window.SOW_ASSETS_URL || "/assets";
-        window.SOW_DATABASE_URL = window.SOW_DATABASE_URL || "/api";
+        /* All endpoints (SOW_WS_URL / SOW_MAPS_URL / SOW_ASSETS_URL /
+           SOW_DATABASE_URL) are injected strictly by sow-dist at the
+           PORTAL_BOOT_SLOT line below. No defaults and no hostname/referrer
+           sniffing: a missing endpoint panics the client instead of
+           misrouting (a guessed /api once hit the CrazyGames CDN). */
         /* PORTAL_BOOT_SLOT: SOW_PORTAL / SOW_WS_URL overrides injected by sow-dist crazygames. */
-        (function () {
-            var h = window.location.hostname;
-            var ref = document.referrer || "";
-            if (h === "appassets.androidplatform.net") {
-                window.SOW_WS_URL = "wss://ws.shadowsofwar.io/ws/";
-            } else if (/crazygames\\.com$/i.test(h) || /dev-crazygames\\.com$/i.test(h)) {
-                window.SOW_PORTAL = window.SOW_PORTAL || "crazygames";
-                window.SOW_WS_URL = window.SOW_WS_URL || "wss://ws.shadowsofwar.io/ws/";
-            } else if (/poki\\.com$/i.test(h) || /poki-gdn\\.com$/i.test(h) || /poki\\.io$/i.test(h)
-                || /poki\\.com/i.test(ref) || /poki-gdn\\.com/i.test(ref)) {
-                window.SOW_PORTAL = window.SOW_PORTAL || "poki";
-                window.SOW_WS_URL = window.SOW_WS_URL || "wss://ws.shadowsofwar.io/ws/";
-            } else if (h === "play.shadowsofwar.io") {
-                window.SOW_WS_URL = window.SOW_WS_URL || "wss://ws.shadowsofwar.io/ws/";
-                window.SOW_DATABASE_URL = "/api";
-            } else if (h === "ptr.shadowsofwar.io") {
-                window.SOW_WS_URL = window.SOW_WS_URL || "wss://ptr.shadowsofwar.io/ws/";
-                window.SOW_DATABASE_URL = "/api";
-            } else if (window.self !== window.top) {
-                window.SOW_PORTAL = window.SOW_PORTAL || "site";
-            }
-        })();
 
     </script>
     <script src="./sdk/store_portals.js"></script>
@@ -231,8 +210,8 @@
             }
 
             try {
-                const { default: init } = await import('/__JS_FILE__');
-                await init({ module_or_path: '/__WASM_FILE__' });
+                const { default: init } = await import('./__JS_FILE__');
+                await init({ module_or_path: './__WASM_FILE__' });
             } catch (e) {
                 if (e.message !== "Using exceptions for control flow, don't mind me. This isn't actually an error!") {
                     throw e;

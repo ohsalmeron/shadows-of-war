@@ -3,7 +3,7 @@ use crate::building::resolve_structure_spawn_tile;
 use crate::game::BuildingKind;
 use crate::protocol::GameplayIntent;
 
-use super::profile::{BotDecision, BotDecisionKind};
+use super::profile::{AiTier, BotDecision, BotDecisionKind};
 
 pub(super) fn bot_structure_target_count(
     kind: BuildingKind,
@@ -35,29 +35,33 @@ pub(super) fn bot_structure_target_count(
     }
 }
 
-pub(super) fn iq_build_interval_base(iq: u32, bot_id: u16) -> u64 {
-    if iq >= 130 {
-        if bot_id.is_multiple_of(8) {
-            10
-        } else {
-            match bot_id % 4 {
-                0 => 40,
-                1 => 60,
-                2 => 50,
-                _ => 80,
-            }
-        }
-    } else if iq >= 100 {
-        match bot_id % 2 {
-            0 => 80,
-            _ => 100,
-        }
-    } else {
-        match bot_id % 3 {
+/// Cadence (base ticks between AI actions), keyed on TIER (not IQ).
+///
+/// Tier is the single source of truth (`ai_tier`); keying cadence on IQ
+/// would let two tiers with overlapping bands cross into the wrong cadence.
+///   Ghost  → 5-10 ticks  (0.5-1.0s)   — top of chain
+///   Nation → 30-60 ticks (3-6s)       — mid tier
+///   Tribe  → 100-160 ticks (10-16s)   — slowest, not brainrot
+///
+/// `bot_id` is used ONLY for intra-tier jitter (a tiny spread so every
+/// entity doesn't act on the exact same tick) — never as a tier switch.
+pub(super) fn iq_build_interval_base(tier: AiTier, bot_id: u16) -> u64 {
+    match tier {
+        AiTier::Ghost => match bot_id % 3 {
+            0 => 5,
+            1 => 7,
+            _ => 10,
+        },
+        AiTier::Nation => match bot_id % 3 {
+            0 => 30,
+            1 => 45,
+            _ => 60,
+        },
+        AiTier::Tribe => match bot_id % 3 {
             0 => 160,
             1 => 140,
             _ => 120,
-        }
+        },
     }
 }
 

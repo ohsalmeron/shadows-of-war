@@ -10,7 +10,9 @@ mod diplomacy;
 mod profile;
 mod structures;
 
-use profile::{AiSlot, BotDecision, get_bot_ai_profile};
+use profile::{
+    AiSlot, BotDecision, ai_profile_for, ai_tier,
+};
 use structures::{cheapest_gold_cost, iq_build_interval_base};
 
 impl SowEngine {
@@ -32,23 +34,20 @@ impl SowEngine {
         let mut any_structures = false;
 
         for p in self.state.players.iter() {
-            let is_nation = p.player_type == crate::player::PlayerType::Nation;
-            let is_bot = p.player_type == crate::player::PlayerType::Bot;
-            let is_ai_human = p.is_ai_controlled;
-            if (!is_nation && !is_bot && !is_ai_human) || !p.alive {
+            let Some(tier) = ai_tier(p.player_type, p.is_ai_controlled) else {
+                continue; // real human: no AI brain
+            };
+            if !p.alive {
                 continue;
             }
             let bot_id = p.id;
 
-            let profile = get_bot_ai_profile(bot_id, is_nation);
+            let profile = ai_profile_for(tier, bot_id, self.state.config.bot_difficulty);
 
             // Unified metronomic scheduler for Nations, Tribes, AND ghost
-            // (is_ai_controlled) Humans. Ghosts previously sat on a starving
-            // per-tick probabilistic gate (10-20% act chance) that left them
-            // inert ("brainrot"); they now run the same IQ-keyed cadence +
-            // diplomacy/structure/combat modules as everyone else.
-            // Personality emerges from IQ (assigned deterministically in
-            // spawn_human) and the bot_id modular profile tiers. All RNG is
+            // (is_ai_controlled) Humans. Tier is resolved once by
+            // `ai_tier(player_type, is_ai_controlled)` — the single source of
+            // truth. IQ (assigned per-tier at spawn) drives cadence; RNG is
             // WyRand(seed, bot_id, interval) → lockstep-safe across clients.
             let is_under_attack = p.iq >= 100
                 && self
@@ -58,12 +57,12 @@ impl SowEngine {
 
             let interval_base = if is_under_attack {
                 if p.iq >= 130 {
-                    5 // Elite: react in 0.5s - 1.0s (5 - 10 ticks)
+                    5 // Top/smart: react in 0.5s - 1.0s (5 - 10 ticks)
                 } else {
                     10 // Advanced: react in 1.0s - 2.0s (10 - 20 ticks)
                 }
             } else {
-                iq_build_interval_base(p.iq, bot_id)
+                iq_build_interval_base(tier, bot_id)
             };
 
             let mut sched_rng = WyRand::new(
@@ -98,7 +97,7 @@ impl SowEngine {
 
             schedule.push(AiSlot {
                 bot_id,
-                is_nation,
+                tier,
                 do_attack,
                 do_structures,
                 profile,

@@ -50,9 +50,11 @@ impl SowEngine {
             let t_eighth = t_quarter.sqrt();
             let max_troops_bonus = t_half * t_eighth;
 
+            // Tribes (PlayerType::Bot) always eat the standard-bot handicap —
+            // no id-based carve-out (that used to let a handful of "élite"
+            // tribes dodge it by id%100, inverting the food chain).
             let is_standard_bot = self.state.players[idx].player_type
-                == crate::player::PlayerType::Bot
-                && !player_id.is_multiple_of(100);
+                == crate::player::PlayerType::Bot;
 
             let leader = self.state.players[idx].leader;
             let richard_mult = if leader == crate::player::Leader::RichardTheLionheart {

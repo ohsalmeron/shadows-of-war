@@ -5,7 +5,7 @@ use crate::protocol::{AttackIntent, GameplayIntent};
 use crate::rng::NextIntExt;
 use wyrand::WyRand;
 
-use super::profile::{AiSlot, BotDecision, BotDecisionKind};
+use super::profile::{AiSlot, AiTier, BotDecision, BotDecisionKind};
 
 impl SowEngine {
     pub(super) fn nation_run_combat_for_slot(
@@ -87,6 +87,11 @@ impl SowEngine {
                     (player.troops, player.max_troops)
                 };
 
+                // Build candidate targets. Exclude allies AND teammates so a
+                // bot never wastes its (rare) action deciding to hit a friend —
+                // `apply_attack_intent` would silently block it anyway.
+                // Passive tribes (attacks_players=false) additionally exclude
+                // all player targets up front: they never initiate vs anyone.
                 let targets: Vec<u16> = neighbor_players
                     .iter()
                     .copied()
@@ -95,14 +100,30 @@ impl SowEngine {
                             return true;
                         }
                         if let Some(p_me) = self.state.player(bot_id) {
-                            !p_me.alliances.contains(&id)
+                            let is_ally = p_me.alliances.contains(&id);
+                            let is_teammate = p_me
+                                .team
+                                .is_some()
+                                && p_me.team
+                                    == self.state.player(id).and_then(|t| t.team);
+                            if is_ally || is_teammate {
+                                return false;
+                            }
+                            if !slot.profile.attacks_players {
+                                if let Some(t) = self.state.player(id) {
+                                    if t.player_type != crate::player::PlayerType::Bot {
+                                        return false; // passive tribe: skip players
+                                    }
+                                }
+                            }
+                            true
                         } else {
                             true
                         }
                     })
                     .collect();
 
-                let is_mfo = slot.is_nation && bot_id.is_multiple_of(8);
+                let is_mfo = slot.tier == AiTier::Nation && bot_id.is_multiple_of(8);
                 let has_port =
                     crate::building::cost::player_has_completed_port(&self.buildings, bot_id);
                 let mut revenge_choice = None;
@@ -232,7 +253,7 @@ impl SowEngine {
                 } else if has_neutral {
                     (0, true)
                 } else if targets.is_empty() {
-                    if slot.is_nation {
+                    if slot.tier == AiTier::Nation {
                         self.maybe_launch_nuke(bot_id, decisions, bot_iq, &targets);
                     }
                     return;
@@ -294,7 +315,12 @@ impl SowEngine {
                 };
 
                 let is_defending = defender_target.is_some();
-                if is_neutral || is_defending || troops >= max_troops * trigger_ratio {
+                // Initiation against players is gated on `attacks_players`
+                // (Vanilla tribes are passive food: they expand & defend, but
+                // never pick a fight). Neutral expansion and defense are open
+                // to every tier.
+                let can_initiate = slot.profile.attacks_players;
+                if is_neutral || is_defending || (can_initiate && troops >= max_troops * trigger_ratio) {
                     let reserve = max_troops
                         * if is_neutral {
                             expand_ratio
@@ -304,7 +330,7 @@ impl SowEngine {
                         } else {
                             reserve_ratio
                         };
-                    let is_standard_bot = !slot.is_nation && !bot_id.is_multiple_of(100);
+                    let is_standard_bot = slot.tier == AiTier::Tribe;
                     let p_send = if is_standard_bot && !is_neutral && !is_defending {
                         (troops / 4.0).max(0.0)
                     } else {
@@ -324,7 +350,7 @@ impl SowEngine {
                         });
                     }
                 }
-                if slot.is_nation {
+                if slot.tier == AiTier::Nation {
                     self.maybe_launch_nuke(bot_id, decisions, bot_iq, &targets);
                 }
             }

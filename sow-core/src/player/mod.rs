@@ -149,15 +149,10 @@ impl Player {
         config: &crate::game_config::GameConfig,
     ) -> Self {
         let mut rng = WyRand::new(id as u64);
-        let iq = if id.is_multiple_of(100) {
-            rng.next_int(130, 181) as u32
-        } else if id.is_multiple_of(10) {
-            rng.next_int(100, 121) as u32
-        } else if id % 10 == 1 {
-            rng.next_int(60, 81) as u32
-        } else {
-            rng.next_int(85, 106) as u32
-        };
+        // Tribe (PlayerType::Bot) = lowest tier on the food chain (early-game
+        // food). Single flat band — no id-based tiers, which used to mint
+        // accidental "élite" tribes (id%100) that out-ranked nations.
+        let iq = rng.next_int(50, 86) as u32;
         let civ = Civilization::ALL[rng.next_int(0, Civilization::ALL.len() as i32) as usize];
         let leader = leader_for_civilization(civ);
         let starting_troops = config.starting_troops * 0.5; // ponytail: tribes get half
@@ -213,7 +208,9 @@ impl Player {
         config: &crate::game_config::GameConfig,
     ) -> Self {
         let mut rng = WyRand::new(id as u64);
-        let iq = rng.next_int(130, 181) as u32;
+        // Nation (PlayerType::Nation) = second tier on the food chain
+        // (mid-game food). Below ghosts, above tribes. Band 130-160.
+        let iq = rng.next_int(130, 161) as u32;
         let civ = Civilization::ALL[rng.next_int(0, Civilization::ALL.len() as i32) as usize];
         let leader = leader_for_civilization(civ);
         let final_color = color;

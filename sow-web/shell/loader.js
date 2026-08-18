@@ -38,7 +38,10 @@
             const root = base.replace(/\/$/, '');
             return [root + '/cdn/ui/' + file];
         }
-        return ['https://shadowsofwar.io/assets/cdn/ui/' + file];
+        // Strict endpoints: a missing SOW_ASSETS_URL is a packaging bug —
+        // fail loudly instead of guessing a CDN URL (guessing once loaded
+        // the wrong origin).
+        throw new Error('SOW_ASSETS_URL is not set; cannot resolve boot UI asset: ' + file);
     }
 
     function assetPath(file) {

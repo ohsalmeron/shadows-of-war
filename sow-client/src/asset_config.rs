@@ -1,7 +1,11 @@
 //! Single asset URL configuration for every client target (native, web, CrazyGames).
-
-/// Production site origin for maps/CDN assets (nginx + sow-server, not a third-party CDN).
-const DEFAULT_ORIGIN: &str = "https://shadowsofwar.io";
+//!
+//! Strict by design: every endpoint must be declared explicitly (JS globals on
+//! wasm, env vars on native). There are NO defaults and NO derivations — a
+//! missing endpoint is a packaging/serving bug and must crash the client at
+//! boot. A guessed `/api` once routed database traffic to the CrazyGames CDN
+//! (403) and silently booted players into the wrong mode; that class of
+//! silent misrouting is forbidden here.
 
 #[derive(Clone, Debug)]
 pub struct AssetConfig {
@@ -13,11 +17,12 @@ pub struct AssetConfig {
 }
 
 impl AssetConfig {
-    /// Resolve once at boot: JS globals (wasm) → env vars → production origin defaults.
+    /// Resolve once at boot: explicit JS globals (wasm) or env vars (native).
+    /// Missing configuration panics — the client never guesses endpoints.
     pub fn resolve() -> Self {
-        let maps_base = Self::resolve_maps_base();
-        let assets_base = Self::resolve_assets_base();
-        let database_base = Self::resolve_database_base();
+        let maps_base = require_endpoint("SOW_MAPS_URL");
+        let assets_base = require_endpoint("SOW_ASSETS_URL");
+        let database_base = require_endpoint("SOW_DATABASE_URL");
         let cache_bust = Self::resolve_cache_bust();
         log::info!(
             "AssetConfig maps={} assets={} database={}",
@@ -75,64 +80,6 @@ impl AssetConfig {
         }
     }
 
-    fn resolve_maps_base() -> String {
-        if let Some(url) = Self::js_global("SOW_MAPS_URL") {
-            return url;
-        }
-        if let Ok(url) = std::env::var("SOW_MAPS_URL") {
-            if !url.is_empty() {
-                return url;
-            }
-        }
-        if let Ok(ws) = std::env::var("SOW_WS_URL") {
-            if let Some(derived) = maps_url_from_ws_url(&ws) {
-                return derived;
-            }
-        }
-        format!("{DEFAULT_ORIGIN}/maps")
-    }
-
-    fn resolve_assets_base() -> String {
-        if let Some(url) = Self::js_global("SOW_ASSETS_URL") {
-            return url;
-        }
-        if let Ok(url) = std::env::var("SOW_ASSETS_URL") {
-            if !url.is_empty() {
-                return url;
-            }
-        }
-        format!("{DEFAULT_ORIGIN}/assets")
-    }
-
-    fn resolve_database_base() -> String {
-        if let Some(url) = Self::js_global("SOW_DATABASE_URL") {
-            return url;
-        }
-        if let Ok(url) = std::env::var("SOW_DATABASE_URL") {
-            if !url.is_empty() {
-                return url;
-            }
-        }
-        if let Some(url) = std::env::var("SOW_WS_URL")
-            .ok()
-            .and_then(|ws| database_url_from_ws_url(&ws))
-        {
-            return url;
-        }
-        #[cfg(target_arch = "wasm32")]
-        if let Some(url) =
-            Self::js_global("SOW_WS_URL").and_then(|ws| database_url_from_ws_url(&ws))
-        {
-            return url;
-        }
-        let maps_base = Self::resolve_maps_base();
-        if maps_base.ends_with("/maps") {
-            maps_base.replace("/maps", "/api")
-        } else {
-            format!("{DEFAULT_ORIGIN}/api")
-        }
-    }
-
     fn resolve_cache_bust() -> String {
         if let Some(ts) = Self::js_global("SOW_BUILD_TS") {
             if ts != "__BUILD_TS__" && !ts.is_empty() {
@@ -155,28 +102,22 @@ impl AssetConfig {
     }
 }
 
-fn maps_url_from_ws_url(ws_url: &str) -> Option<String> {
-    let rest = ws_url
-        .strip_prefix("wss://")
-        .or_else(|| ws_url.strip_prefix("ws://"))?;
-    let host = rest.split('/').next()?.split(':').next()?;
-    if host == "127.0.0.1" || host == "localhost" {
-        Some("http://127.0.0.1:25566/maps".to_string())
-    } else {
-        Some(format!("https://{host}/maps"))
+/// Explicit configuration only: JS global (wasm) or env var (native).
+/// Missing/empty value = panic. No fallback, no derivation, ever.
+pub(crate) fn require_endpoint(name: &str) -> String {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(v) = AssetConfig::js_global(name) {
+            return v;
+        }
     }
-}
-
-fn database_url_from_ws_url(ws_url: &str) -> Option<String> {
-    let rest = ws_url
-        .strip_prefix("wss://")
-        .or_else(|| ws_url.strip_prefix("ws://"))?;
-    let host = rest.split('/').next()?.split(':').next()?;
-    if host == "127.0.0.1" || host == "localhost" {
-        Some("http://127.0.0.1:25585".to_string())
-    } else if host == "play.shadowsofwar.io" || host == "ptr.shadowsofwar.io" {
-        Some("/api".to_string())
-    } else {
-        Some(format!("https://{host}/api"))
+    if let Ok(v) = std::env::var(name) {
+        if !v.is_empty() {
+            return v;
+        }
     }
+    panic!(
+        "SOW endpoint not configured: {name}. Set the JS global (wasm shell boot) \
+         or the env var (native). Refusing to guess a fallback."
+    );
 }
