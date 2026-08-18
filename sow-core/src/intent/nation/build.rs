@@ -6,8 +6,8 @@ use crate::rng::NextIntExt;
 
 use super::profile::{AiSlot, BotDecision, BotDecisionKind};
 use super::structures::{
-    PLACEMENT_ATTEMPTS, StructureCandidates, bot_structure_target_count, cheapest_gold_cost,
-    resolve_structure_from_candidates, stack_build_decision,
+    bot_structure_target_count, cheapest_gold_cost, resolve_structure_from_candidates,
+    stack_build_decision, StructureCandidates, PLACEMENT_ATTEMPTS,
 };
 
 impl SowEngine {

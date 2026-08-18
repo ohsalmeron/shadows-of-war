@@ -402,28 +402,17 @@ pub fn join_player(
                     new_lobby.id = req; // Override the ID to match the rematch ID
                     req
                 } else {
-                    log::info!(
-                        "[JOIN] Requested matchmaking lobby {} unavailable, falling back for {}",
+                    // Explicit target (invite link / room join / browser click) that no
+                    // longer resolves must NOT be silently rerouted into a fresh
+                    // Matchmaking lobby — that fills the "new game" with ghosts while
+                    // the player thinks they joined their friend's private room.
+                    // Reject instead; the client shows a notice and stays in the menu.
+                    log::warn!(
+                        "[JOIN] Requested lobby {} unavailable — rejecting join from {} (target no longer joinable)",
                         req,
                         name
                     );
-                    if let Some(fallback_id) = resolve_join_target(None, games) {
-                        fallback_id
-                    } else {
-                        spawn_waiting_lobby(
-                            games,
-                            next_id,
-                            SpawnLobbyOpts {
-                                game_mode: "FFA".to_string(),
-                                kind: LobbyKind::Matchmaking,
-                                is_private: false,
-                                config_override: None,
-                                password: None,
-                                host_name: String::new(),
-                            },
-                        );
-                        games.last().unwrap().id
-                    }
+                    return Err("Lobby is not accepting joins".to_string());
                 }
             }
         }

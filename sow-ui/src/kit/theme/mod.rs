@@ -9,13 +9,13 @@ use egui::{
 /// Phone/narrow layout: stacked main menu + mobile leader art.
 ///
 /// Uses width and height together so short-wide portal embeds (e.g. CrazyGames desktop QA)
-/// stay on desktop layout when `width >= 600` even if `height < 600`.
+/// stay on desktop layout when `width >= 560` and `width >= height`.
 #[inline]
 pub fn compact_viewport(ctx: &Context) -> bool {
     let rect = ctx.input(|i| i.content_rect());
     let w = rect.width();
     let h = rect.height();
-    w < 768.0 || h < 600.0 || w < h
+    w < 560.0 || w < h
 }
 
 /// Portrait orientation (height >= width).
@@ -23,6 +23,13 @@ pub fn compact_viewport(ctx: &Context) -> bool {
 pub fn portrait_layout(ctx: &Context) -> bool {
     let rect = ctx.input(|i| i.content_rect());
     rect.width() < rect.height()
+}
+
+/// Short landscape embed (e.g. 16:9 CrazyGames iframe on desktop: w >= h and h < 560).
+#[inline]
+pub fn short_landscape(ctx: &Context) -> bool {
+    let rect = ctx.input(|i| i.content_rect());
+    rect.width() >= rect.height() && rect.height() < 560.0
 }
 
 /// Scale factor for fixed chrome (buttons, gaps, profile bar) on short/narrow viewports.

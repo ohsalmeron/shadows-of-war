@@ -426,18 +426,17 @@ impl SowApp {
                     ))
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
-                            if self.ui.tutorial_active {
-                                if ui
+                            if self.ui.tutorial_active
+                                && ui
                                     .add(sow_ui_kit::widgets::HudEmojiButton::new("📜"))
                                     .on_hover_text("Quests")
                                     .clicked()
-                                {
-                                    self.ui.tutorial_objectives_open =
-                                        !self.ui.tutorial_objectives_open;
-                                    if self.ui.tutorial_objectives_open {
-                                        self.ui.show_leaderboard = false;
-                                        self.ui.show_dev_sidebar = false;
-                                    }
+                            {
+                                self.ui.tutorial_objectives_open =
+                                    !self.ui.tutorial_objectives_open;
+                                if self.ui.tutorial_objectives_open {
+                                    self.ui.show_leaderboard = false;
+                                    self.ui.show_dev_sidebar = false;
                                 }
                             }
 

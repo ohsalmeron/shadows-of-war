@@ -641,13 +641,13 @@ mod bot_iq_alliance_tests {
 
     #[test]
     fn test_ai_tier_resolves_from_type_not_id() {
-        use crate::intent::nation::profile::{AiTier, ai_tier};
+        use crate::intent::nation::profile::{ai_tier, AiTier};
         use crate::player::PlayerType;
 
         // Ghost = Human + is_ai_controlled, regardless of id.
         assert_eq!(ai_tier(PlayerType::Human, true), Some(AiTier::Ghost));
         assert_eq!(ai_tier(PlayerType::Human, false), None); // real human: no AI
-        // Nation and Bot map by type, never by id.
+                                                             // Nation and Bot map by type, never by id.
         assert_eq!(ai_tier(PlayerType::Nation, false), Some(AiTier::Nation));
         assert_eq!(ai_tier(PlayerType::Bot, false), Some(AiTier::Tribe));
         assert_eq!(ai_tier(PlayerType::Bot, true), Some(AiTier::Tribe));
@@ -662,9 +662,9 @@ mod bot_iq_alliance_tests {
 
         let config = GameConfig::default();
         // Same id across types — tier must come from type, not id.
-        // Tribe band (50-85), Nation (130-160), Ghost (160-180) — no overlap,
+        // Tribe band (50-85), Nation (130-159), Ghost (160-180) — no overlap,
         // so the food chain is strictly Ghost > Nation > Tribe.
-        let mut max = |f: &dyn Fn(u16) -> Player| {
+        let max = |f: &dyn Fn(u16) -> Player| {
             let mut lo = u32::MAX;
             let mut hi = 0u32;
             for id in [1u16, 2, 3, 5, 7, 11, 13, 99, 400] {
@@ -699,9 +699,13 @@ mod bot_iq_alliance_tests {
             ghost_iq
         );
 
-        // Nation band 130-160
+        // Nation band 130-159, strictly below the ghost floor of 160.
         let n = Player::new_nation(9, "n".into(), [1.0; 3], &config);
-        assert!((130..=160).contains(&n.iq), "nation IQ {} must be 130-160", n.iq);
+        assert!(
+            (130..=159).contains(&n.iq),
+            "nation IQ {} must be 130-159",
+            n.iq
+        );
 
         // Tribe: no actor may ever roll a nation/ghost-level IQ.
         assert!(
@@ -716,5 +720,50 @@ mod bot_iq_alliance_tests {
             ghost_iq,
             n.iq
         );
+    }
+
+    #[test]
+    fn test_vanilla_tribes_are_active_but_do_not_target_players() {
+        use crate::game_config::BotDifficulty;
+        use crate::intent::nation::profile::{ai_profile_for, AiTier};
+
+        let vanilla = ai_profile_for(AiTier::Tribe, BotDifficulty::Vanilla);
+        assert!(!vanilla.attacks_players);
+        assert!(vanilla.expand_ratio > 0.0);
+
+        let terminator = ai_profile_for(AiTier::Tribe, BotDifficulty::Terminator);
+        assert!(terminator.attacks_players);
+    }
+
+    #[test]
+    fn test_ghost_answers_teammate_resource_request_without_alliance() {
+        use crate::protocol::{GameplayIntent, Team};
+
+        let mut engine = test_engine_two_players(42);
+        engine.state.player_mut(1).unwrap().team = Some(Team::Red);
+        engine.state.player_mut(2).unwrap().team = Some(Team::Red);
+        engine.state.player_mut(1).unwrap().troops = 1_000.0;
+        engine.state.player_mut(1).unwrap().max_troops = 1_000.0;
+        engine.state.player_mut(1).unwrap().iq_points = 50.0;
+        engine.state.player_mut(2).unwrap().troops = 100.0;
+
+        // No formal alliance: team membership alone must be enough.
+        engine
+            .resource_requests_proposed
+            .push(crate::engine::ResourceRequestProposed {
+                proposer: 2,
+                target: 1,
+                gold: 100.0,
+                troops: 50.0,
+            });
+
+        let mut decisions = Vec::new();
+        engine.nation_run_diplomacy_for_slot((1, 160), (5.0, 5.0), &[], false, &mut decisions);
+
+        assert!(decisions.iter().any(|d| matches!(
+            d.intent,
+            GameplayIntent::AcceptResourceRequest { target_player: 2 }
+        )));
+        assert_eq!(engine.state.player(1).unwrap().iq_points, 45.0);
     }
 }

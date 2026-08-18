@@ -10,9 +10,7 @@ mod diplomacy;
 mod profile;
 mod structures;
 
-use profile::{
-    AiSlot, BotDecision, ai_profile_for, ai_tier,
-};
+use profile::{ai_profile_for, ai_tier, AiSlot, BotDecision};
 use structures::{cheapest_gold_cost, iq_build_interval_base};
 
 impl SowEngine {
@@ -20,7 +18,7 @@ impl SowEngine {
     ///
     /// - Builds one combined schedule of all AI entities.
     /// - Every scheduled bot acts each tick (no global budget cap).
-    /// - Each bot self-throttles via `iq_build_interval_base` keyed on IQ.
+    /// - Each bot self-throttles via `iq_build_interval_base` keyed on tier.
     /// - Uses `placement_scratch.border_scratch` for zero-allocation border scanning.
     pub fn execute_ai_think(&mut self) {
         if self.state.phase != crate::game::GamePhase::Playing {
@@ -42,7 +40,7 @@ impl SowEngine {
             }
             let bot_id = p.id;
 
-            let profile = ai_profile_for(tier, bot_id, self.state.config.bot_difficulty);
+            let profile = ai_profile_for(tier, self.state.config.bot_difficulty);
 
             // Unified metronomic scheduler for Nations, Tribes, AND ghost
             // (is_ai_controlled) Humans. Tier is resolved once by
@@ -62,7 +60,7 @@ impl SowEngine {
                     10 // Advanced: react in 1.0s - 2.0s (10 - 20 ticks)
                 }
             } else {
-                iq_build_interval_base(tier, bot_id)
+                iq_build_interval_base(tier)
             };
 
             let mut sched_rng = WyRand::new(

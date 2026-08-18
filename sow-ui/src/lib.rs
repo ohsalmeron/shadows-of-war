@@ -62,4 +62,6 @@ pub enum UiAction {
     },
     /// Native desktop fullscreen toggle.
     SetFullscreen(bool),
+    /// Toggle the UI Kit Showcase full-screen gallery.
+    ToggleShowcase,
 }

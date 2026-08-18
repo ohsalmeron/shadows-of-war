@@ -26,11 +26,19 @@ pub(super) fn bot_structure_target_count(
         }
         BuildingKind::Factory => {
             let val = ((city_equivalent as f64) * 0.65 * factor).floor() as u32;
-            if factor > 0.4 { val.max(1) } else { val }
+            if factor > 0.4 {
+                val.max(1)
+            } else {
+                val
+            }
         }
         BuildingKind::Port => {
             let val = ((city_equivalent as f64) * 0.30 * factor).floor() as u32;
-            if factor > 0.4 { val.max(1) } else { val }
+            if factor > 0.4 {
+                val.max(1)
+            } else {
+                val
+            }
         }
     }
 }
@@ -39,29 +47,17 @@ pub(super) fn bot_structure_target_count(
 ///
 /// Tier is the single source of truth (`ai_tier`); keying cadence on IQ
 /// would let two tiers with overlapping bands cross into the wrong cadence.
-///   Ghost  → 5-10 ticks  (0.5-1.0s)   — top of chain
-///   Nation → 30-60 ticks (3-6s)       — mid tier
-///   Tribe  → 100-160 ticks (10-16s)   — slowest, not brainrot
+///   Ghost  → 5 ticks   (0.5-1.0s after scheduler jitter) — top of chain
+///   Nation → 30 ticks  (3-6s after scheduler jitter)     — mid tier
+///   Tribe  → 100 ticks (10-20s after scheduler jitter)   — slowest, not brainrot
 ///
-/// `bot_id` is used ONLY for intra-tier jitter (a tiny spread so every
-/// entity doesn't act on the exact same tick) — never as a tier switch.
-pub(super) fn iq_build_interval_base(tier: AiTier, bot_id: u16) -> u64 {
+/// The scheduler adds deterministic seed/id jitter around this base. The ID
+/// changes phase, never the entity's tier or personality.
+pub(super) fn iq_build_interval_base(tier: AiTier) -> u64 {
     match tier {
-        AiTier::Ghost => match bot_id % 3 {
-            0 => 5,
-            1 => 7,
-            _ => 10,
-        },
-        AiTier::Nation => match bot_id % 3 {
-            0 => 30,
-            1 => 45,
-            _ => 60,
-        },
-        AiTier::Tribe => match bot_id % 3 {
-            0 => 160,
-            1 => 140,
-            _ => 120,
-        },
+        AiTier::Ghost => 5,
+        AiTier::Nation => 30,
+        AiTier::Tribe => 100,
     }
 }
 

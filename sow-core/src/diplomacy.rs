@@ -50,12 +50,14 @@ pub fn alliance_is_young(player: &Player, ally_id: PlayerId) -> bool {
 /// Nations should not spam standard tribes; chaotic bots may rarely try.
 pub fn is_valid_alliance_target(
     proposer_id: PlayerId,
-    neighbor_id: PlayerId,
+    _neighbor_id: PlayerId,
     neighbor_type: PlayerType,
 ) -> bool {
     match neighbor_type {
         PlayerType::Human | PlayerType::Nation => true,
-        PlayerType::Bot => neighbor_id.is_multiple_of(100) && is_chaotic_diplomat(proposer_id),
+        // Tribes have one explicit low-IQ tier now; only an explicitly
+        // chaotic proposer may form this otherwise unusual alliance.
+        PlayerType::Bot => is_chaotic_diplomat(proposer_id),
     }
 }
 

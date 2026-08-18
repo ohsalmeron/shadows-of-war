@@ -133,19 +133,20 @@ pub fn draw_queue_overlay(
     lang: sow_i18n::Language,
 ) {
     let compact = sow_ui_kit::theme::compact_viewport(ui.ctx());
+    let scale = sow_ui_kit::theme::viewport_scale(ui.ctx());
     let lobby_info = resolve_lobby_info(state);
     let panel_frame = sow_ui_kit::theme::standard_panel_frame(compact);
     let available_rect = ui.available_rect_before_wrap();
 
     // Compact: the card is the whole viewport (minus the footer panel, which the
-    // caller already excludes). Desktop: centered card with a fixed margin.
+    // caller already excludes). Desktop: centered card with scale-aware margins.
     let card_rect = if compact {
         available_rect
     } else {
-        let pad_x = 24.0;
-        let pad_y = 48.0;
+        let pad_x = (24.0 * scale).clamp(8.0, 32.0);
+        let pad_y = (32.0 * scale).clamp(6.0, 48.0);
         let card_w = (available_rect.width() - pad_x * 2.0).max(320.0);
-        let card_h = (available_rect.height() - pad_y * 2.0).max(240.0);
+        let card_h = (available_rect.height() - pad_y * 2.0).max(220.0);
         let x = available_rect.min.x + (available_rect.width() - card_w) * 0.5;
         let y = available_rect.min.y + (available_rect.height() - card_h) * 0.5;
         egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(card_w, card_h))
@@ -378,7 +379,7 @@ fn draw_summary_content(
         .unwrap_or(1.6);
     let preview_w = ui.available_width();
     let max_img_h = match height_budget {
-        Some(budget) => (budget - info_block_h - 10.0).max(80.0),
+        Some(budget) => (budget - info_block_h - 10.0).max(50.0),
         None => 160.0,
     };
     let preview_h = (preview_w / aspect).min(max_img_h);

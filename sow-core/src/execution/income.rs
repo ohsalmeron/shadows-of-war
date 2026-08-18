@@ -53,8 +53,8 @@ impl SowEngine {
             // Tribes (PlayerType::Bot) always eat the standard-bot handicap —
             // no id-based carve-out (that used to let a handful of "élite"
             // tribes dodge it by id%100, inverting the food chain).
-            let is_standard_bot = self.state.players[idx].player_type
-                == crate::player::PlayerType::Bot;
+            let is_standard_bot =
+                self.state.players[idx].player_type == crate::player::PlayerType::Bot;
 
             let leader = self.state.players[idx].leader;
             let richard_mult = if leader == crate::player::Leader::RichardTheLionheart {
@@ -113,8 +113,7 @@ impl SowEngine {
             let has_city = aggs
                 .get(player.id as usize)
                 .is_some_and(|a| a.city_levels > 0);
-            let is_standard_bot = player.player_type == crate::player::PlayerType::Bot
-                && !player.id.is_multiple_of(100);
+            let is_standard_bot = player.player_type == crate::player::PlayerType::Bot;
             let needs_city = if is_standard_bot {
                 player.cities == 0
             } else {

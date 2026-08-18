@@ -65,8 +65,8 @@ pub(super) struct BotAiProfile {
     pub(super) reserve_ratio: f64,
     pub(super) expand_ratio: f64,
     pub(super) refuse_human_chance: i32,
-    /// Tribe-only: on `Vanilla` (default MP) tribes don't initiate attacks
-    /// against players; they still retaliate. On `Terminator` they hunt.
+    /// Tribe-only: on `Vanilla` (default MP) tribes do not target players;
+    /// on `Terminator` they can hunt.
     pub(super) attacks_players: bool,
 }
 
@@ -80,33 +80,14 @@ impl BotAiProfile {
         attacks_players: true,
     };
 
-    /// Nation = smart but below ghost: 3 internal sub-tiers by `bot_id % 3`
-    /// for organic variety (all still "smart"); trigger 0.30-0.55.
-    fn nation(bot_id: u16) -> BotAiProfile {
-        match bot_id % 3 {
-            0 => BotAiProfile {
-                trigger_ratio: 0.30,
-                reserve_ratio: 0.10,
-                expand_ratio: 0.10,
-                refuse_human_chance: 10,
-                attacks_players: true,
-            },
-            1 => BotAiProfile {
-                trigger_ratio: 0.45,
-                reserve_ratio: 0.20,
-                expand_ratio: 0.15,
-                refuse_human_chance: 20,
-                attacks_players: true,
-            },
-            _ => BotAiProfile {
-                trigger_ratio: 0.55,
-                reserve_ratio: 0.30,
-                expand_ratio: 0.20,
-                refuse_human_chance: 30,
-                attacks_players: true,
-            },
-        }
-    }
+    /// Nation = one smart profile below Ghost and above Tribe.
+    const NATION: BotAiProfile = BotAiProfile {
+        trigger_ratio: 0.45,
+        reserve_ratio: 0.20,
+        expand_ratio: 0.15,
+        refuse_human_chance: 20,
+        attacks_players: true,
+    };
 
     /// Tribe = passive food on `Vanilla`, hunters on `Terminator`.
     fn tribe(difficulty: BotDifficulty) -> BotAiProfile {
@@ -131,14 +112,10 @@ impl BotAiProfile {
 
 /// Lookup table by tier. The old `get_bot_ai_profile(bot_id, is_nation)`
 /// is replaced by this single dispatch.
-pub(super) fn ai_profile_for(
-    tier: AiTier,
-    bot_id: u16,
-    difficulty: BotDifficulty,
-) -> BotAiProfile {
+pub(super) fn ai_profile_for(tier: AiTier, difficulty: BotDifficulty) -> BotAiProfile {
     match tier {
         AiTier::Ghost => BotAiProfile::GHOST,
-        AiTier::Nation => BotAiProfile::nation(bot_id),
+        AiTier::Nation => BotAiProfile::NATION,
         AiTier::Tribe => BotAiProfile::tribe(difficulty),
     }
 }

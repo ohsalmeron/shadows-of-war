@@ -14,6 +14,8 @@ pub struct ClientApp {
     pub is_credits_open: bool,
     pub is_privacy_open: bool,
     pub is_terms_open: bool,
+    pub is_showcase_open: bool,
+    pub showcase_state: crate::ui::showcase::ShowcaseState,
     pub settings_state: crate::ui::settings::SettingsState,
 }
 
@@ -82,6 +84,8 @@ impl ClientApp {
             is_credits_open: false,
             is_privacy_open: false,
             is_terms_open: false,
+            is_showcase_open: false,
+            showcase_state: crate::ui::showcase::ShowcaseState::default(),
             settings_state: crate::ui::settings::SettingsState::default(),
         }
     }
@@ -196,26 +200,34 @@ impl ClientApp {
         if let Some(ref toggle) = settings_action {
             self.apply_modal_toggle(toggle);
         } else if let Some(ref toggle) = action {
-            if matches!(toggle, UiAction::ToggleSettings) {
+            if matches!(toggle, UiAction::ToggleSettings | UiAction::ToggleShowcase) {
                 self.apply_modal_toggle(toggle);
                 action = None;
             }
         }
 
+        crate::ui::showcase::draw_showcase(
+            ui.ctx(),
+            &mut self.showcase_state,
+            &mut self.is_showcase_open,
+        );
+
         action
     }
 
     fn apply_modal_toggle(&mut self, action: &UiAction) {
-        let (s, c, p, t) = match action {
-            UiAction::ToggleSettings => (!self.is_settings_open, false, false, false),
-            UiAction::ToggleCredits => (false, !self.is_credits_open, false, false),
-            UiAction::TogglePrivacy => (false, false, !self.is_privacy_open, false),
-            UiAction::ToggleTerms => (false, false, false, !self.is_terms_open),
+        let (s, c, p, t, sc) = match action {
+            UiAction::ToggleSettings => (!self.is_settings_open, false, false, false, false),
+            UiAction::ToggleCredits => (false, !self.is_credits_open, false, false, false),
+            UiAction::TogglePrivacy => (false, false, !self.is_privacy_open, false, false),
+            UiAction::ToggleTerms => (false, false, false, !self.is_terms_open, false),
+            UiAction::ToggleShowcase => (false, false, false, false, !self.is_showcase_open),
             _ => return,
         };
         self.is_settings_open = s;
         self.is_credits_open = c;
         self.is_privacy_open = p;
         self.is_terms_open = t;
+        self.is_showcase_open = sc;
     }
 }

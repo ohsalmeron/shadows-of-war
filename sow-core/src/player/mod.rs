@@ -5,7 +5,9 @@ use sow_data::leader_for_civilization;
 
 mod colors;
 
-pub use colors::{bot_territory_color, human_shader_territory_rgb, premium_color, team_territory_rgb};
+pub use colors::{
+    bot_territory_color, human_shader_territory_rgb, premium_color, team_territory_rgb,
+};
 pub use sow_data::{Civilization, Leader, NamedColor, PREMIUM_COLORS};
 
 use wyrand::WyRand;
@@ -209,8 +211,8 @@ impl Player {
     ) -> Self {
         let mut rng = WyRand::new(id as u64);
         // Nation (PlayerType::Nation) = second tier on the food chain
-        // (mid-game food). Below ghosts, above tribes. Band 130-160.
-        let iq = rng.next_int(130, 161) as u32;
+        // (mid-game food). Strictly below ghosts and above tribes. Band 130-159.
+        let iq = rng.next_int(130, 160) as u32;
         let civ = Civilization::ALL[rng.next_int(0, Civilization::ALL.len() as i32) as usize];
         let leader = leader_for_civilization(civ);
         let final_color = color;

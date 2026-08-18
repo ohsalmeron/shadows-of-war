@@ -168,6 +168,9 @@ impl SowApp {
                 UiAction::ToggleTerms => {
                     self.ui.app.is_terms_open = !self.ui.app.is_terms_open;
                 }
+                UiAction::ToggleShowcase => {
+                    self.ui.app.is_showcase_open = !self.ui.app.is_showcase_open;
+                }
                 UiAction::ZoomIn => {
                     self.process_camera_zoom(
                         1.25,

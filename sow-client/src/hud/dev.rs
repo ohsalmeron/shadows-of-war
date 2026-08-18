@@ -179,15 +179,15 @@ impl SowApp {
 
         // ── Geometry ───────────────────────────────────────────────────────────────────────────
         let screen_rect = ctx.content_rect();
-        let compact = sow_ui_kit::theme::compact_viewport(ctx);
+        let portrait = sow_ui_kit::theme::portrait_layout(ctx);
         let bottom_rect =
             ctx.data(|d| d.get_temp::<egui::Rect>(egui::Id::new("hud_bottom_panel_rect")));
         let clearance = bottom_rect
             .map(|r| (screen_rect.max.y - r.min.y).max(0.0) + 12.0)
-            .unwrap_or(if compact { 132.0 } else { 24.0 });
+            .unwrap_or(if portrait { 132.0 } else { 24.0 });
 
         const H_MARGIN: f32 = 14.0;
-        let width = if compact {
+        let width = if portrait {
             let btn_w = if cfg!(target_os = "android") {
                 46.0
             } else {
@@ -204,9 +204,9 @@ impl SowApp {
 
         // 2-column grid of single-line cells; more than MAX_ROWS rows of pairs scrolls.
         let gap = 8.0_f32;
-        let cols = if compact { 1 } else { 2 };
+        let cols = if portrait { 1 } else { 2 };
         let col_w = (width - gap * (cols - 1) as f32) / cols as f32;
-        let cell_h = if compact { 28.0 } else { 30.0 };
+        let cell_h = if portrait { 28.0 } else { 30.0 };
         let row_gap = 6.0_f32;
         const MAX_ROWS: usize = 3;
         let n_rows = rows.len().div_ceil(cols);
@@ -400,7 +400,7 @@ impl SowApp {
 
                 // Themed backdrop: uses proper HUD panel gradient/glow logic
                 let bg = frame_res.response.rect;
-                let radius = if compact {
+                let radius = if portrait {
                     egui::CornerRadius::ZERO
                 } else {
                     sow_ui_kit::theme::radius::lg()

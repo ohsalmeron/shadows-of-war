@@ -101,11 +101,8 @@ impl SowEngine {
                         }
                         if let Some(p_me) = self.state.player(bot_id) {
                             let is_ally = p_me.alliances.contains(&id);
-                            let is_teammate = p_me
-                                .team
-                                .is_some()
-                                && p_me.team
-                                    == self.state.player(id).and_then(|t| t.team);
+                            let is_teammate = p_me.team.is_some()
+                                && p_me.team == self.state.player(id).and_then(|t| t.team);
                             if is_ally || is_teammate {
                                 return false;
                             }
@@ -123,7 +120,10 @@ impl SowEngine {
                     })
                     .collect();
 
-                let is_mfo = slot.tier == AiTier::Nation && bot_id.is_multiple_of(8);
+                // Every Nation shares the same mid-tier capability set. The
+                // action phase below remains seed/id-jittered, but the ID no
+                // longer decides which Nation gets fleet behavior.
+                let is_mfo = slot.tier == AiTier::Nation;
                 let has_port =
                     crate::building::cost::player_has_completed_port(&self.buildings, bot_id);
                 let mut revenge_choice = None;
@@ -265,10 +265,8 @@ impl SowEngine {
                             if let (Some(p_t), Some(p_b)) =
                                 (self.state.player(t_id), self.state.player(best_target))
                             {
-                                let t_is_tribe = p_t.player_type == crate::player::PlayerType::Bot
-                                    && t_id % 100 != 0;
-                                let b_is_tribe = p_b.player_type == crate::player::PlayerType::Bot
-                                    && !best_target.is_multiple_of(100);
+                                let t_is_tribe = p_t.player_type == crate::player::PlayerType::Bot;
+                                let b_is_tribe = p_b.player_type == crate::player::PlayerType::Bot;
 
                                 if (t_is_tribe && !b_is_tribe)
                                     || (t_is_tribe == b_is_tribe && p_t.troops < p_b.troops)
@@ -316,11 +314,14 @@ impl SowEngine {
 
                 let is_defending = defender_target.is_some();
                 // Initiation against players is gated on `attacks_players`
-                // (Vanilla tribes are passive food: they expand & defend, but
-                // never pick a fight). Neutral expansion and defense are open
-                // to every tier.
+                // (Vanilla tribes are passive food: they expand into neutral
+                // land but never target another player). Active tiers may
+                // initiate once their trigger threshold is reached.
                 let can_initiate = slot.profile.attacks_players;
-                if is_neutral || is_defending || (can_initiate && troops >= max_troops * trigger_ratio) {
+                if is_neutral
+                    || is_defending
+                    || (can_initiate && troops >= max_troops * trigger_ratio)
+                {
                     let reserve = max_troops
                         * if is_neutral {
                             expand_ratio

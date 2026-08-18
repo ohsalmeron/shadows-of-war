@@ -396,10 +396,16 @@ fn draw_home(
     let strings = &sow_i18n::get(lang).main_menu;
     let compact = sow_ui_kit::theme::compact_viewport(root_ui.ctx());
     let scale = sow_ui_kit::theme::viewport_scale(root_ui.ctx());
-    let section_gap = 12.0 * scale;
+    let section_gap = (10.0 * scale).max(6.0);
     let muted = sow_ui_kit::theme::palette::text_muted();
-    // Wide enough to place the CREATE button beside the Quick Match card.
-    let wide = root_ui.available_width() > 760.0;
+    // Wide enough to place the CREATE button beside the Quick Match card (landscape >= 540px).
+    let wide = !sow_ui_kit::theme::portrait_layout(root_ui.ctx()) && root_ui.available_width() >= 540.0;
+
+    let id_top_pad = if scale < 0.85 { 8 } else { 16 };
+    let id_bot_pad = if scale < 0.85 { 4 } else { 8 };
+    let id_header_h = (48.0 * scale).clamp(38.0, 48.0);
+    let profile_h = (56.0 * scale).clamp(44.0, 56.0);
+    let gear_w = (44.0 * scale).clamp(36.0, 44.0);
 
     // ── Identity strip (fixed, full width): avatar + name/sign-in + settings gear ──
     egui::Panel::top("home_identity")
@@ -408,22 +414,21 @@ fn draw_home(
         .frame(egui::Frame::NONE.inner_margin(egui::Margin {
             left: 16,
             right: 16,
-            top: 16,
-            bottom: 8,
+            top: id_top_pad,
+            bottom: id_bot_pad,
         }))
         .show_inside(root_ui, |ui| {
             ui.horizontal(|ui| {
-                let gear_w = 44.0;
                 let header_w = (ui.available_width() - gear_w - 8.0).max(80.0);
                 ui.allocate_ui_with_layout(
-                    egui::vec2(header_w, 48.0),
+                    egui::vec2(header_w, id_header_h),
                     egui::Layout::top_down(egui::Align::Min),
                     |ui| {
                         profile::draw_user_profile_header(
                             ui,
                             state,
                             compact,
-                            56.0,
+                            profile_h,
                             asset_loader,
                             lang,
                             action,
@@ -432,8 +437,8 @@ fn draw_home(
                 );
                 let gear = crate::widgets::ThemeButton::new("⚙")
                     .style(crate::widgets::ThemeButtonStyle::Tertiary)
-                    .min_size(egui::vec2(gear_w, 44.0))
-                    .text_size(20.0);
+                    .min_size(egui::vec2(gear_w, id_header_h))
+                    .text_size((20.0 * scale).clamp(16.0, 20.0));
                 if ui.add(gear).clicked() {
                     *action = Some(UiAction::ToggleSettings);
                 }
@@ -443,8 +448,9 @@ fn draw_home(
     // ── Central: Quick Match + Public Games (only the lobby list scrolls) ──
     // No panel fill — the leader backdrop shows through; individual cards/rows carry
     // their own surfaces.
+    let central_y_pad = if scale < 0.85 { 6 } else { 12 };
     CentralPanel::default()
-        .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(16, 12)))
+        .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(16, central_y_pad)))
         .show_inside(root_ui, |ui| {
             // Fixed top region: Quick Match card, then the Public Games header + pills.
             egui::Panel::top("home_pg_top")
@@ -458,10 +464,14 @@ fn draw_home(
                             .strong()
                             .color(muted),
                     );
-                    ui.add_space(4.0);
+                    ui.add_space(3.0);
 
                     // Quick Match card, left-aligned at a compact hero size.
-                    let card_w = if wide { 320.0 } else { ui.available_width() };
+                    let card_w = if wide {
+                        (320.0 * scale.max(0.75)).clamp(220.0, 360.0)
+                    } else {
+                        ui.available_width()
+                    };
                     ui.allocate_ui_with_layout(
                         egui::vec2(card_w, 0.0),
                         egui::Layout::top_down(egui::Align::Min),
@@ -485,29 +495,30 @@ fn draw_home(
                             .strong()
                             .color(muted),
                     );
-                    ui.add_space(4.0);
+                    ui.add_space(3.0);
                     join_browser::draw_filter_pills(ui, state, strings);
-                    ui.add_space(6.0);
+                    ui.add_space(4.0);
                 });
 
             // Fixed bottom action bar: [ lobby-code component ] [ CREATE ] — mirrors the
             // identity bar's [ nickname box ] [ gear ] rhythm. Stacks on narrow screens.
+            let bot_top_margin = if scale < 0.85 { 4 } else { 8 };
             egui::Panel::bottom("home_pg_bottom")
                 .resizable(false)
                 .show_separator_line(false)
                 .frame(egui::Frame::NONE.inner_margin(egui::Margin {
                     left: 0,
                     right: 0,
-                    top: 10,
+                    top: bot_top_margin,
                     bottom: 0,
                 }))
                 .show_inside(ui, |ui| {
-                    let bar_h = 46.0;
+                    let bar_h = (42.0 * scale).clamp(34.0, 46.0);
                     let mut open_create = false;
                     if wide {
                         ui.horizontal(|ui| {
-                            let create_w = 200.0;
-                            let comp_w = (ui.available_width() - create_w - section_gap).max(160.0);
+                            let create_w = (180.0 * scale).clamp(120.0, 200.0);
+                            let comp_w = (ui.available_width() - create_w - section_gap).max(140.0);
                             ui.allocate_ui_with_layout(
                                 egui::vec2(comp_w, bar_h),
                                 egui::Layout::top_down(egui::Align::Min),
@@ -520,7 +531,7 @@ fn draw_home(
                                 crate::widgets::ThemeButton::new(&strings.create_game_btn)
                                     .style(crate::widgets::ThemeButtonStyle::Secondary)
                                     .min_size(egui::vec2(ui.available_width(), bar_h))
-                                    .text_size(18.0);
+                                    .text_size((18.0 * scale).clamp(14.0, 18.0));
                             open_create = ui.add(create_btn).clicked();
                         });
                     } else {
@@ -529,7 +540,7 @@ fn draw_home(
                         let create_btn = crate::widgets::ThemeButton::new(&strings.create_game_btn)
                             .style(crate::widgets::ThemeButtonStyle::Secondary)
                             .min_size(egui::vec2(ui.available_width(), bar_h))
-                            .text_size(18.0);
+                            .text_size((18.0 * scale).clamp(14.0, 18.0));
                         open_create = ui.add(create_btn).clicked();
                     }
                     if open_create {

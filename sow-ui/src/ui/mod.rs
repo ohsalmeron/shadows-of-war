@@ -9,5 +9,6 @@ pub mod main_menu;
 pub mod map_editor;
 pub mod map_texture;
 pub mod settings;
+pub mod showcase;
 
 pub use sow_ui_kit::theme;

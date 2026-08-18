@@ -1,6 +1,6 @@
 use crate::diplomacy::{
-    ALLIANCE_RENEWAL_WINDOW_TICKS, alliance_propose_roll_cap, is_valid_alliance_target,
-    should_reject_traitor_request,
+    alliance_propose_roll_cap, is_valid_alliance_target, should_reject_traitor_request,
+    ALLIANCE_RENEWAL_WINDOW_TICKS,
 };
 use crate::engine::SowEngine;
 use crate::player::PlayerType;
@@ -151,76 +151,70 @@ impl SowEngine {
         }
 
         // ── Respond to Resource Requests ─────────────────────────
-        // Same cooldown window as proactive sharing — no spam
+        // Requests are checked on this AI decision, not on a 40-120 second
+        // modulo window. Ghosts therefore answer teammates on their normal
+        // top-tier cadence instead of appearing to ignore the request.
         {
-            let share_interval = {
-                let mut rng = WyRand::new(
+            for req in &self.resource_requests_proposed {
+                if req.target != bot_id {
+                    continue;
+                }
+                let requester = req.proposer;
+                let is_friendly = self
+                    .state
+                    .player(bot_id)
+                    .map(|p| {
+                        p.alliances.contains(&requester)
+                            || (p.team.is_some()
+                                && p.team == self.state.player(requester).and_then(|r| r.team))
+                    })
+                    .unwrap_or(false);
+                if !is_friendly {
+                    continue;
+                }
+
+                let accept = if bot_iq >= 130 {
+                    if let (Some(p_me), Some(p_req)) =
+                        (self.state.player(bot_id), self.state.player(requester))
+                    {
+                        p_me.troops >= p_req.troops * 2.0
+                    } else {
+                        false
+                    }
+                } else if bot_iq >= 100 {
                     self.state
-                        .seed
-                        .wrapping_add(bot_id as u64)
-                        .wrapping_add(7919),
-                );
-                rng.next_int(400, 1200) as u64
-            };
-            if self.state.tick > share_interval && self.state.tick % share_interval < 2 {
-                for req in &self.resource_requests_proposed {
-                    if req.target != bot_id {
-                        continue;
-                    }
-                    let requester = req.proposer;
-                    let is_ally = self
-                        .state
                         .player(bot_id)
-                        .map(|p| p.alliances.contains(&requester))
-                        .unwrap_or(false);
-                    if !is_ally {
-                        continue;
-                    }
+                        .map(|p| p.troops > p.max_troops * 0.4 || p.gold > 100_000.0)
+                        .unwrap_or(false)
+                } else {
+                    // Low IQ: always accept
+                    true
+                };
 
-                    let accept = if bot_iq >= 130 {
-                        if let (Some(p_me), Some(p_req)) =
-                            (self.state.player(bot_id), self.state.player(requester))
-                        {
-                            p_me.troops >= p_req.troops * 2.0
-                        } else {
-                            false
+                if accept {
+                    let current_points = self.state.player(bot_id).unwrap().iq_points;
+                    if current_points >= send_cost {
+                        if let Some(p_me) = self.state.player_mut(bot_id) {
+                            p_me.iq_points -= send_cost;
                         }
-                    } else if bot_iq >= 100 {
-                        self.state
-                            .player(bot_id)
-                            .map(|p| p.troops > p.max_troops * 0.4 || p.gold > 100_000.0)
-                            .unwrap_or(false)
-                    } else {
-                        // Low IQ: always accept
-                        true
-                    };
-
-                    if accept {
-                        let current_points = self.state.player(bot_id).unwrap().iq_points;
-                        if current_points >= send_cost {
-                            if let Some(p_me) = self.state.player_mut(bot_id) {
-                                p_me.iq_points -= send_cost;
-                            }
-                            decisions.push(BotDecision {
-                                bot_id,
-                                kind: BotDecisionKind::Build,
-                                intent: GameplayIntent::AcceptResourceRequest {
-                                    target_player: requester,
-                                },
-                            });
-                        }
-                    } else {
-                        // Explicit rejection!
                         decisions.push(BotDecision {
                             bot_id,
                             kind: BotDecisionKind::Build,
-                            intent: GameplayIntent::RejectResourceRequest {
+                            intent: GameplayIntent::AcceptResourceRequest {
                                 target_player: requester,
                             },
                         });
                     }
-                    break;
+                } else {
+                    decisions.push(BotDecision {
+                        bot_id,
+                        kind: BotDecisionKind::Build,
+                        intent: GameplayIntent::RejectResourceRequest {
+                            target_player: requester,
+                        },
+                    });
                 }
+                break;
             }
         }
 
