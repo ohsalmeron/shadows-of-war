@@ -29,8 +29,8 @@ paragraphs = [
 ]
 
 [[sections.links]]
-label = "github.com/ohsalmeron/shadows-of-war"
-url = "https://github.com/ohsalmeron/shadows-of-war"
+label = "github.com/worldofunreal/shadows-of-war"
+url = "https://github.com/worldofunreal/shadows-of-war"
 
 [[sections]]
 heading = "Contact"
@@ -40,4 +40,4 @@ paragraphs = [
 
 [[sections.links]]
 label = "SECURITY.md"
-url = "https://github.com/ohsalmeron/shadows-of-war/blob/main/SECURITY.md"
+url = "https://github.com/worldofunreal/shadows-of-war/blob/main/SECURITY.md"

@@ -9,12 +9,12 @@ fn version_tag() -> String {
 
 fn source_tag_url() -> String {
     format!(
-        "https://github.com/ohsalmeron/shadows-of-war/tree/{}",
+        "https://github.com/worldofunreal/shadows-of-war/tree/{}",
         version_tag()
     )
 }
 
-const GITHUB_REPO: &str = "https://github.com/ohsalmeron/shadows-of-war";
+const GITHUB_REPO: &str = "https://github.com/worldofunreal/shadows-of-war";
 
 fn legal_blob_url(path: &str) -> String {
     format!("{GITHUB_REPO}/blob/{}/{}", version_tag(), path)

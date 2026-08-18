@@ -23,7 +23,7 @@ edition = "2024"
 version = "0.2.0"
 rust-version = "1.85"
 license = "AGPL-3.0-or-later"
-repository = "https://github.com/ohsalmeron/shadows-of-war"
+repository = "https://github.com/worldofunreal/shadows-of-war"
 
 [workspace.dependencies]
 fstack-bridge = { path = "fstack-bridge" }

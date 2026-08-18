@@ -236,7 +236,7 @@ pub fn draw_terms_privacy_footer(
         let text = egui::RichText::new("GitHub")
             .font(sow_ui_kit::theme::font_regular(size))
             .color(link_color);
-        ui.hyperlink_to(text, "https://github.com/ohsalmeron/shadows-of-war");
+        ui.hyperlink_to(text, "https://github.com/worldofunreal/shadows-of-war");
     };
 
     if narrow {
