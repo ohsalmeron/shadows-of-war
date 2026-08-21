@@ -54,10 +54,22 @@ fn fetch_anonymous_profile_request(
                 #[serde(default)]
                 display_name: String,
                 profile: crate::player_progress::PlayerProgress,
+                /// One-time ownership secret, present only when just minted.
+                #[serde(default)]
+                auth_secret: Option<String>,
             }
             match serde_json::from_slice::<DbAccount>(&res.bytes) {
                 Ok(account) => {
                     crate::anonymous_identity::save_account_id(&account.id);
+                    if let Some(secret) = account.auth_secret.as_deref() {
+                        if !secret.is_empty() {
+                            crate::anonymous_identity::save_account_secret(secret);
+                            log::info!(
+                                "[identity] account secret minted and stored account={}",
+                                account_hint(Some(&account.id))
+                            );
+                        }
+                    }
                     log::info!(
                         "[identity] profile request id={request_id} ack account={} name_len={}",
                         account_hint(Some(&account.id)),

@@ -68,6 +68,88 @@ struct BotPoolSeedRequest {
     external_ids: Vec<String>,
 }
 
+/// POST /internal/verify — resolve an identity proof to a canonical account
+/// id. Callers are internal services (sow-server, sow-backfill) authenticated
+/// by the deployment bearer secret; the proof itself is what establishes the
+/// player's identity.
+#[derive(Deserialize)]
+struct VerifyRequest {
+    provider: String,
+    #[serde(default)]
+    account_id: Option<String>,
+    token: String,
+}
+
+#[derive(Serialize)]
+struct VerifyResponse {
+    account_id: String,
+}
+
+/// /profile/anonymous response: the account plus (only when just minted) the
+/// one-time ownership secret. Flatten keeps the shape identical to a bare
+/// `PlayerAccount` for existing clients — serde ignores the extra field.
+#[derive(Serialize)]
+struct AnonymousProfileResponse {
+    #[serde(flatten)]
+    account: sow_data::db::PlayerAccount,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    auth_secret: Option<String>,
+}
+
+/// POST /internal/verify
+async fn handle_internal_verify(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(payload): Json<VerifyRequest>,
+) -> impl IntoResponse {
+    if !verify_internal_auth(&headers, &state.secret_token) {
+        warn!("Unauthorized access attempt to /internal/verify");
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+            }),
+        )
+            .into_response();
+    }
+    let provider = payload.provider.trim();
+    let result: Result<String, String> = match provider {
+        "crazygames" => match resolve_external_id("crazygames", "", Some(&payload.token)).await {
+            Ok(external_id) => state
+                .db
+                .get_or_create("crazygames".to_string(), external_id)
+                .await
+                .map(|account| account.id)
+                .map_err(|e| e.to_string()),
+            Err(e) => Err(e),
+        },
+        "anonymous" => match (payload.account_id.as_deref(), payload.token.as_str()) {
+            (Some(account_id), token) if !account_id.trim().is_empty() => {
+                state.db.verify_anonymous_secret(account_id, token).await
+            }
+            _ => Err("anonymous verification requires account_id and token".to_string()),
+        },
+        other => Err(format!("unsupported provider: {other}")),
+    };
+    match result {
+        Ok(account_id) => {
+            info!(
+                "[identity] verify ok provider={provider} account={}",
+                account_hint(Some(&account_id))
+            );
+            (StatusCode::OK, Json(VerifyResponse { account_id })).into_response()
+        }
+        Err(e) => {
+            warn!("[identity] verify failed provider={provider}: {e}");
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse { error: e }),
+            )
+                .into_response()
+        }
+    }
+}
+
 #[derive(Serialize)]
 struct BotPoolSeedResponse {
     account_ids: Vec<String>,
@@ -195,6 +277,7 @@ async fn main() {
         .route("/internal/match-finalize", post(handle_match_finalize))
         .route("/internal/save", post(handle_direct_save))
         .route("/internal/stats", get(handle_internal_stats))
+        .route("/internal/verify", post(handle_internal_verify))
         .route("/internal/bot-pool/seed", post(handle_bot_pool_seed))
         .layer(DefaultBodyLimit::max(MAX_REPLAY_REQUEST_BYTES))
         .layer(cors)
@@ -245,12 +328,30 @@ async fn handle_anonymous_profile(
         .await
     {
         Ok(account) => {
+            // Mint the ownership secret on first sight (new account or
+            // pre-secret legacy account); the plaintext travels exactly once.
+            let revealed_secret = state
+                .db
+                .ensure_auth_secret(&account.id)
+                .await
+                .map_err(|e| {
+                    warn!("[identity] secret mint failed for {}: {e}", account_hint(Some(&account.id)));
+                })
+                .ok()
+                .flatten();
             info!(
                 "[identity] profile ack id={request_id} account={} name_len={}",
                 account_hint(Some(&account.id)),
                 account.display_name.chars().count()
             );
-            (StatusCode::OK, Json(account)).into_response()
+            (
+                StatusCode::OK,
+                Json(AnonymousProfileResponse {
+                    account,
+                    auth_secret: revealed_secret,
+                }),
+            )
+                .into_response()
         }
         Err(error) => {
             let message = error.to_string();

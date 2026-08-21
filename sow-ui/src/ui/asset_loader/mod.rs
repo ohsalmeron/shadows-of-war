@@ -81,6 +81,12 @@ pub struct AssetLoader {
     /// **persistently** — sow-client re-uploads any the text renderer is missing each frame, so
     /// portraits survive GPU-renderer teardown/recreation (e.g. tutorial → match).
     pub gpu_avatar_cells: Vec<(AvatarFetchKey, Vec<u8>)>,
+    /// Portal identity avatar (CrazyGames profile picture) — arbitrary remote URL,
+    /// unlike leader avatars which come from the game CDN by key.
+    pub portal_avatar: Option<TextureHandle>,
+    /// Queued portal avatar URL; drained once by sow-client.
+    pub portal_avatar_request: Option<String>,
+    pub portal_avatar_in_flight: bool,
 }
 
 impl Default for AssetLoader {
@@ -185,6 +191,9 @@ impl AssetLoader {
             avatars_fetch_all_queued: false,
             avatar_retry_state: HashMap::new(),
             gpu_avatar_cells: Vec::new(),
+            portal_avatar: None,
+            portal_avatar_request: None,
+            portal_avatar_in_flight: false,
         }
     }
 

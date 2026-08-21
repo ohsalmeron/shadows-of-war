@@ -8,6 +8,7 @@ impl SowApp {
         self.poll_leader_portrait_fetches();
         self.poll_boot_ui_fetches();
         self.poll_avatar_fetches();
+        self.poll_portal_avatar_fetch();
         self.poll_database_events();
 
         // Poll map download channel
@@ -154,6 +155,23 @@ impl SowApp {
                         .app
                         .asset_loader
                         .note_avatar_fetch_failed(key, reason);
+                }
+                MapDownloadEvent::PortalAvatarReady { bytes } => {
+                    match self
+                        .ui
+                        .app
+                        .asset_loader
+                        .ingest_portal_avatar_bytes(&self.ui.egui_ctx, &bytes)
+                    {
+                        Ok(()) => log::info!("Loaded portal identity avatar"),
+                        Err(e) => log::warn!("Failed to ingest portal avatar: {e}"),
+                    }
+                }
+                MapDownloadEvent::PortalAvatarFailed { reason } => {
+                    self.ui
+                        .app
+                        .asset_loader
+                        .note_portal_avatar_failed(reason);
                 }
                 MapDownloadEvent::LeaderPortraitFailed {
                     leader,
@@ -372,6 +390,40 @@ impl SowApp {
         }
     }
 
+    fn poll_portal_avatar_fetch(&mut self) {
+        if self.ui.app.asset_loader.portal_avatar.is_some()
+            || self.ui.app.asset_loader.portal_avatar_in_flight
+        {
+            return;
+        }
+        let Some(url) = self.ui.app.asset_loader.portal_avatar_request.clone() else {
+            return;
+        };
+        self.ui.app.asset_loader.portal_avatar_in_flight = true;
+        self.ui.app.asset_loader.portal_avatar_request = None;
+        log::debug!("Fetching portal avatar url={url}");
+        let tx = self.tasks.map_tx.clone();
+        Self::fetch_portal_avatar(url, tx);
+    }
+
+    fn fetch_portal_avatar(url: String, tx: crossbeam_channel::Sender<MapDownloadEvent>) {
+        let request = ehttp::Request::get(&url);
+        ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
+            let send = match result {
+                Ok(res) if res.ok => MapDownloadEvent::PortalAvatarReady {
+                    bytes: res.bytes,
+                },
+                Ok(res) => MapDownloadEvent::PortalAvatarFailed {
+                    reason: format!("HTTP {}", res.status),
+                },
+                Err(e) => MapDownloadEvent::PortalAvatarFailed {
+                    reason: e.to_string(),
+                },
+            };
+            let _ = tx.send(send);
+        });
+    }
+
     fn poll_leader_portrait_fetches(&mut self) {
         use sow_ui::ui::asset_loader::{
             AssetLoader, LeaderPortraitKey, MAX_LEADER_FETCHES_IN_FLIGHT,
@@ -433,7 +485,6 @@ impl SowApp {
                     self.profile_request_in_flight = false;
                     self.profile_last_applied_request = request_id;
                     let old_level = self.progress.level;
-                    let is_crazygames = provider == "crazygames";
                     log::info!(
                         "[identity] applying profile request id={request_id} provider={provider} account_len={} name_len={}",
                         account_id.chars().count(),
@@ -447,9 +498,6 @@ impl SowApp {
                     );
                     if self.progress.level > old_level {
                         crate::store_portals::happytime();
-                    }
-                    if is_crazygames {
-                        crate::store_portals::submit_leaderboard_score(self.progress.xp);
                     }
                     #[cfg(target_arch = "wasm32")]
                     {

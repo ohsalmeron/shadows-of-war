@@ -623,50 +623,6 @@
     }
   };
 
-  const SOW_CG_LEADERBOARD_ENCRYPTION_KEY = "sow_cg_leaderboard_encryption_key_placeholder";
-
-  async function encryptScore(score, encryptionKey) {
-    const keyBytes = new Uint8Array(
-      atob(encryptionKey)
-        .split('')
-        .map((c) => c.charCodeAt(0))
-    );
-    const cryptoKey = await window.crypto.subtle.importKey(
-      'raw',
-      keyBytes,
-      { name: 'AES-GCM' },
-      false,
-      ['encrypt']
-    );
-    const encodedScore = new TextEncoder().encode(score.toString());
-    const iv = window.crypto.getRandomValues(new Uint8Array(12));
-    const ciphertext = await window.crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv },
-      cryptoKey,
-      encodedScore
-    );
-    const combined = new Uint8Array(iv.length + ciphertext.byteLength);
-    combined.set(iv, 0);
-    combined.set(new Uint8Array(ciphertext), iv.length);
-    return btoa(String.fromCharCode.apply(null, combined));
-  }
-
-  window.SOW_portalSubmitLeaderboardScore = async function (score) {
-    if (!isOnCrazyGames() || !crazyGamesSdkReady() || !window.CrazyGames.SDK.user || !window.CrazyGames.SDK.user.submitScore) {
-      return;
-    }
-    try {
-      const encryptedScore = await encryptScore(score, SOW_CG_LEADERBOARD_ENCRYPTION_KEY);
-      await window.CrazyGames.SDK.user.submitScore({
-        score: score,
-        encryptedScore: encryptedScore,
-      });
-      console.log("Successfully submitted client-side leaderboard score:", score);
-    } catch (e) {
-      console.warn("Client-side leaderboard score submission failed:", e);
-    }
-  };
-
   window.SOW_portalHappytime = function () {
     triggerHappytime();
   };

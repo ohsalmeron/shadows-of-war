@@ -216,6 +216,46 @@ pub enum ClientMessage {
         #[serde(default)]
         tribes_defeated: u32,
     },
+    /// Identity-proving join. A separate variant (not a new field on `Join`)
+    /// keeps the legacy `Join` encoding decodable for cached/portal bundles:
+    /// bincode is not self-describing, so an in-struct field would make every
+    /// old client's join frame unparseable on a newer server.
+    JoinWithAuth {
+        join: Box<JoinPayload>,
+        auth: AuthProof,
+    },
+}
+
+/// Fields of a `Join`, factored out so `JoinWithAuth` can carry them without
+/// altering the legacy `Join` variant's wire encoding.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct JoinPayload {
+    pub name: String,
+    pub is_observer: bool,
+    pub target_lobby_id: Option<u64>,
+    pub host_private: bool,
+    pub build_version: String,
+    pub clan_tag: String,
+    pub civilization: crate::player::Civilization,
+    pub leader: crate::player::Leader,
+    pub database_account_id: Option<String>,
+    #[serde(default)]
+    pub host_config: Option<Box<crate::game_config::GameConfig>>,
+    #[serde(default)]
+    pub password: Option<String>,
+}
+
+/// Proof that a join may bind to a `database_account_id`.
+/// - `crazygames`: `token` is the platform JWT from `getUserToken`; the server
+///   resolves the account from the VERIFIED token and ignores any client
+///   assertion of the account id.
+/// - `anonymous`: `account_id` + `token`, where token is the one-time account
+///   secret minted by sow-data (only its BLAKE3 hash is stored).
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct AuthProof {
+    pub provider: String,
+    pub account_id: Option<String>,
+    pub token: String,
 }
 
 /// Envelope for all server → client messages (bincode-safe: has a discriminant).

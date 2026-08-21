@@ -118,6 +118,40 @@ impl AssetLoader {
         }
     }
 
+    pub fn queue_portal_avatar(&mut self, url: String) {
+        if self.portal_avatar.is_some() || self.portal_avatar_in_flight {
+            return;
+        }
+        if self.portal_avatar_request.as_deref() == Some(url.as_str()) {
+            return;
+        }
+        self.portal_avatar_request = Some(url);
+    }
+
+    pub fn note_portal_avatar_failed(&mut self, reason: impl Into<String>) {
+        log::warn!("Portal avatar fetch failed: {}", reason.into());
+        self.portal_avatar_in_flight = false;
+        self.portal_avatar_request = None;
+    }
+
+    pub fn ingest_portal_avatar_bytes(
+        &mut self,
+        ctx: &egui::Context,
+        bytes: &[u8],
+    ) -> Result<(), String> {
+        self.portal_avatar_in_flight = false;
+        self.portal_avatar_request = None;
+
+        let image = image::load_from_memory(bytes).map_err(|e| format!("decode avatar: {e}"))?;
+        let image_rgba = image.to_rgba8();
+        let size = [image_rgba.width() as _, image_rgba.height() as _];
+        let pixels = image_rgba.as_flat_samples();
+        let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+        let texture = ctx.load_texture("portal_avatar", color_image, egui::TextureOptions::LINEAR);
+        self.portal_avatar = Some(texture);
+        Ok(())
+    }
+
     pub fn ingest_avatar_webp_bytes(
         &mut self,
         ctx: &egui::Context,

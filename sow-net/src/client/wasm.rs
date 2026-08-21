@@ -54,7 +54,11 @@ impl SowClient {
                 let array = js_sys::Uint8Array::new(&ab);
                 let mut data = vec![0; array.length() as usize];
                 array.copy_to(&mut data);
-                let _ = tx_clone.send(data);
+                let len = data.len();
+                let send_ok = tx_clone.send(data).is_ok();
+                if !send_ok {
+                    log::error!("[DIAG WS RX] mpsc tx send failed! bytes={}", len);
+                }
             }
         });
         ws.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
@@ -63,7 +67,7 @@ impl SowClient {
         let open_tx_close = std::rc::Rc::clone(&open_tx);
         let onclose_callback = Closure::<dyn FnMut()>::new(move || {
             closed_flag.store(true, Ordering::Release);
-            log::warn!("WASM WebSocket closed");
+            log::warn!("[DIAG WS CLOSE] WebSocket closed event fired");
             if let Some(tx) = open_tx_close.borrow_mut().take() {
                 let _ = tx.send(Err("WebSocket closed".to_string()));
             }
@@ -72,7 +76,7 @@ impl SowClient {
 
         let open_tx_error = std::rc::Rc::clone(&open_tx);
         let onerror_callback = Closure::<dyn FnMut(_)>::new(move |e: Event| {
-            log::error!("WASM WebSocket error occurred on connection: {}", e.type_());
+            log::error!("[DIAG WS ERROR] type={}", e.type_());
             if let Some(tx) = open_tx_error.borrow_mut().take() {
                 let _ = tx.send(Err(format!("WebSocket error: {}", e.type_())));
             }
@@ -81,6 +85,7 @@ impl SowClient {
 
         let open_tx_open = std::rc::Rc::clone(&open_tx);
         let onopen_callback = Closure::<dyn FnMut()>::new(move || {
+            log::info!("[DIAG WS OPEN] WebSocket open event fired!");
             if let Some(tx) = open_tx_open.borrow_mut().take() {
                 let _ = tx.send(Ok(()));
             }

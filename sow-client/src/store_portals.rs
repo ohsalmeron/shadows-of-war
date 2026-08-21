@@ -71,25 +71,6 @@ fn call_window_hook(_name: &str) {}
 fn call_window_hook_str(_name: &str, _arg: &str) {}
 
 #[cfg(not(target_arch = "wasm32"))]
-fn call_window_hook_u32(_name: &str, _arg: u32) {}
-
-#[cfg(target_arch = "wasm32")]
-fn call_window_hook_u32(name: &str, arg: u32) {
-    let Some(val) = get_window_value(name) else {
-        return;
-    };
-    if val.is_function() {
-        let Ok(func) = val.dyn_into::<js_sys::Function>() else {
-            return;
-        };
-        let _ = func.call1(
-            &wasm_bindgen::JsValue::NULL,
-            &wasm_bindgen::JsValue::from_f64(arg as f64),
-        );
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
 fn take_window_bool(_name: &str) -> bool {
     false
 }
@@ -374,9 +355,7 @@ pub fn is_signed_in_crazygames() -> bool {
             .is_some_and(|token| !token.is_empty())
 }
 
-pub fn submit_leaderboard_score(score: u32) {
-    if !is_signed_in_crazygames() {
-        return;
-    }
-    call_window_hook_u32("SOW_portalSubmitLeaderboardScore", score);
-}
+// Leaderboard scores are submitted server-side on match finalize (sow-data
+// posts to leaderboard.crazygames.com with the deployment API key). The old
+// client-side submitScore path used a placeholder encryption key and never
+// worked — removed.

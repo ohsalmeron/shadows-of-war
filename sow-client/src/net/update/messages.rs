@@ -39,7 +39,7 @@ impl SowApp {
                         Ok(m) => m,
                         Err(e) => {
                             log::warn!(
-                                "[NET] Failed to deserialize server message ({} bytes): {}",
+                                "[DIAG NET ERROR] Failed to deserialize server message ({} bytes): {}",
                                 msg.len(),
                                 e
                             );
@@ -112,6 +112,18 @@ impl SowApp {
                             }
                         }
                         ServerMessage::Turn(turn_msg) => {
+                            let intents_count = turn_msg.turn.intents.len();
+                            let q_len = self.sim.turn_queue.len() + 1;
+                            let turn_num = turn_msg.turn.turn_number;
+                            if q_len <= 3 || q_len % 20 == 0 || intents_count > 0 || turn_num % 50 == 0 {
+                                log::info!(
+                                    "[DIAG NET] 📦 Turn received: #{} intents={} turn_q_len={} phase={:?}",
+                                    turn_num,
+                                    intents_count,
+                                    q_len,
+                                    self.ui.app.phase
+                                );
+                            }
                             self.sim.turn_queue.push_back(turn_msg.turn);
                             self.ui.app.hud_state.sync_state = None;
                         }

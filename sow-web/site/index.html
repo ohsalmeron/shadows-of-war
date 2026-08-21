@@ -1,30 +1,35 @@
-<!DOCTYPE html>
-<html lang="en" class="dark">
+<!doctype html>
+<html lang="en" data-theme="dark">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Shadows of War — Tactical MMORTS</title>
-  <meta name="description" content="Shadows of War: Multi-civilization tactical real-time strategy game.">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0a0a0e">
+  <title>Shadows of War — Rewrite History</title>
+  <meta name="description" content="Shadows of War is a free-to-play multiplayer strategy game where legendary leaders fight for a living world map.">
   <link rel="canonical" href="https://shadowsofwar.io/">
   <meta name="robots" content="index, follow">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Shadows of War">
-  <meta property="og:title" content="Shadows of War — Tactical MMORTS">
-  <meta property="og:description" content="Multi-civilization tactical real-time strategy game. Play free in your browser.">
+  <meta property="og:title" content="Shadows of War — Rewrite History">
+  <meta property="og:description" content="Choose a legendary leader, expand your territory, and rewrite the map with other players.">
   <meta property="og:url" content="https://shadowsofwar.io/">
   <meta property="og:image" content="https://shadowsofwar.io/assets/cdn/ui/sow-splash-desktop.webp">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Shadows of War — Tactical MMORTS">
-  <meta name="twitter:description" content="Multi-civilization tactical real-time strategy game. Play free in your browser.">
+  <meta name="twitter:title" content="Shadows of War — Rewrite History">
+  <meta name="twitter:description" content="A free-to-play multiplayer strategy game for the browser.">
   <meta name="twitter:image" content="https://shadowsofwar.io/assets/cdn/ui/sow-splash-desktop.webp">
   <link rel="icon" type="image/svg+xml" href="/sow.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&family=Outfit:wght@600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "VideoGame",
     "name": "Shadows of War",
-    "description": "Multi-civilization tactical real-time strategy game played in the browser.",
-    "genre": ["Strategy", "RTS", "MMORTS"],
+    "description": "A free-to-play multiplayer strategy game where legendary leaders fight for a living world map.",
+    "genre": ["Strategy", "MMORTS"],
     "gamePlatform": "Web Browser",
     "playMode": "MultiPlayer",
     "url": "https://shadowsofwar.io/",
@@ -32,207 +37,171 @@
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
   }
   </script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@500;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css">
 </head>
-<body class="bg-[#090b10] text-zinc-100 font-sans antialiased overflow-x-hidden selection:bg-cyan-500 selection:text-black">
-
-  <!-- TOP COMMAND NAVBAR (Sticky Glass Bar) -->
-  <nav class="fixed top-0 left-0 right-0 z-50 bg-[#090b10]/85 backdrop-blur-md border-b border-zinc-800/80 px-6 h-18 flex items-center justify-between">
-    <!-- Brand Logo -->
-    <a href="#" class="flex items-center gap-3 group" data-view="home">
-      <img src="/sow.svg" alt="Shadows of War" class="h-8 w-auto transition-transform group-hover:scale-105" />
-    </a>
-
-    <!-- Navigation Tabs -->
-    <div class="hidden md:flex items-center gap-1 bg-zinc-900/90 border border-zinc-800 p-1 rounded-full text-xs font-mono">
-      <button class="nav-tab px-5 py-2 rounded-full font-bold transition-all text-zinc-400 hover:text-white active" data-view="home">OVERVIEW</button>
-      <button class="nav-tab px-5 py-2 rounded-full font-bold transition-all text-zinc-400 hover:text-white" data-view="arena">PLAY</button>
-      <button class="nav-tab px-5 py-2 rounded-full font-bold transition-all text-zinc-400 hover:text-white" data-view="heroes">EMPIRES</button>
-      <button class="nav-tab px-5 py-2 rounded-full font-bold transition-all text-zinc-400 hover:text-white" data-view="compendium">ARCHIVE</button>
-      <button class="nav-tab px-5 py-2 rounded-full font-bold transition-all text-zinc-400 hover:text-white" data-view="atlas">MAP</button>
+<body>
+  <header class="site-nav" id="top">
+    <div class="container nav-inner">
+      <a class="brand" href="#top" aria-label="Shadows of War home">
+        <span class="brand-mark">S<span>W</span></span>
+        <span class="brand-name">SHADOWS <i>OF</i> WAR</span>
+      </a>
+      <nav class="desktop-nav" aria-label="Main navigation">
+        <a href="#game">The game</a>
+        <a href="#leaders">Leaders</a>
+        <a href="#media">Media</a>
+        <a href="#play">Platforms</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch color theme">
+          <span class="theme-icon" aria-hidden="true">☼</span>
+          <span class="theme-label">Light mode</span>
+        </button>
+        <a class="button button-small button-orange" href="/play/">Play free</a>
+        <button class="menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="mobile-menu" aria-label="Open navigation">☰</button>
+      </div>
     </div>
+    <nav class="mobile-menu" id="mobile-menu" aria-label="Mobile navigation">
+      <a href="#game">The game</a>
+      <a href="#leaders">Leaders</a>
+      <a href="#media">Media</a>
+      <a href="#play">Platforms</a>
+      <a class="button button-orange" href="/play/">Play free</a>
+    </nav>
+  </header>
 
-    <!-- Actions & Status -->
-    <div class="flex items-center gap-4">
-      <div class="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-950/60 border border-emerald-500/30 text-[11px] font-mono text-emerald-400">
-        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-        <span>SERVERS ONLINE</span>
+  <main>
+    <section class="hero section-rule">
+      <div class="hero-wash" aria-hidden="true"></div>
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="eyebrow-dot"></span> Multiplayer strategy · play free in browser</p>
+          <h1>Rewrite<br><em>history.</em></h1>
+          <p class="hero-lede">Choose a legendary leader. Build your empire. Fight for territory on a living world map where every move changes the balance of power.</p>
+          <div class="hero-actions">
+            <a class="button button-orange" href="/play/">Enter the battlefield <span aria-hidden="true">↗</span></a>
+            <a class="button button-outline" href="#media">Watch the trailer <span aria-hidden="true">▶</span></a>
+          </div>
+          <div class="hero-notes">
+            <span><b class="status-dot"></b> Browser game online</span>
+            <span>No download · no paywall</span>
+          </div>
+        </div>
+        <div class="hero-stage">
+          <div class="hero-frame">
+            <div class="hero-frame-top"><span>LEADER SELECT</span><span data-hero-code>ROM / 01</span></div>
+            <picture>
+              <source media="(max-width: 700px)" data-hero-mobile srcset="/assets/cdn/leaders/caesar_mobile.webp">
+              <img data-hero-image src="/assets/cdn/leaders/caesar_desktop.webp" alt="Julius Caesar leader artwork">
+            </picture>
+            <div class="hero-frame-gradient"></div>
+            <div class="hero-leader-caption">
+              <p class="mono-label">CURRENTLY COMMANDING</p>
+              <h2 data-hero-name>Julius Caesar</h2>
+              <p data-hero-civ>Roman Empire</p>
+            </div>
+            <div class="hero-frame-index">01 <span>/</span> 12</div>
+          </div>
+          <div class="leader-rail" data-leader-rail aria-label="Choose a leader"></div>
+          <p class="rail-hint">Select a leader to inspect their empire</p>
+        </div>
       </div>
+      <div class="container hero-bottom">
+        <span>12 leaders ready for war</span>
+        <span class="hero-line"></span>
+        <span>One map. Infinite outcomes.</span>
+      </div>
+    </section>
 
-      <button class="nav-tab px-6 py-2.5 rounded-full bg-white text-zinc-950 font-extrabold text-xs tracking-wider uppercase hover:bg-zinc-200 transition-all shadow-lg" data-view="arena">
-        PLAY NOW
-      </button>
+    <section class="proof-strip">
+      <div class="container proof-grid">
+        <div><span class="proof-number">01</span><span><b>Play now</b><small>in your browser</small></span></div>
+        <div><span class="proof-number">12</span><span><b>Legendary leaders</b><small>each with a unique edge</small></span></div>
+        <div><span class="proof-number">∞</span><span><b>Living world map</b><small>every match writes history</small></span></div>
+      </div>
+    </section>
 
-      <button id="mobile-menu-btn" class="md:hidden text-xl p-2 text-zinc-300">
-        ☰
-      </button>
-    </div>
-  </nav>
-
-  <!-- NOTIFICATION TOAST -->
-  <div id="toast-notify" class="fixed bottom-6 right-6 z-50 bg-zinc-900 border border-zinc-700 text-white px-5 py-3 rounded-2xl text-xs font-mono shadow-2xl hidden items-center gap-3">
-    <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
-    <span id="toast-msg">Action completed.</span>
-  </div>
-
-  <!-- MAIN SUBVIEW CONTAINER -->
-  <main class="pt-24 min-h-screen">
-    
-    <!-- SUBVIEW 1: OVERVIEW (SMASH STAGE 100VH VIEWPORT) -->
-    <section class="subview-section active" id="view-home">
-      <div class="max-w-7xl mx-auto px-6 py-8 min-h-[calc(100vh-6rem)] flex flex-col justify-center">
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
-          
-          <!-- LEFT COLUMN: TITLES & SMASH ROSTER GRID -->
-          <div class="lg:col-span-7 flex flex-col justify-center">
-            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[11px] font-mono text-amber-400 mb-6 w-fit">
-              <span class="font-bold">// TACTICAL MMORTS</span>
-            </div>
-
-            <h1 class="text-5xl sm:text-7xl lg:text-8xl font-black uppercase tracking-tight leading-none text-white mb-4">
-              SHADOWS OF WAR
-            </h1>
-
-            <p class="text-sm sm:text-base font-mono text-cyan-400 uppercase tracking-widest mb-6 font-bold">
-              CUANDO LA HISTORIA COLISIONA
-            </p>
-
-            <p class="text-zinc-400 text-base font-light leading-relaxed mb-8 max-w-xl">
-              ELIGE A TU LEYENDA. ROMPE LA HISTORIA. 12 imperios en un mismo stage. ¿César vs Ragnar? Que gane el mejor.
-            </p>
-
-            <!-- Roster Picker Container (6x2 Grid) -->
-            <div class="mb-8">
-              <div class="flex items-center justify-between text-xs font-mono text-zinc-500 uppercase mb-3">
-                <span>SELECT LEADER</span>
-                <span id="roster-count-label">12 EMPIRES AVAILABLE</span>
-              </div>
-
-              <div class="smash-roster-container p-3 rounded-2xl bg-zinc-900/60 border border-zinc-800">
-                <div class="grid grid-cols-6 gap-2.5" id="smash-roster-strip">
-                  <!-- Injected via app.js -->
-                </div>
-              </div>
-            </div>
-
-            <!-- Quick Action Buttons -->
-            <div class="flex flex-wrap gap-4">
-              <button id="btn-copy-build" class="px-6 py-3 rounded-xl bg-zinc-900 border border-zinc-700 text-zinc-200 font-mono text-xs font-bold hover:bg-zinc-800 hover:text-white transition-all">
-                Copy Build
-              </button>
-              <button id="btn-compare-modal" class="px-6 py-3 rounded-xl bg-zinc-900 border border-zinc-700 text-zinc-200 font-mono text-xs font-bold hover:bg-zinc-800 hover:text-white transition-all">
-                Compare Factions
-              </button>
-            </div>
-          </div>
-
-          <!-- RIGHT COLUMN: LEADER SPOTLIGHT STAGE -->
-          <div class="lg:col-span-5 flex justify-center">
-            <div class="w-full max-w-md rounded-3xl border border-zinc-800 bg-zinc-900/40 p-6 relative overflow-hidden group shadow-2xl backdrop-blur-md">
-              <!-- Radial Glow Backdrop -->
-              <div class="absolute -inset-10 bg-gradient-to-tr from-cyan-500/20 via-amber-500/10 to-transparent blur-3xl opacity-60 pointer-events-none"></div>
-
-              <!-- Leader Portrait Container -->
-              <div class="relative h-96 w-full rounded-2xl overflow-hidden bg-zinc-950 mb-6 border border-zinc-800">
-                <img id="hero-main-img" src="/assets/cdn/leaders/caesar_desktop.webp" alt="Julius Caesar" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
-                <div class="absolute inset-0 bg-gradient-to-t from-[#090b10] via-transparent to-transparent"></div>
-                
-                <div class="absolute bottom-4 left-4 right-4">
-                  <span class="text-[10px] font-mono text-amber-400 uppercase tracking-widest font-bold block mb-1" id="hero-main-title">ROMAN EMPIRE</span>
-                  <h2 class="text-3xl font-extrabold text-white uppercase tracking-tight" id="hero-main-name">JULIUS CAESAR</h2>
-                </div>
-              </div>
-
-              <!-- Leader Stats Breakdown -->
-              <div class="space-y-3 font-mono text-xs mb-6">
-                <div>
-                  <div class="flex justify-between text-zinc-400 mb-1">
-                    <span>OFFENSE</span>
-                    <span id="stat-offense">85%</span>
-                  </div>
-                  <div class="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                    <div id="bar-offense" class="h-full bg-cyan-400 rounded-full" style="width: 85%"></div>
-                  </div>
-                </div>
-
-                <div>
-                  <div class="flex justify-between text-zinc-400 mb-1">
-                    <span>DEFENSE</span>
-                    <span id="stat-defense">90%</span>
-                  </div>
-                  <div class="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                    <div id="bar-defense" class="h-full bg-amber-400 rounded-full" style="width: 90%"></div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- CTA for Selected Leader -->
-              <button class="nav-tab w-full py-4 rounded-xl bg-white text-zinc-950 font-black text-xs uppercase tracking-wider hover:bg-zinc-200 transition-all flex items-center justify-center gap-2" data-view="arena">
-                <span>DEPLOY WITH THIS LEADER</span>
-                <span>→</span>
-              </button>
-            </div>
-          </div>
-
+    <section class="section section-rule" id="game">
+      <div class="container">
+        <div class="section-heading split-heading">
+          <div><p class="eyebrow">01 · The game</p><h2>Simple to enter.<br><em>Hard to master.</em></h2></div>
+          <p>Shadows of War turns a global map into a multiplayer battlefield. Expand, defend, and outplay the commanders around you.</p>
+        </div>
+        <div class="gameplay-grid">
+          <article class="gameplay-card gameplay-large">
+            <img src="/assets/media/gameplay-leader.webp" alt="Leader selection screen in Shadows of War" loading="lazy">
+            <div class="card-overlay"><span class="card-number">01</span><div><h3>Choose your legend</h3><p>Every leader changes how you approach the map.</p></div></div>
+          </article>
+          <article class="gameplay-card">
+            <img src="/assets/media/gameplay-world.webp" alt="World map gameplay in Shadows of War" loading="lazy">
+            <div class="card-overlay"><span class="card-number">02</span><div><h3>Expand your reach</h3><p>Claim territory before someone else does.</p></div></div>
+          </article>
+          <article class="gameplay-card">
+            <img src="/assets/media/gameplay-battle.webp" alt="Territory battle in Shadows of War" loading="lazy">
+            <div class="card-overlay"><span class="card-number">03</span><div><h3>Make the map yours</h3><p>Fight, adapt, and leave your mark on history.</p></div></div>
+          </article>
         </div>
       </div>
     </section>
 
-    <!-- SUBVIEW 2: PLAY / ARENA ENTRY -->
-    <section class="subview-section hidden" id="view-arena">
-      <div class="max-w-5xl mx-auto px-6 py-16">
-        <div class="flex flex-col items-center justify-center text-center rounded-3xl border border-zinc-800 bg-zinc-900/40 px-8 py-20">
-          <h2 class="text-4xl font-extrabold uppercase tracking-tight text-white mb-4">ENTER THE BATTLEFIELD</h2>
-          <p class="text-zinc-400 text-sm font-mono mb-8">The full WASM client runs on its own dedicated arena.</p>
-          <a href="/play/" class="px-10 py-4 rounded-full bg-white text-zinc-950 font-extrabold text-sm tracking-wider uppercase hover:bg-zinc-200 transition-all shadow-lg">PLAY NOW — FREE</a>
+    <section class="section leaders-section section-rule" id="leaders">
+      <div class="container">
+        <div class="section-heading split-heading">
+          <div><p class="eyebrow">02 · The roster</p><h2>Pick a side.<br><em>Make it yours.</em></h2></div>
+          <p>Twelve leaders are on the field now. More are being forged for the next campaign.</p>
         </div>
+        <div class="leaders-layout">
+          <div class="leaders-grid" data-leaders-grid></div>
+          <aside class="leader-detail" data-leader-detail>
+            <div class="detail-image"><img data-detail-image src="/assets/cdn/leaders/caesar_desktop.webp" alt="Julius Caesar artwork" loading="lazy"></div>
+            <div class="detail-body"><p class="mono-label" data-detail-code>ROM · 01</p><h3 data-detail-name>Julius Caesar</h3><p data-detail-civ>Roman Empire</p><div class="detail-rule"></div><p class="mono-label">COMMAND TRAIT</p><p class="detail-ability" data-detail-ability>Legions of Rome</p><p class="detail-description" data-detail-description>Armies fight 10% stronger.</p></div>
+          </aside>
+        </div>
+        <div class="leaders-foot"><span>Roster status</span><strong>12 / 12 available</strong><span class="foot-line"></span><span>More leaders in development</span></div>
       </div>
     </section>
 
-    <!-- SUBVIEW 3: EMPIRES ROSTER -->
-    <section class="subview-section hidden" id="view-heroes">
-      <div class="max-w-7xl mx-auto px-6 py-12">
-        <h2 class="text-3xl font-extrabold uppercase tracking-tight text-white mb-8">CIVILIZATIONS & EMPIRES</h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="empires-grid">
-          <!-- Injected via app.js -->
+    <section class="section media-section section-rule" id="media">
+      <div class="container">
+        <div class="section-heading split-heading">
+          <div><p class="eyebrow">03 · Field report</p><h2>See the<br><em>battlefield.</em></h2></div>
+          <p>This is the current build. The world is live, the first campaign is open, and the next updates are already in motion.</p>
         </div>
-      </div>
-    </section>
-
-    <!-- SUBVIEW 4: COMPENDIUM ARCHIVE -->
-    <section class="subview-section hidden" id="view-compendium">
-      <div class="max-w-5xl mx-auto px-6 py-12">
-        <h2 class="text-3xl font-extrabold uppercase tracking-tight text-white mb-8">ARCHIVE & MECHANICS</h2>
-        <div class="space-y-6 text-zinc-300 text-sm font-light leading-relaxed">
-          <div class="p-8 rounded-3xl border border-zinc-800 bg-zinc-900/40">
-            <h3 class="text-xl font-bold text-white mb-3">Deterministic Engine</h3>
-            <p>Engineered entirely in Rust compiled to WebAssembly for strict lockstep tick rate synchronization.</p>
+        <div class="media-grid">
+          <div class="trailer-card">
+            <video controls preload="metadata" poster="/assets/cdn/ui/sow-splash-desktop.webp">
+              <source src="/assets/media/shadows-of-war-trailer.mp4" type="video/mp4">
+              Your browser does not support embedded video.
+            </video>
+            <div class="media-caption"><span>TRAILER · 00:15</span><span>CRAZYGAMES BUILD</span></div>
           </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="compendium-grid">
-            <!-- Injected via app.js -->
+          <div class="gallery-grid">
+            <img src="/assets/media/gameplay-map.webp" alt="Map expansion gameplay" loading="lazy">
+            <img src="/assets/media/gameplay-territory.webp" alt="Territory control gameplay" loading="lazy">
           </div>
         </div>
       </div>
     </section>
 
-    <!-- SUBVIEW 5: MAP ATLAS -->
-    <section class="subview-section hidden" id="view-atlas">
-      <div class="max-w-7xl mx-auto px-6 py-12">
-        <h2 class="text-3xl font-extrabold uppercase tracking-tight text-white mb-8">WORLD MAP ATLAS</h2>
-        <div class="w-full h-[70vh] rounded-3xl bg-zinc-950 border border-zinc-800 flex items-center justify-center text-zinc-500 font-mono text-xs">
-          OpenStreetMap World Map Data Viewer
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8" id="realms-grid">
-          <!-- Injected via app.js -->
+    <section class="section play-section section-rule" id="play">
+      <div class="container play-callout">
+        <div><p class="eyebrow">04 · Distribution</p><h2>The campaign<br>starts <em>here.</em></h2><p>Play the current build in your browser. More platforms are part of the plan; they earn their place when the build is ready for them.</p></div>
+        <div class="platform-stack">
+          <a class="platform-card platform-live" href="/play/"><span class="platform-icon">◎</span><span><b>Shadowsofwar.io</b><small>Live now · browser</small></span><span class="platform-arrow">↗</span></a>
+          <div class="platform-card"><span class="platform-icon">▣</span><span><b>CrazyGames</b><small>Live now · browser portal</small></span><span class="platform-state">LIVE</span></div>
+          <div class="platform-card platform-muted"><span class="platform-icon">+</span><span><b>More platforms</b><small>Steam · itch.io · app stores</small></span><span class="platform-state">IN PROGRESS</span></div>
         </div>
       </div>
     </section>
   </main>
 
-  <script src="./data.js"></script>
+  <footer class="site-footer">
+    <div class="container footer-top">
+      <a class="brand" href="#top"><span class="brand-mark">S<span>W</span></span><span class="brand-name">SHADOWS <i>OF</i> WAR</span></a>
+      <p>A multiplayer strategy game by World of Unreal.</p>
+      <div class="footer-links"><a href="/support/">Support</a><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a><a href="https://github.com/worldofunreal" rel="noopener">GitHub</a></div>
+    </div>
+    <div class="container footer-bottom"><span>© 2026 World of Unreal</span><span>Built for the next campaign.</span></div>
+  </footer>
   <script src="./app.js"></script>
 </body>
 </html>

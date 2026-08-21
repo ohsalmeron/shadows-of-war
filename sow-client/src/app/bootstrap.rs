@@ -108,6 +108,9 @@ impl SowApp {
             let identity = crate::store_portals::load_identity(&app.main_menu_state.player_name);
             app.main_menu_state.player_name = identity.display_name;
             app.main_menu_state.name_locked = identity.name_locked;
+            if let Some(url) = identity.avatar_url {
+                app.asset_loader.queue_portal_avatar(url);
+            }
             if let Some(id) = crate::store_portals::take_pending_invite_lobby() {
                 app.main_menu_state.pending_join_lobby_id = Some(id);
                 app.main_menu_state.is_waiting = true;

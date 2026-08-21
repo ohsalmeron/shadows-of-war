@@ -3,6 +3,7 @@
 //! The value stored here is the server's canonical `account_id`.
 
 pub const ACCOUNT_ID_STORAGE_KEY: &str = "sow_account_id";
+pub const ACCOUNT_SECRET_STORAGE_KEY: &str = "sow_account_secret";
 
 pub fn load_account_id() -> Option<String> {
     load_storage(ACCOUNT_ID_STORAGE_KEY)
@@ -14,6 +15,16 @@ pub fn save_account_id(account_id: &str) {
 
 pub fn clear_account_id() {
     clear_storage(ACCOUNT_ID_STORAGE_KEY);
+}
+
+/// One-time ownership secret minted by sow-data on first profile fetch.
+/// Presented (id + secret) on JoinWithAuth to bind stats and reconnects.
+pub fn load_account_secret() -> Option<String> {
+    load_storage(ACCOUNT_SECRET_STORAGE_KEY)
+}
+
+pub fn save_account_secret(secret: &str) {
+    save_storage(ACCOUNT_SECRET_STORAGE_KEY, secret);
 }
 
 #[cfg(target_arch = "wasm32")]

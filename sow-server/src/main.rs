@@ -357,6 +357,45 @@ async fn send_relay_handoff_frame(
 /// Register the account-backed match before the relay is exposed to clients.
 /// This ordering prevents a fast match from finalizing before Valkey contains
 /// its player list, which otherwise loses statistics as `Match not registered`.
+/// Resolve a `JoinWithAuth` identity proof to a canonical account id via
+/// sow-data's /internal/verify. Ok(id) means the join may bind to that
+/// account; Err means the join proceeds as an unverified guest.
+async fn verify_identity(
+    auth: &sow_core::protocol::AuthProof,
+) -> Result<String, String> {
+    let db_base_url = std::env::var("SOW_DB_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
+    let secret_token = std::env::var("SOW_DB_SECRET")
+        .map_err(|_| "SOW_DB_SECRET missing".to_string())?;
+    let url = format!("{}/internal/verify", db_base_url.trim_end_matches('/'));
+    let body = serde_json::json!({
+        "provider": auth.provider.trim(),
+        "account_id": auth.account_id.as_deref(),
+        "token": auth.token,
+    });
+    let client = reqwest::Client::new();
+    let res = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {secret_token}"))
+        .json(&body)
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|e| format!("verify request failed: {e}"))?;
+    if !res.status().is_success() {
+        return Err(format!("verify returned HTTP {}", res.status()));
+    }
+    let value: serde_json::Value = res
+        .json()
+        .await
+        .map_err(|e| format!("verify response unreadable: {e}"))?;
+    value
+        .get("account_id")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| "verify response missing account_id".to_string())
+}
+
 async fn register_match_start(rc: &RelayCandidate) -> Result<(), String> {
     if rc.player_ids.is_empty() {
         return Ok(());
@@ -1110,7 +1149,7 @@ async fn main() {
             )
             .layer(tower_http::cors::CorsLayer::permissive());
         let http_addr =
-            std::env::var("SOW_MAPS_HTTP_LISTEN").unwrap_or_else(|_| "0.0.0.0:25566".to_string());
+            std::env::var("SOW_MAPS_HTTP_LISTEN").unwrap_or_else(|_| "127.0.0.1:25566".to_string());
         log::info!(
             "SOW-SERVER HTTP serving maps and admin on http://{}",
             http_addr
@@ -1221,6 +1260,17 @@ async fn main() {
                                                     continue;
                                                 }
 
+                                                // Legacy join carries no identity proof: a
+                                                // client-asserted account id binds nothing
+                                                // (no stats attribution, no reconnect
+                                                // takeover). Only JoinWithAuth verifies.
+                                                if database_account_id.is_some() {
+                                                    log::info!(
+                                                        "[AUTH] legacy Join with client-asserted account id from {} — bound as unverified guest",
+                                                        ip_str
+                                                    );
+                                                }
+
                                                 let _ = ev_tx.send(ServerEvent::Join {
                                                     name,
                                                     clan_tag,
@@ -1230,9 +1280,57 @@ async fn main() {
                                                     target_lobby_id,
                                                     host_private,
                                                     build_version,
-                                                    database_account_id,
+                                                    database_account_id: None,
                                                     host_config,
                                                     password,
+                                                    ip: ip_str.clone(),
+                                                    session_id,
+                                                }).await;
+                                            }
+                                            sow_core::protocol::ClientMessage::JoinWithAuth { join, auth } => {
+                                                let payload = *join;
+                                                let server_version = std::env::var("SOW_BUILD_VERSION")
+                                                    .unwrap_or_else(|_| std::fs::read_to_string(".version").unwrap_or_default().trim().to_string());
+
+                                                if !server_version.is_empty() && payload.build_version != server_version {
+                                                    log::warn!("Client version mismatch: expected {}, got {}", server_version, payload.build_version);
+                                                    let fail = sow_core::protocol::ServerJoinFailedMessage { reason: "VERSION_MISMATCH".to_string() };
+                                                    let json = bincode::serialize(&sow_core::protocol::ServerMessage::JoinFailed(fail)).unwrap();
+                                                    let _ = direct_tx.try_send(json);
+                                                    continue;
+                                                }
+
+                                                let database_account_id = match verify_identity(&auth).await {
+                                                    Ok(id) => {
+                                                        log::info!(
+                                                            "[AUTH] join verified provider={} account={}",
+                                                            auth.provider,
+                                                            id
+                                                        );
+                                                        Some(id)
+                                                    }
+                                                    Err(e) => {
+                                                        log::warn!(
+                                                            "[AUTH] join verification failed provider={}: {} — binding as guest",
+                                                            auth.provider,
+                                                            e
+                                                        );
+                                                        None
+                                                    }
+                                                };
+
+                                                let _ = ev_tx.send(ServerEvent::Join {
+                                                    name: payload.name,
+                                                    clan_tag: payload.clan_tag,
+                                                    civilization: payload.civilization,
+                                                    leader: payload.leader,
+                                                    client_tx: direct_tx.clone(),
+                                                    target_lobby_id: payload.target_lobby_id,
+                                                    host_private: payload.host_private,
+                                                    build_version: payload.build_version,
+                                                    database_account_id,
+                                                    host_config: payload.host_config,
+                                                    password: payload.password,
                                                     ip: ip_str.clone(),
                                                     session_id,
                                                 }).await;
@@ -1397,7 +1495,24 @@ struct AppState {
 
 async fn admin_status(
     axum::extract::State(state): axum::extract::State<AppState>,
-) -> axum::response::Json<serde_json::Value> {
+    headers: axum::http::HeaderMap,
+) -> axum::response::Response {
+    // The status payload discloses player IPs and account ids — it is
+    // localhost tooling only and requires the deployment bearer secret.
+    let secret = std::env::var("SOW_DB_SECRET").unwrap_or_default();
+    let presented = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(str::trim);
+    if secret.is_empty() || presented != Some(secret.as_str()) {
+        log::warn!("[ADMIN] unauthorized /admin/api/status request");
+        return axum::response::IntoResponse::into_response((
+            axum::http::StatusCode::UNAUTHORIZED,
+            axum::response::Json(serde_json::json!({"error": "Unauthorized"})),
+        ));
+    }
+
     let games = state.games.lock().await;
     let mut lobbies = Vec::new();
     for lobby in &*games {
@@ -1485,7 +1600,12 @@ async fn admin_status(
         "{}/internal/stats",
         db_base.trim_end_matches('/')
     );
-    let db_stats = match reqwest::get(&db_stats_url).await {
+    let db_stats = match reqwest::Client::new()
+        .get(&db_stats_url)
+        .header("Authorization", format!("Bearer {secret}"))
+        .send()
+        .await
+    {
         Ok(r) => r
             .json::<serde_json::Value>()
             .await
@@ -1493,11 +1613,11 @@ async fn admin_status(
         Err(_) => serde_json::json!({"error": "db unreachable"}),
     };
 
-    axum::response::Json(serde_json::json!({
+    axum::response::IntoResponse::into_response(axum::response::Json(serde_json::json!({
         "lobbies": lobbies,
         "valkey": valkey_info,
         "database": db_stats,
-    }))
+    })))
 }
 
 async fn lobbies_json_handler(

@@ -140,6 +140,15 @@ pub fn draw_user_profile_header(
             }
 
             if state.name_locked {
+                // Signed into a portal: show the platform avatar (e.g. CrazyGames
+                // profile picture) next to the locked name.
+                if let Some(tex) = asset_loader.portal_avatar.as_ref() {
+                    ui.add(
+                        egui::Image::new(tex)
+                            .fit_to_exact_size(egui::vec2(24.0, 24.0))
+                            .corner_radius(egui::CornerRadius::same(12)),
+                    );
+                }
                 ui.label(
                     egui::RichText::new(&state.player_name)
                         .font(egui::FontId::proportional(18.0))

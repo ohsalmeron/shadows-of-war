@@ -25,7 +25,7 @@ use crate::ffi::{
 use bytes::{Buf, BytesMut};
 use crossbeam_queue::ArrayQueue;
 use futures_util::task::AtomicWaker;
-use libc::{c_char, c_int, c_void, sockaddr_in, socklen_t, size_t, timespec, FIONBIO};
+use libc::{c_int, c_void, sockaddr_in, socklen_t, timespec, FIONBIO};
 use std::collections::{HashMap, VecDeque};
 use std::io;
 use std::mem;
@@ -91,6 +91,7 @@ pub enum Cmd {
         fd: c_int,
         generation: u64,
         buf: BytesMut,
+        tx_pending: Option<Arc<AtomicUsize>>,
     },
     Close {
         fd: c_int,
@@ -157,14 +158,19 @@ impl BufferPool {
     }
 }
 
+const TX_STALL_TIMEOUT_SECS: u64 = 10;
+const MAX_CONN_PENDING_BYTES: usize = 128 * 1024;
+
 struct PendingSend {
     generation: u64,
     queue: VecDeque<BytesMut>,
     bytes: usize,
+    first_stalled_at: std::time::Instant,
+    tx_pending: Option<Arc<AtomicUsize>>,
 }
 
 impl PendingSend {
-    fn new(generation: u64, buf: BytesMut) -> Self {
+    fn new(generation: u64, buf: BytesMut, tx_pending: Option<Arc<AtomicUsize>>) -> Self {
         let bytes = buf.len();
         let mut queue = VecDeque::new();
         queue.push_back(buf);
@@ -172,18 +178,33 @@ impl PendingSend {
             generation,
             queue,
             bytes,
+            first_stalled_at: std::time::Instant::now(),
+            tx_pending,
         }
     }
 
-    fn push(&mut self, buf: BytesMut) {
+    fn push_back(&mut self, buf: BytesMut, tx_pending: Option<Arc<AtomicUsize>>) {
         self.bytes = self.bytes.saturating_add(buf.len());
         self.queue.push_back(buf);
+        if self.tx_pending.is_none() {
+            self.tx_pending = tx_pending;
+        }
+    }
+
+    fn push_front(&mut self, buf: BytesMut) {
+        self.bytes = self.bytes.saturating_add(buf.len());
+        self.queue.push_front(buf);
     }
 
     fn pop(&mut self) -> Option<BytesMut> {
         let buf = self.queue.pop_front()?;
-        self.bytes = self.bytes.saturating_sub(buf.len());
+        let len = buf.len();
+        self.bytes = self.bytes.saturating_sub(len);
         Some(buf)
+    }
+
+    fn mark_progress(&mut self) {
+        self.first_stalled_at = std::time::Instant::now();
     }
 }
 
@@ -294,10 +315,13 @@ unsafe fn fd_gen() -> &'static mut HashMap<c_int, u64> {
     FD_GEN.get_or_insert_with(HashMap::new)
 }
 
-/// Park one payload without replacing an earlier payload for the same fd.
-/// The driver is the only caller, so the byte accounting and map mutation are
-/// single-threaded even though producers may be concurrent on the TX ring.
-unsafe fn park_send(fd: c_int, generation: u64, buf: BytesMut) -> bool {
+/// Park one payload at the back of the queue (normal FIFO enqueue when backlogged).
+unsafe fn park_send(
+    fd: c_int,
+    generation: u64,
+    buf: BytesMut,
+    tx_pending: Option<Arc<AtomicUsize>>,
+) -> bool {
     let len = buf.len();
     if PENDING_SEND_BYTES.saturating_add(len) > MAX_PENDING_SEND_BYTES {
         TX_BUDGET_CLOSURES += 1;
@@ -307,16 +331,19 @@ unsafe fn park_send(fd: c_int, generation: u64, buf: BytesMut) -> bool {
     let pending = pending_send();
     match pending.get_mut(&fd) {
         Some(entry) if entry.generation == generation => {
-            entry.push(buf);
+            entry.push_back(buf, tx_pending);
         }
         Some(_) => {
             // The fd was reused between attempts. The caller's generation
             // check already guards this path; drop defensively if it changes.
+            if let Some(ref p) = tx_pending {
+                p.fetch_sub(len, Ordering::AcqRel);
+            }
             put_buf(buf);
             return true;
         }
         None => {
-            pending.insert(fd, PendingSend::new(generation, buf));
+            pending.insert(fd, PendingSend::new(generation, buf, tx_pending));
         }
     }
     PENDING_SEND_BYTES += len;
@@ -325,16 +352,58 @@ unsafe fn park_send(fd: c_int, generation: u64, buf: BytesMut) -> bool {
     true
 }
 
-unsafe fn pop_pending_send(fd: c_int) -> Option<(u64, BytesMut)> {
+/// Re-park an in-flight payload at the FRONT of the queue after EAGAIN or partial write.
+/// This preserves strict FIFO packet ordering across the TCP/TLS stream.
+unsafe fn park_send_front(
+    fd: c_int,
+    generation: u64,
+    buf: BytesMut,
+    tx_pending: Option<Arc<AtomicUsize>>,
+) -> bool {
+    let len = buf.len();
+    if PENDING_SEND_BYTES.saturating_add(len) > MAX_PENDING_SEND_BYTES {
+        TX_BUDGET_CLOSURES += 1;
+        return false;
+    }
+
+    let pending = pending_send();
+    match pending.get_mut(&fd) {
+        Some(entry) if entry.generation == generation => {
+            entry.push_front(buf);
+            if entry.tx_pending.is_none() {
+                entry.tx_pending = tx_pending;
+            }
+        }
+        Some(_) => {
+            if let Some(ref p) = tx_pending {
+                p.fetch_sub(len, Ordering::AcqRel);
+            }
+            put_buf(buf);
+            return true;
+        }
+        None => {
+            pending.insert(fd, PendingSend::new(generation, buf, tx_pending));
+        }
+    }
+    PENDING_SEND_BYTES += len;
+    PENDING_SEND_PEAK = PENDING_SEND_PEAK.max(PENDING_SEND_BYTES);
+    ensure_write_event(fd);
+    true
+}
+
+unsafe fn pop_pending_send_with_meta(
+    fd: c_int,
+) -> Option<(u64, BytesMut, Option<Arc<AtomicUsize>>)> {
     let mut remove = false;
     let item = if let Some(entry) = pending_send().get_mut(&fd) {
+        let tx_pending = entry.tx_pending.clone();
         let item = entry.pop();
         if let Some(ref buf) = item {
             let len = buf.len();
             PENDING_SEND_BYTES = PENDING_SEND_BYTES.saturating_sub(len);
         }
         remove = entry.queue.is_empty();
-        item.map(|buf| (entry.generation, buf))
+        item.map(|buf| (entry.generation, buf, tx_pending))
     } else {
         None
     };
@@ -351,6 +420,9 @@ unsafe fn has_pending_send(fd: c_int) -> bool {
 unsafe fn clear_pending_send(fd: c_int) {
     if let Some(entry) = pending_send().remove(&fd) {
         PENDING_SEND_BYTES = PENDING_SEND_BYTES.saturating_sub(entry.bytes);
+        if let Some(ref p) = entry.tx_pending {
+            p.fetch_sub(entry.bytes, Ordering::AcqRel);
+        }
         for buf in entry.queue {
             put_buf(buf);
         }
@@ -486,6 +558,7 @@ fn try_enqueue_send(
     fd: c_int,
     generation: u64,
     buf: BytesMut,
+    tx_pending: Option<Arc<AtomicUsize>>,
 ) -> Result<(), BytesMut> {
     let len = buf.len();
     if !tx_budget_available(TX_RING_BYTES.load(Ordering::Acquire), len) {
@@ -511,6 +584,7 @@ fn try_enqueue_send(
         fd,
         generation,
         buf,
+        tx_pending,
     }) {
         Ok(()) => Ok(()),
         Err(Cmd::Send { buf, .. }) => {
@@ -545,6 +619,7 @@ pub struct Conn {
     rx: Receiver<ZcRxGuard>,
     /// Leftover of a guard that was too large for the caller's read buffer.
     rx_buf: BytesMut,
+    tx_pending: Arc<AtomicUsize>,
 }
 
 impl Conn {
@@ -554,6 +629,7 @@ impl Conn {
             generation,
             rx,
             rx_buf: BytesMut::new(),
+            tx_pending: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -629,10 +705,18 @@ impl AsyncWrite for Conn {
                 "write exceeds bridge TX byte limit",
             )));
         }
+        if self.tx_pending.load(Ordering::Acquire) >= MAX_CONN_PENDING_BYTES {
+            TX_SPACE.register(cx.waker());
+            return Poll::Pending;
+        }
         let mut b = take_buf_with_capacity(buf.len());
         b.extend_from_slice(buf);
-        match try_enqueue_send(self.fd, self.generation, b) {
-            Ok(()) => Poll::Ready(Ok(buf.len())),
+        let len = b.len();
+        match try_enqueue_send(self.fd, self.generation, b, Some(Arc::clone(&self.tx_pending))) {
+            Ok(()) => {
+                self.tx_pending.fetch_add(len, Ordering::AcqRel);
+                Poll::Ready(Ok(buf.len()))
+            }
             Err(b) => {
                 put_buf(b);
                 TX_SPACE.register(cx.waker());
@@ -641,8 +725,11 @@ impl AsyncWrite for Conn {
         }
     }
 
-    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        // Fire-and-forget: once pushed, the payload is owned by the ff_run driver.
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        if self.tx_pending.load(Ordering::Acquire) > 0 {
+            TX_SPACE.register(cx.waker());
+            return Poll::Pending;
+        }
         Poll::Ready(Ok(()))
     }
 
@@ -667,8 +754,9 @@ impl AsyncWrite for Conn {
 
 /// Loop callback passed to `ff_run`. Do NOT call from tokio.
 pub unsafe extern "C" fn driver_cb(_arg: *mut c_void) -> c_int {
-    // 1. Service worker commands first (send/close/recycle).
+    // 1. Service worker commands first (send/close/recycle) and actively flush pending sends.
     drain_tx();
+    flush_all_pending_send();
     TX_SPACE.wake(); // parked AsyncWrite writers may retry now
 
     // 2. Network events; short timeout so TX commands are serviced even idle.
@@ -946,6 +1034,20 @@ unsafe fn push_rx(ev: Ev) {
     }
 }
 
+unsafe fn flush_all_pending_send() {
+    let pending_fds: Vec<c_int> = if let Some(pending) = PENDING_SEND.as_ref() {
+        if pending.is_empty() {
+            return;
+        }
+        pending.keys().copied().collect()
+    } else {
+        return;
+    };
+    for fd in pending_fds {
+        flush_write(fd);
+    }
+}
+
 unsafe fn drain_tx() {
     if let Some(recycle) = RECYCLE.get() {
         while let Some(RecycleItem { mut zm }) = recycle.pop() {
@@ -968,22 +1070,66 @@ unsafe fn drain_tx() {
             Cmd::Send {
                 fd,
                 generation,
-                buf,
+                mut buf,
+                tx_pending,
             } => {
                 release_tx_bytes(buf.len());
                 // Reject sends from a connection that no longer owns the fd.
                 if fd_gen().get(&fd) == Some(&generation) {
                     if has_pending_send(fd) {
-                        if !park_send(fd, generation, buf) {
+                        // Already backlogged: preserve FIFO order by pushing to the back of the queue
+                        if !park_send(fd, generation, buf, tx_pending) {
                             eprintln!(
                                 "[bridge] pending TX byte budget exhausted; closing fd={fd}"
                             );
                             close_fd(fd);
                         }
                     } else {
-                        try_send(fd, generation, buf);
+                        // Fast path: attempt immediate kernel write
+                        let n = crate::ffi::ff_write(fd, buf.as_ptr() as *const c_void, buf.len());
+                        if n >= 0 {
+                            let written = n as usize;
+                            if let Some(ref p) = tx_pending {
+                                p.fetch_sub(written, Ordering::AcqRel);
+                            }
+                            if written < buf.len() {
+                                buf.advance(written);
+                                if !park_send_front(fd, generation, buf, tx_pending) {
+                                    eprintln!(
+                                        "[bridge] pending TX byte budget exhausted; closing fd={fd}"
+                                    );
+                                    close_fd(fd);
+                                }
+                            } else {
+                                ECHOES += 1;
+                                put_buf(buf);
+                            }
+                        } else {
+                            let errno = *libc::__errno_location();
+                            if errno == libc::EAGAIN || errno == libc::EWOULDBLOCK {
+                                if !park_send_front(fd, generation, buf, tx_pending) {
+                                    eprintln!(
+                                        "[bridge] pending TX byte budget exhausted; closing fd={fd}"
+                                    );
+                                    close_fd(fd);
+                                }
+                            } else {
+                                eprintln!(
+                                    "[bridge] ff_write fatal error fd={fd} errno={errno} ({}); closing fd",
+                                    io::Error::from_raw_os_error(errno)
+                                );
+                                if let Some(ref p) = tx_pending {
+                                    p.fetch_sub(buf.len(), Ordering::AcqRel);
+                                }
+                                put_buf(buf);
+                                close_fd(fd);
+                            }
+                        }
                     }
                 } else {
+                    if let Some(ref p) = tx_pending {
+                        p.fetch_sub(buf.len(), Ordering::AcqRel);
+                    }
                     put_buf(buf);
                 }
             }
@@ -1001,42 +1147,71 @@ unsafe fn drain_tx() {
     }
 }
 
-unsafe fn try_send(fd: c_int, generation: u64, buf: BytesMut) {
-    // Re-check: the fd may have been closed and reused while the payload was
-    // parked (flush_write path). Never touch a fd this connection doesn't own.
-    if fd_gen().get(&fd) != Some(&generation) {
-        put_buf(buf);
-        return;
-    }
-    let mut sm: ff_zc_mbuf = mem::zeroed();
-    if crate::ffi::ff_zc_mbuf_get(&mut sm, buf.len() as c_int) == 0 {
-        crate::ffi::ff_zc_mbuf_write(&mut sm, buf.as_ptr() as *const c_char, buf.len() as c_int);
-        let n = crate::ffi::ff_zc_send(fd, sm.bsd_mbuf, buf.len() as size_t);
+/// Drains all parked sends for `fd` while the socket buffer has space.
+/// Maintains strict FIFO sequence across the entire TLS/TCP stream.
+unsafe fn flush_write(fd: c_int) {
+    while let Some((generation, mut buf, tx_pending)) = pop_pending_send_with_meta(fd) {
+        if fd_gen().get(&fd) != Some(&generation) {
+            if let Some(ref p) = tx_pending {
+                p.fetch_sub(buf.len(), Ordering::AcqRel);
+            }
+            put_buf(buf);
+            continue;
+        }
+        let n = crate::ffi::ff_write(fd, buf.as_ptr() as *const c_void, buf.len());
         if n >= 0 {
+            let written = n as usize;
+            if let Some(ref p) = tx_pending {
+                p.fetch_sub(written, Ordering::AcqRel);
+            }
+            if written < buf.len() {
+                buf.advance(written);
+                if !park_send_front(fd, generation, buf, tx_pending) {
+                    eprintln!("[bridge] pending TX byte budget exhausted; closing fd={fd}");
+                    close_fd(fd);
+                } else if let Some(entry) = pending_send().get_mut(&fd) {
+                    entry.mark_progress();
+                }
+                return; // Socket send buffer filled up again; wait for next EVFILT_WRITE
+            }
             ECHOES += 1;
             put_buf(buf);
+            if let Some(entry) = pending_send().get_mut(&fd) {
+                entry.mark_progress();
+            }
         } else {
-            // EAGAIN: park the payload, retry on EVFILT_WRITE.
-            if !park_send(fd, generation, buf) {
-                eprintln!("[bridge] pending TX byte budget exhausted; closing fd={fd}");
+            let errno = *libc::__errno_location();
+            if errno == libc::EAGAIN || errno == libc::EWOULDBLOCK {
+                if !park_send_front(fd, generation, buf, tx_pending) {
+                    eprintln!("[bridge] pending TX byte budget exhausted; closing fd={fd}");
+                    close_fd(fd);
+                } else if let Some(entry) = pending_send().get(&fd) {
+                    if entry.first_stalled_at.elapsed()
+                        > std::time::Duration::from_secs(TX_STALL_TIMEOUT_SECS)
+                    {
+                        eprintln!(
+                            "[bridge] fd={fd} TX write stalled for >{}s (EAGAIN without drain); closing fd",
+                            TX_STALL_TIMEOUT_SECS
+                        );
+                        close_fd(fd);
+                    }
+                }
+            } else {
+                eprintln!(
+                    "[bridge] flush_write fatal error fd={fd} errno={errno} ({}); closing fd",
+                    io::Error::from_raw_os_error(errno)
+                );
+                if let Some(ref p) = tx_pending {
+                    p.fetch_sub(buf.len(), Ordering::AcqRel);
+                }
+                put_buf(buf);
                 close_fd(fd);
             }
+            return;
         }
-    } else {
-        put_buf(buf);
     }
-}
-
-unsafe fn flush_write(fd: c_int) {
-    if let Some((generation, buf)) = pop_pending_send(fd) {
-        try_send(fd, generation, buf);
-        if !has_pending_send(fd) {
-            remove_write_event(fd);
-        }
-    } else {
-        // Write event with nothing parked: deregister (auto-cleanup path).
-        remove_write_event(fd);
-    }
+    // Fully drained all pending buffers for this socket!
+    remove_write_event(fd);
 }
 
 unsafe fn ensure_write_event(fd: c_int) {
@@ -1051,20 +1226,26 @@ unsafe fn remove_write_event(fd: c_int) {
     crate::ffi::ff_kevent(KQ, &kev, 1, ptr::null_mut(), 0, ptr::null());
 }
 
-unsafe fn maybe_stats(idle: bool) {
-    if ACCEPTS.saturating_sub(LAST_STATS_AT) >= 25 || (idle && ACCEPTS != LAST_STATS_AT) {
+static mut LAST_STATS_INSTANT: Option<std::time::Instant> = None;
+static mut LAST_ECHOES: u64 = 0;
+static mut LAST_RECV_BYTES: u64 = 0;
+
+unsafe fn maybe_stats(_idle: bool) {
+    let now = std::time::Instant::now();
+    let should_log = match LAST_STATS_INSTANT {
+        Some(t) if now.duration_since(t).as_secs() >= 5 => true,
+        None => true,
+        _ => false,
+    };
+    if should_log && (ECHOES != LAST_ECHOES || RECV_BYTES != LAST_RECV_BYTES || PENDING_SEND_BYTES > 0 || ACCEPTS != LAST_STATS_AT) {
+        LAST_STATS_INSTANT = Some(now);
         LAST_STATS_AT = ACCEPTS;
+        let echo_delta = ECHOES.saturating_sub(LAST_ECHOES);
+        let recv_delta = RECV_BYTES.saturating_sub(LAST_RECV_BYTES);
+        LAST_ECHOES = ECHOES;
+        LAST_RECV_BYTES = RECV_BYTES;
         eprintln!(
-            "[stats] accepts={} echoes={} recv_bytes={} rx_drops={} recycle_drops={} tx_ring_bytes={} pending_tx_bytes={} pending_tx_peak={} tx_budget_closes={}",
-            ACCEPTS,
-            ECHOES,
-            RECV_BYTES,
-            RX_DROPS,
-            RECYCLE_DROPS,
-            TX_RING_BYTES.load(Ordering::Acquire),
-            PENDING_SEND_BYTES,
-            PENDING_SEND_PEAK,
-            TX_BUDGET_CLOSURES
+            "[stats] accepts={ACCEPTS} echoes={ECHOES} (+{echo_delta}/5s) recv_bytes={RECV_BYTES} (+{recv_delta}/5s) pending_tx_bytes={PENDING_SEND_BYTES} pending_tx_peak={PENDING_SEND_PEAK} tx_budget_closes={TX_BUDGET_CLOSURES} rx_drops={RX_DROPS}"
         );
     }
 }
@@ -1095,11 +1276,24 @@ mod tests {
 
     #[test]
     fn pending_send_queue_is_fifo_and_accounts_bytes() {
-        let mut pending = PendingSend::new(7, BytesMut::from(&b"first"[..]));
-        pending.push(BytesMut::from(&b"second"[..]));
+        let mut pending = PendingSend::new(7, BytesMut::from(&b"first"[..]), None);
+        pending.push_back(BytesMut::from(&b"second"[..]), None);
         assert_eq!(pending.bytes, 11);
         assert_eq!(pending.pop().unwrap().as_ref(), b"first");
         assert_eq!(pending.pop().unwrap().as_ref(), b"second");
+        assert_eq!(pending.bytes, 0);
+        assert!(pending.pop().is_none());
+    }
+
+    #[test]
+    fn pending_send_queue_push_front_preserves_strict_fifo_order() {
+        let mut pending = PendingSend::new(7, BytesMut::from(&b"second"[..]), None);
+        pending.push_front(BytesMut::from(&b"first"[..]));
+        pending.push_back(BytesMut::from(&b"third"[..]), None);
+        assert_eq!(pending.bytes, 16);
+        assert_eq!(pending.pop().unwrap().as_ref(), b"first");
+        assert_eq!(pending.pop().unwrap().as_ref(), b"second");
+        assert_eq!(pending.pop().unwrap().as_ref(), b"third");
         assert_eq!(pending.bytes, 0);
         assert!(pending.pop().is_none());
     }

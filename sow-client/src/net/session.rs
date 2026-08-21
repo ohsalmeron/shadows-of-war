@@ -55,7 +55,7 @@ impl SowApp {
         host_config: Option<Box<sow_core::game_config::GameConfig>>,
         password: Option<String>,
     ) -> sow_core::protocol::ClientMessage {
-        sow_core::protocol::ClientMessage::Join {
+        let payload = sow_core::protocol::JoinPayload {
             name: self.ui.app.main_menu_state.player_name.clone(),
             is_observer: false,
             target_lobby_id,
@@ -67,7 +67,66 @@ impl SowApp {
             database_account_id: self.progress_account_id.clone(),
             host_config,
             password,
+        };
+        match self.make_auth_proof() {
+            Some(auth) => sow_core::protocol::ClientMessage::JoinWithAuth {
+                join: Box::new(payload),
+                auth,
+            },
+            None => {
+                let sow_core::protocol::JoinPayload {
+                    name,
+                    is_observer,
+                    target_lobby_id,
+                    host_private,
+                    build_version,
+                    clan_tag,
+                    civilization,
+                    leader,
+                    database_account_id,
+                    host_config,
+                    password,
+                } = payload;
+                sow_core::protocol::ClientMessage::Join {
+                    name,
+                    is_observer,
+                    target_lobby_id,
+                    host_private,
+                    build_version,
+                    clan_tag,
+                    civilization,
+                    leader,
+                    database_account_id,
+                    host_config,
+                    password,
+                }
+            }
         }
+    }
+
+    /// Identity proof for JoinWithAuth: the CrazyGames platform token for
+    /// signed-in portal users, or the anonymous account secret. None means a
+    /// plain guest join (offline mode, or no account yet).
+    fn make_auth_proof(&self) -> Option<sow_core::protocol::AuthProof> {
+        if self.net.is_offline {
+            return None;
+        }
+        let identity = crate::store_portals::load_identity("Player");
+        if identity.provider == "crazygames" {
+            let token = identity.auth_token.clone().filter(|t| !t.is_empty())?;
+            return Some(sow_core::protocol::AuthProof {
+                provider: "crazygames".to_string(),
+                account_id: None,
+                token,
+            });
+        }
+        let account_id = crate::anonymous_identity::load_account_id()?;
+        let token = crate::anonymous_identity::load_account_secret()?;
+        Some(sow_core::protocol::AuthProof {
+            provider: "anonymous".to_string(),
+            account_id: Some(account_id),
+            token,
+        })
     }
 
     pub(crate) fn sync_portal_room(&self, joinable: bool) {

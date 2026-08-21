@@ -237,24 +237,22 @@ impl SowApp {
                         .app
                         .asset_loader
                         .ensure_ui_assets_loaded(&self.ui.egui_ctx);
+                    // Kick the portrait fetch concurrently with the boot UI art
+                    // fetch — both are network round trips on wasm and were
+                    // previously serialized behind `ui_ready`.
+                    self.ui
+                        .app
+                        .asset_loader
+                        .ensure_boot_leader_loaded(&self.ui.egui_ctx, leader);
+                    self.ui
+                        .app
+                        .asset_loader
+                        .set_leader_portrait_focus(leader, mobile);
                     let ui_ready = self.ui.app.asset_loader.ui_splash_ready();
                     if !ui_ready {
                         splash_show_loading_progress(&mut self.ui.app.splash_state, 0.35);
                     } else {
-                        self.ui
-                            .app
-                            .asset_loader
-                            .ensure_boot_leader_loaded(&self.ui.egui_ctx, leader);
-                        self.ui
-                            .app
-                            .asset_loader
-                            .set_leader_portrait_focus(leader, mobile);
-                        let hero_ready = self.ui.app.asset_loader.boot_leader_ready(leader, mobile);
-                        if !hero_ready {
-                            splash_show_loading_progress(&mut self.ui.app.splash_state, 0.65);
-                        } else {
-                            splash_show_loading_progress(&mut self.ui.app.splash_state, 0.9);
-                        }
+                        splash_show_loading_progress(&mut self.ui.app.splash_state, 0.65);
                     }
 
                     let ui_ready = self.ui.app.asset_loader.ui_splash_ready();

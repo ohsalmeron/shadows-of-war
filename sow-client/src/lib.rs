@@ -149,6 +149,13 @@ pub enum MapDownloadEvent {
         leader: Option<sow_core::player::Leader>,
         reason: String,
     },
+    /// Portal identity avatar (CrazyGames profile picture, arbitrary remote URL).
+    PortalAvatarReady {
+        bytes: Vec<u8>,
+    },
+    PortalAvatarFailed {
+        reason: String,
+    },
     Progress(String, u8),
     Error(String),
 }

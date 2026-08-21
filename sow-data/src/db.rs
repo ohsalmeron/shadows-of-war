@@ -158,6 +158,11 @@ pub struct PlayerAccount {
     /// stats, and serve as the persistent identity pool for internal fillers.
     #[serde(default)]
     pub kind: AccountKind,
+    /// BLAKE3 hash (hex) of the anonymous account secret. Only the hash is
+    /// persisted; the plaintext is revealed to the client exactly once, when
+    /// minted. Proves account ownership on `JoinWithAuth`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth_secret_hash: Option<String>,
     pub created_at: u64,
     pub updated_at: u64,
 }
@@ -343,6 +348,7 @@ impl PlayerDb {
             profile: PlayerProfile::default(),
             linked_identities: vec![identity.clone()],
             kind,
+            auth_secret_hash: None,
             created_at: now,
             updated_at: now,
         };
@@ -426,6 +432,7 @@ impl PlayerDb {
                 profile: PlayerProfile::default(),
                 linked_identities: Vec::new(),
                 kind: AccountKind::Human,
+                auth_secret_hash: None,
                 created_at: now,
                 updated_at: now,
             };
@@ -440,6 +447,62 @@ impl PlayerDb {
                 info!("Created anonymous account {}", account.id);
                 return Ok(account);
             }
+        }
+    }
+
+    /// Mint an anonymous account secret if the account has none yet. Persists
+    /// only the BLAKE3 hash; returns the plaintext exactly once (the caller
+    /// hands it to the client, which stores it as its ownership proof).
+    /// Idempotent: an account that already has a secret returns `None`.
+    pub async fn ensure_auth_secret(
+        &self,
+        account_id: &str,
+    ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
+        let mut con = self.get_connection().await?;
+        let acc_key = Self::account_key(account_id);
+        let plain = format!("{:032x}{:032x}", rand::random::<u128>(), rand::random::<u128>());
+        let hash = blake3::hash(plain.as_bytes()).to_hex().to_string();
+        let mut revealed: Option<String> = None;
+        let account = Self::update_account_atomic(&mut con, &acc_key, |account| {
+            if account.auth_secret_hash.is_none() {
+                account.auth_secret_hash = Some(hash.clone());
+                account.updated_at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                revealed = Some(plain.clone());
+            }
+        })
+        .await?;
+        if revealed.is_some() {
+            self.save_player_account_to_redb(&account);
+        }
+        Ok(revealed)
+    }
+
+    /// Verify an anonymous ownership proof: the presented secret must hash to
+    /// the stored `auth_secret_hash`. Returns the account id on success.
+    pub async fn verify_anonymous_secret(
+        &self,
+        account_id: &str,
+        secret: &str,
+    ) -> Result<String, String> {
+        if !is_valid_account_id(account_id) {
+            return Err("account_id must be exactly 32 hexadecimal characters".to_string());
+        }
+        let mut con = self
+            .get_connection()
+            .await
+            .map_err(|e| format!("database unavailable: {e}"))?;
+        let account = Self::load_account(&mut con, account_id)
+            .await
+            .map_err(|_| "account not found".to_string())?;
+        match account.auth_secret_hash.as_deref() {
+            Some(stored) if blake3::hash(secret.as_bytes()).to_hex().to_string() == stored => {
+                Ok(account_id.to_string())
+            }
+            Some(_) => Err("invalid secret".to_string()),
+            None => Err("account has no secret; fetch /profile/anonymous to mint one".to_string()),
         }
     }
 
@@ -484,6 +547,7 @@ impl PlayerDb {
                 profile: PlayerProfile::default(),
                 linked_identities: vec![identity.clone()],
                 kind: AccountKind::Bot,
+                auth_secret_hash: None,
                 created_at: now,
                 updated_at: now,
             };

@@ -460,21 +460,18 @@ unsafe extern "C" fn relay_packet_dispatcher(
 const ORCHESTRATOR_GRACE_SECS: u64 = 3;
 
 /// Max consecutive missed ticks before dropping a slow client.
-/// At 10 ticks/s, 40 = 4 seconds of silence — fast enough that a zombie
-/// connection (backfill saturated, not draining its socket) cannot pin
-/// megabytes of turns in its per-client channel and OOM a relay worker.
-const MAX_MISSED_TICKS: u32 = 40;
+/// At 10 ticks/s, 100 = 10 seconds of grace before dropping a slow client.
+const MAX_MISSED_TICKS: u32 = 100;
 
-/// Per-connection outbound channel capacity. A smaller queue keeps the global
-/// slot budget finite at 100k connections; slow clients are counted as missed
-/// ticks and removed instead of accumulating an unbounded turn backlog.
-const PER_CLIENT_CHANNEL: usize = 32;
+/// Per-connection outbound channel capacity. Expanded to 128 to buffer transient network jitter.
+const PER_CLIENT_CHANNEL: usize = 128;
 
-/// Per-connection bridge RX capacity (inbound DPDK mbuf guards). At 100k
-/// connections, a capacity of 256 would reserve up to 25.6M guard slots before
-/// any payload exists. Keep this small; a stalled peer drops frames and the
-/// guard is recycled immediately.
-const BRIDGE_RX_CAP: usize = 16;
+/// Outbound WebSocket frame write timeout in milliseconds.
+/// Set to 15000ms (15.0s) to tolerate transient TCP windowing and geographic/proxy latency.
+const WS_WRITE_TIMEOUT_MS: u64 = 15000;
+
+/// Per-connection bridge RX capacity (inbound DPDK mbuf guards).
+const BRIDGE_RX_CAP: usize = 256;
 
 /// Event channel capacity.
 const EVENT_CHANNEL: usize = 1024;
@@ -1980,14 +1977,12 @@ async fn bridge_worker(registry: Registry) {
                 }
                 Ev::Data { fd, guard } => match conns.get(&fd) {
                     Some(tx) => {
-                        // If the ws_task is stalled writing to a saturated peer
-                        // socket, drop the guard so the DPDK mbuf is recycled
-                        // immediately instead of pinning per-connection memory.
                         match tx.try_send(guard) {
                             Ok(()) => {}
                             Err(TrySendError::Full(guard)) => {
-                                warn!("[bridge] per-connection RX budget exhausted fd={fd}; dropping frame");
+                                error!("[bridge] per-connection RX budget exhausted fd={fd}; closing connection to preserve TLS stream integrity");
                                 drop(guard);
+                                conns.remove(&fd);
                             }
                             Err(TrySendError::Closed(guard)) => drop(guard),
                         }
@@ -2343,6 +2338,7 @@ async fn ws_task(
     let mut last_ping = std::time::Instant::now();
     let mut ping_interval = interval(Duration::from_secs(WS_PING_SECS));
     ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let mut frames_out: u64 = 0;
 
     loop {
         tokio::select! {
@@ -2352,7 +2348,7 @@ async fn ws_task(
                         last_rx = std::time::Instant::now();
                         if let Message::Ping(payload) = &msg {
                             let _ = tokio::time::timeout(
-                                Duration::from_millis(200),
+                                Duration::from_millis(WS_WRITE_TIMEOUT_MS),
                                 write.send(Message::Pong(payload.clone())),
                             )
                             .await;
@@ -2432,7 +2428,7 @@ async fn ws_task(
                 if last_ping.elapsed() >= Duration::from_secs(WS_PING_SECS) {
                     last_ping = std::time::Instant::now();
                     if tokio::time::timeout(
-                        Duration::from_millis(200),
+                        Duration::from_millis(WS_WRITE_TIMEOUT_MS),
                         write.send(Message::Ping(Vec::new())),
                     )
                     .await
@@ -2449,14 +2445,25 @@ async fn ws_task(
                     );
                     break;
                 }
+                frames_out += 1;
+                if frames_out <= 5 || frames_out % 50 == 0 {
+                    info!("[DIAG RELAY TX] fd={} sent frame #{} len={}", fd, frames_out, direct_data.len());
+                }
                 match tokio::time::timeout(
-                    Duration::from_millis(200),
+                    Duration::from_millis(WS_WRITE_TIMEOUT_MS),
                     write.send(Message::Binary((*direct_data).clone())),
                 )
                 .await
                 {
                     Ok(Ok(())) => {}
-                    _ => break,
+                    Ok(Err(e)) => {
+                        warn!("[DIAG RELAY TX] write.send failed fd={} err={}", fd, e);
+                        break;
+                    }
+                    Err(_) => {
+                        warn!("[DIAG RELAY TX] write.send timed out (>{}ms) fd={}", WS_WRITE_TIMEOUT_MS, fd);
+                        break;
+                    }
                 }
             }
             _ = ping_interval.tick() => {
@@ -2486,7 +2493,7 @@ async fn ws_task(
                     break;
                 }
                 if tokio::time::timeout(
-                    Duration::from_secs(1),
+                    Duration::from_millis(WS_WRITE_TIMEOUT_MS),
                     write.send(Message::Ping(Vec::new())),
                 )
                 .await
@@ -2693,7 +2700,7 @@ async fn orchestrator_task(
                     lobbies,
                 });
                 if let Ok(json) = bincode::serialize(&msg) {
-                    match tokio::time::timeout(Duration::from_millis(200), write.send(Message::Binary(json))).await {
+                    match tokio::time::timeout(Duration::from_millis(WS_WRITE_TIMEOUT_MS), write.send(Message::Binary(json))).await {
                         Ok(Ok(())) => {}
                         _ => break,
                     }

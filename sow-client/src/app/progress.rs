@@ -92,7 +92,6 @@ impl SowApp {
         self.progress
             .record_match_with_kda(won, defeats, kills, deaths, assists);
         self.save_local_progress();
-        crate::store_portals::submit_leaderboard_score(self.progress.xp);
         log::info!(
             "Recorded local match progress: won={won}, defeats={defeats:?}, level={}",
             self.progress.level

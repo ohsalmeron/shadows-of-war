@@ -11,8 +11,15 @@
 use std::process::Command;
 
 fn main() {
-    let fstack_lib_dir = std::env::var("FSTACK_LIB_DIR")
-        .unwrap_or_else(|_| "/opt/sow-dpdk/lib".to_string());
+    let fstack_lib_dir = std::env::var("FSTACK_LIB_DIR").unwrap_or_else(|_| {
+        if std::path::Path::new("/usr/local/lib/libfstack.a").exists() {
+            "/usr/local/lib".to_string()
+        } else if std::path::Path::new("/home/azureuser/f-stack/lib/libfstack.a").exists() {
+            "/home/azureuser/f-stack/lib".to_string()
+        } else {
+            "/opt/sow-dpdk/lib".to_string()
+        }
+    });
     println!("cargo:rerun-if-env-changed=FSTACK_LIB_DIR");
     let out = Command::new("pkg-config")
         .args(["--static", "--libs", "libdpdk"])

@@ -492,7 +492,10 @@ fn verify_layout(dir: &Path) -> Result<()> {
         "sitemap.xml",
         "app.js",
         "styles.css",
-        "data.js",
+        "legal.css",
+        "privacy/index.html",
+        "terms/index.html",
+        "support/index.html",
         "sow.svg",
     ] {
         if !dir.join(required).is_file() {
@@ -591,16 +594,27 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
 
     // Marketing website at the webroot root (game shell lives under play/).
     let site = paths.root.join("sow-web/site");
-    for name in ["index.html", "app.js", "styles.css", "data.js"] {
+    for name in ["index.html", "app.js", "styles.css", "legal.css"] {
         let src = site.join(name);
         if !src.is_file() {
             bail!("website source missing: {}", src.display());
         }
         fs::copy(&src, out.join(name))?;
     }
-    // Fingerprint site assets (styles/app/data) with a content hash so edge and
+    for path in ["privacy", "terms", "support"] {
+        let src = site.join(path);
+        if !src.is_dir() {
+            bail!("website legal page missing: {}", src.display());
+        }
+        copy_dir(&src, &out.join(path))?;
+    }
+    let media = site.join("assets/media");
+    if media.is_dir() {
+        copy_dir(&media, &out.join("assets/media"))?;
+    }
+    // Fingerprint site assets (styles/app/legal) with a content hash so edge and
     // browser caches never serve a stale version after a redeploy.
-    for name in ["styles.css", "app.js", "data.js"] {
+    for name in ["styles.css", "app.js", "legal.css"] {
         let hash = file_sha256(&out.join(name))?;
         let versioned = format!("{name}?v={}", &hash[..10]);
         let html = out.join("index.html");
@@ -618,6 +632,9 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
             "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n",
             "  <url><loc>https://shadowsofwar.io/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>\n",
             "  <url><loc>https://shadowsofwar.io/play/</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>\n",
+            "  <url><loc>https://shadowsofwar.io/privacy/</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>\n",
+            "  <url><loc>https://shadowsofwar.io/terms/</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>\n",
+            "  <url><loc>https://shadowsofwar.io/support/</loc><changefreq>monthly</changefreq><priority>0.4</priority></url>\n",
             "</urlset>\n",
         ),
     )?;
@@ -697,7 +714,7 @@ fn package_cg(play_dir: &Path, out: &Path, paths: &Paths, version: &str) -> Resu
                 .to_string();
             sdk = true;
         } else if line.contains("PORTAL_BOOT_SLOT") {
-            *line = "        window.SOW_PORTAL = \"crazygames\"; window.SOW_WS_URL = \"wss://shadowsofwar.io/ws/\"; window.SOW_MAPS_URL = \"https://shadowsofwar.io/maps\"; window.SOW_ASSETS_URL = \"https://shadowsofwar.io/assets\"; window.SOW_DATABASE_URL = \"https://shadowsofwar.io/api\";".to_string();
+            *line = "        window.SOW_ENABLE_PORTAL_ADS = true; window.SOW_PORTAL = \"crazygames\"; window.SOW_WS_URL = \"wss://shadowsofwar.io/ws/\"; window.SOW_MAPS_URL = \"https://shadowsofwar.io/maps\"; window.SOW_ASSETS_URL = \"https://shadowsofwar.io/assets\"; window.SOW_DATABASE_URL = \"https://shadowsofwar.io/api\";".to_string();
             boot = true;
         }
     }

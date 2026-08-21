@@ -36,7 +36,7 @@ serde_json = "1"
 web-time = "1.1"
 wyrand = "0.2"
 egui = { version = "0.34", default-features = false }
-image = { version = "0.25.10", default-features = false, features = ["webp", "png"] }
+image = { version = "0.25.10", default-features = false, features = ["webp", "png", "jpeg"] }
 sow-i18n = { path = "sow-i18n" }
 sow-map = { path = "sow-map", default-features = false }
 sow-ui = { path = "sow-ui" }

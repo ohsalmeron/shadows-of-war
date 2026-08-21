@@ -23,6 +23,7 @@ impl SowApp {
                 // Multiplayer: lockstep execution dictated by server
                 let mut ticks_processed = 0;
                 while let Some(turn) = self.sim.turn_queue.pop_front() {
+                    ticks_processed += 1;
                     self.dispatch_sim_command(sow_core::protocol::SimCommand::Turn(turn));
 
                     // Update UI HUD State from my player id
@@ -149,9 +150,19 @@ impl SowApp {
                     }
                     self.sync_building_costs();
 
-                    ticks_processed += 1;
                     if ticks_processed >= 10 {
                         break;
+                    }
+                }
+                if ticks_processed > 0 {
+                    let cur_tick = self.sim.current_snapshot.as_ref().map(|s| s.tick).unwrap_or(0);
+                    if cur_tick <= 5 || cur_tick % 50 == 0 || ticks_processed > 1 {
+                        log::info!(
+                            "[DIAG SIM TICK] Dispatched {} ticks this frame, sim_tick={}, turn_q_remaining={}",
+                            ticks_processed,
+                            cur_tick,
+                            self.sim.turn_queue.len()
+                        );
                     }
                 }
             } else {
