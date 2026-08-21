@@ -438,6 +438,8 @@ static mut RX_DROPS: u64 = 0;
 static mut TX_BUDGET_CLOSURES: u64 = 0;
 static mut PENDING_SEND_PEAK: usize = 0;
 static mut LAST_STATS_AT: u64 = 0;
+static mut LAST_TX_PACKETS: u64 = 0;
+static mut LAST_TX_DROPPED: u64 = 0;
 
 /// Optional application admission hook. It runs on the F-Stack driver thread,
 /// immediately after `ff_accept` has captured the peer and before the fd is
@@ -1244,8 +1246,15 @@ unsafe fn maybe_stats(_idle: bool) {
         let recv_delta = RECV_BYTES.saturating_sub(LAST_RECV_BYTES);
         LAST_ECHOES = ECHOES;
         LAST_RECV_BYTES = RECV_BYTES;
+        let mut traffic = crate::ffi::FfTraffic::default();
+        crate::ffi::ff_get_traffic(&mut traffic as *mut _ as *mut libc::c_void);
+        let txpkts_delta = traffic.tx_packets.saturating_sub(LAST_TX_PACKETS);
+        let txdrop_delta = traffic.tx_dropped.saturating_sub(LAST_TX_DROPPED);
+        LAST_TX_PACKETS = traffic.tx_packets;
+        LAST_TX_DROPPED = traffic.tx_dropped;
         eprintln!(
-            "[stats] accepts={ACCEPTS} echoes={ECHOES} (+{echo_delta}/5s) recv_bytes={RECV_BYTES} (+{recv_delta}/5s) pending_tx_bytes={PENDING_SEND_BYTES} pending_tx_peak={PENDING_SEND_PEAK} tx_budget_closes={TX_BUDGET_CLOSURES} rx_drops={RX_DROPS}"
+            "[stats] accepts={ACCEPTS} echoes={ECHOES} (+{echo_delta}/5s) recv_bytes={RECV_BYTES} (+{recv_delta}/5s) pending_tx_bytes={PENDING_SEND_BYTES} pending_tx_peak={PENDING_SEND_PEAK} tx_budget_closes={TX_BUDGET_CLOSURES} rx_drops={RX_DROPS} tx_pkts={} (+{txpkts_delta}/5s) tx_dropped={} (+{txdrop_delta}/5s)",
+            traffic.tx_packets, traffic.tx_dropped
         );
     }
 }

@@ -116,6 +116,22 @@ extern "C" {
     pub fn ff_zc_recv(fd: c_int, zm: *mut ff_zc_mbuf, nbytes: size_t) -> ssize_t;
     pub fn ff_zc_mbuf_segment(zm: *mut ff_zc_mbuf, seg_data: *mut *mut c_void, seg_len: *mut c_int) -> c_int;
     pub fn ff_zc_recv_free(zm: *mut ff_zc_mbuf);
+
+    // ---- traffic counters (ff_api.h:199; struct ff_traffic_args, ff_msg.h:103) ----
+    pub fn ff_get_traffic(buffer: *mut c_void);
+}
+
+/// Mirror of `struct ff_traffic_args` (ff_msg.h:103). `tx_dropped` counts
+/// segments freed at `rte_eth_tx_burst` when the NIC TX ring cannot take them.
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+pub struct FfTraffic {
+    pub rx_packets: u64,
+    pub rx_bytes: u64,
+    pub tx_packets: u64,
+    pub tx_bytes: u64,
+    pub rx_dropped: u64,
+    pub tx_dropped: u64,
 }
 
 /// Helper mirroring the `EV_SET` macro (ff_event.h:55). Safe to call to populate one kevent.
