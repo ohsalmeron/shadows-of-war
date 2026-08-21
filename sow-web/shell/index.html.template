@@ -187,6 +187,53 @@
         /* PORTAL_BOOT_SLOT: SOW_PORTAL / SOW_WS_URL overrides injected by sow-dist crazygames. */
 
     </script>
+    <script type="text/javascript">
+        /* Crash watchdog: a wasm panic (panic=abort) traps every frame and the
+           rAF loop keeps re-entering the poisoned state, freezing the game
+           forever while the relay stays healthy. Detect the error storm, keep
+           the panic line, and reload once so the auto-reconnect rejoins the
+           match instead of leaving a dead tab. */
+        (function () {
+            var RELOADS_KEY = "SOW_CRASH_RELOADS";
+            var PANIC_KEY = "SOW_LAST_PANIC";
+            var reloads = 0;
+            try { reloads = parseInt(sessionStorage.getItem(RELOADS_KEY) || "0", 10) || 0; } catch (e) {}
+            try {
+                var prev = sessionStorage.getItem(PANIC_KEY);
+                if (prev) {
+                    console.warn("[SOW watchdog] previous page crashed; captured panic:", prev);
+                }
+            } catch (e) {}
+            var t0 = Date.now();
+            var errs = [];
+            window.addEventListener("error", function (ev) {
+                errs.push(Date.now());
+                if (errs.length > 20) { errs.shift(); }
+                var cutoff = Date.now() - 5000;
+                var recent = 0;
+                for (var i = errs.length - 1; i >= 0 && errs[i] >= cutoff; i--) { recent++; }
+                if (recent >= 8 && Date.now() - t0 > 8000 && reloads < 2) {
+                    try {
+                        sessionStorage.setItem(RELOADS_KEY, String(reloads + 1));
+                    } catch (e) {}
+                    window.location.reload();
+                }
+            });
+            var origError = console.error;
+            console.error = function () {
+                for (var i = 0; i < arguments.length; i++) {
+                    var a = arguments[i];
+                    if (typeof a === "string" && a.indexOf("panicked at") !== -1) {
+                        try { sessionStorage.setItem(PANIC_KEY, a); } catch (e) {}
+                    }
+                }
+                return origError.apply(console, arguments);
+            };
+            setTimeout(function () {
+                try { sessionStorage.removeItem(RELOADS_KEY); } catch (e) {}
+            }, 600000);
+        })();
+    </script>
     <script src="./sdk/store_portals.js"></script>
     <script>/* __INLINE_LOADER_JS__ */</script>
     <script type="module">

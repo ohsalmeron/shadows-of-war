@@ -510,6 +510,10 @@
     if (isSiteEmbed() || window.SOW_adPlaying) {
       return;
     }
+    // Off-portal (site or standalone embed): no CrazyGames/Poki machinery.
+    if (!isOnCrazyGames() && !isOnPoki() && typeof PokiSDK === "undefined") {
+      return;
+    }
     if (typeof PokiSDK !== "undefined" && PokiSDK.gameplayStart) {
       PokiSDK.gameplayStart();
     }
