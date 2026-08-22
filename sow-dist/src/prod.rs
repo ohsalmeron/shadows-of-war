@@ -550,6 +550,11 @@ fn activate_relay_host(config: &Config, release: &Release) -> Result<()> {
         .and_then(|relay| relay.get("sha256"))
         .and_then(serde_json::Value::as_str)
         .context("release.json relay sha256 missing")?;
+    let relay_bin_sha = release_json
+        .get("relay")
+        .and_then(|relay| relay.get("bin_sha256"))
+        .and_then(serde_json::Value::as_str)
+        .context("release.json relay bin_sha256 missing")?;
     let db_secret = env::var("SOW_DB_SECRET")?;
     let control_secret = env::var("SOW_RELAY_CONTROL_SECRET")?;
     let db_path = format!("/tmp/sow-relay-db-secret-{}", std::process::id());
@@ -626,7 +631,7 @@ for u in {units}; do
   test "$(systemctl show "$u" -p ExecMainStatus --value)" = 0
 done
 sudo tee {manifest} >/dev/null <<EOF
-{{"version":"{version}","release":"{release_id}","git":"{revision}","fstack":"{relay_fstack}","relay_sha256":"{relay_component}","ws_write_timeout_ms":{knob},"drain":"force-kill (user-authorized 2026-08-21; non-destructive drain pending)","deployed_at":"$ts"}}
+{{"version":"{version}","release":"{release_id}","git":"{revision}","fstack":"{relay_fstack}","relay_sha256":"{relay_component}","relay_bin_sha256":"{relay_bin_sha}","ws_write_timeout_ms":{knob},"drain":"force-kill (user-authorized 2026-08-21; non-destructive drain pending)","deployed_at":"$ts"}}
 EOF
 sudo chown root:root {manifest}
 sudo chmod 0644 {manifest}
@@ -648,6 +653,7 @@ sudo chmod 0644 {manifest}
         revision = revision,
         relay_fstack = relay_fstack,
         relay_component = relay_component,
+        relay_bin_sha = relay_bin_sha,
         knob = env.knob,
     );
     run("ssh", &[&config.relay_host, &remote], None)
@@ -679,10 +685,15 @@ fn verify_relay_identity(config: &Config, release: &Release) -> Result<()> {
         .get("fstack")
         .and_then(serde_json::Value::as_str)
         .context("release relay fstack missing")?;
+    let expected_bin_sha = relay
+        .get("bin_sha256")
+        .and_then(serde_json::Value::as_str)
+        .context("release relay bin_sha256 missing")?;
     let manifest = relay_manifest_remote(config)?
         .context("relay host has no registered manifest — relay never deployed through ./sow p")?;
     for (key, expected) in [
         ("relay_sha256", expected_sha),
+        ("relay_bin_sha256", expected_bin_sha),
         ("git", expected_git),
         ("fstack", expected_fstack),
     ] {
@@ -705,8 +716,21 @@ fn verify_relay_identity(config: &Config, release: &Release) -> Result<()> {
     {
         bail!("relay worker 0 [BOOT] identity mismatch: {boot}");
     }
+    // Content check: hash the binary the workers actually exec. Component
+    // hashes and [BOOT] env stamps can be consistent while the deployed file
+    // is stale (cargo not relinking against a rebuilt libfstack.a), so the
+    // deployed file itself must match the release's recorded binary sha.
+    let deployed = output(
+        "ssh",
+        &[&config.relay_host, &format!("sha256sum {RELAY_EXEC}")],
+    )?;
+    if !deployed.starts_with(expected_bin_sha) {
+        bail!(
+            "relay deployed binary mismatch: {deployed} expected {expected_bin_sha}"
+        );
+    }
     println!(
-        "  relay identity verified (git={expected_git} fstack={expected_fstack} knob={expected_knob})"
+        "  relay identity verified (git={expected_git} fstack={expected_fstack} bin={expected_bin_sha} knob={expected_knob})"
     );
     Ok(())
 }
@@ -1224,6 +1248,7 @@ fn assemble_release(
         .find(|(name, _)| *name == "relay")
         .map(|(_, hash)| hash.clone())
         .context("relay component missing")?;
+    let relay_bin_sha = file_sha256(&work.join("relay/bin/sow-relay"))?;
     fs::write(
         work.join("release.json"),
         serde_json::to_vec_pretty(&json!({
@@ -1232,6 +1257,7 @@ fn assemble_release(
             "components": components.iter().map(|(name, hash)| json!({"name": name, "sha256": hash})).collect::<Vec<_>>(),
             "relay": json!({
                 "sha256": relay_component,
+                "bin_sha256": relay_bin_sha,
                 "fstack": relay_fstack,
                 "ws_write_timeout_ms": env.knob,
                 "drain": "force-kill (user-authorized 2026-08-21; non-destructive drain pending)",

@@ -26,6 +26,11 @@ fn main() {
         }
     });
     println!("cargo:rerun-if-env-changed=FSTACK_LIB_DIR");
+    // Without rerun-if-changed on the archive, cargo treats the bin as fresh
+    // when only libfstack.a is rebuilt on the build host — f-stack source
+    // changes (e.g. the callout_when fix) get compiled into the lib but never
+    // relinked into the deployed binary.
+    println!("cargo:rerun-if-changed={fstack_lib_dir}/libfstack.a");
     let out = Command::new("pkg-config")
         .args(["--static", "--libs", "libdpdk"])
         .output();
