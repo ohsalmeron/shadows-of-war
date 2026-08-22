@@ -519,10 +519,15 @@ fn stage_relay(config: &Config, release: &Release) -> Result<()> {
     let source = format!("{}/", release.dir.join("relay").display());
     let destination = format!("{}:{}", config.relay_host, RELAY_STAGE);
     run(
+        "ssh",
+        &[&config.relay_host, &format!("install -d -m 0700 {}", shell_quote(RELAY_STAGE))],
+        None,
+    )?;
+    run(
         "rsync",
         &["-azc", "--delete", &source, &destination],
         Some(&release.dir),
-    )
+    )?
 }
 
 /// Activate the relay component on the Azure host. Drain mode is an
