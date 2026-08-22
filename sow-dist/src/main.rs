@@ -496,6 +496,7 @@ fn verify_layout(dir: &Path) -> Result<()> {
         "privacy/index.html",
         "terms/index.html",
         "support/index.html",
+        "how-to-play/index.html",
         "sow.svg",
     ] {
         if !dir.join(required).is_file() {
@@ -601,7 +602,7 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
         }
         fs::copy(&src, out.join(name))?;
     }
-    for path in ["privacy", "terms", "support"] {
+    for path in ["privacy", "terms", "support", "how-to-play"] {
         let src = site.join(path);
         if !src.is_dir() {
             bail!("website legal page missing: {}", src.display());
@@ -635,6 +636,7 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
             "  <url><loc>https://shadowsofwar.io/privacy/</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>\n",
             "  <url><loc>https://shadowsofwar.io/terms/</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>\n",
             "  <url><loc>https://shadowsofwar.io/support/</loc><changefreq>monthly</changefreq><priority>0.4</priority></url>\n",
+            "  <url><loc>https://shadowsofwar.io/how-to-play/</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>\n",
             "</urlset>\n",
         ),
     )?;

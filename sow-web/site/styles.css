@@ -230,6 +230,53 @@ html[data-theme="light"] .hero-wash { opacity: .35; filter: saturate(.8) contras
 .platform-state { font-size: 9px; font-weight: 700; }
 .platform-muted { opacity: .66; }
 
+/* FAQ */
+.faq-section { background: var(--surface); }
+.faq-section .inline-link { color: var(--orange); text-decoration: underline; text-underline-offset: 3px; }
+.faq-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.faq-item { border: 1px solid var(--line); background: var(--bg); transition: border-color .2s ease; }
+.faq-item[open] { border-color: var(--orange); }
+.faq-item summary { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 20px 21px; cursor: pointer; list-style: none; font: 700 14px/1.2 var(--font-display); text-transform: uppercase; letter-spacing: .02em; }
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary::after { content: '+'; flex: none; color: var(--orange); font: 500 22px/1 var(--font-mono); }
+.faq-item[open] summary::after { content: '−'; }
+.faq-item p { margin: 0; padding: 0 21px 21px; color: var(--muted); font-size: 13px; line-height: 1.7; }
+
+/* How-to-play page */
+.guide-page { min-height: 100vh; background: var(--bg); }
+.guide-main { overflow: hidden; }
+.guide-hero { position: relative; padding: 95px 0 88px; background: radial-gradient(circle at 78% 40%, var(--orange-wash), transparent 32%); }
+.guide-hero h1 { margin: 0; font: 900 clamp(62px, 10vw, 128px)/.84 var(--font-display); letter-spacing: -.06em; text-transform: uppercase; }
+.guide-hero h1 em { color: var(--orange); font-style: normal; }
+.guide-lede { max-width: 650px; margin: 30px 0 28px; color: var(--muted); font-size: 18px; line-height: 1.7; }
+.guide-section { padding: 92px 0; }
+.guide-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 72px; align-items: start; }
+.guide-steps h2 { margin: 0 0 38px; font: 900 clamp(40px, 5vw, 68px)/.9 var(--font-display); letter-spacing: -.05em; text-transform: uppercase; }
+.guide-step { display: grid; grid-template-columns: 48px 1fr; gap: 20px; padding: 25px 0; border-top: 1px solid var(--line); }
+.guide-step:last-child { border-bottom: 1px solid var(--line); }
+.guide-step > span { color: var(--orange); font: 700 12px/1 var(--font-mono); }
+.guide-step h3 { margin: 0; font: 800 24px/.95 var(--font-display); text-transform: uppercase; }
+.guide-step p { max-width: 600px; margin: 10px 0 0; color: var(--muted); font-size: 14px; line-height: 1.7; }
+.guide-aside { position: sticky; top: 100px; padding: 25px; border: 1px solid var(--line-strong); background: var(--surface); }
+.guide-aside h3 { margin: 0 0 18px; font: 800 22px/.95 var(--font-display); text-transform: uppercase; }
+.guide-aside p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.guide-aside ul { margin: 20px 0 0; padding: 0; list-style: none; color: var(--muted); font: 10px/2 var(--font-mono); text-transform: uppercase; letter-spacing: .06em; }
+.guide-aside li::before { content: '→'; margin-right: 8px; color: var(--orange); }
+.guide-callout { margin-top: 72px; padding: 34px; background: var(--orange); color: #111; }
+.guide-callout h2 { margin: 0; font: 900 clamp(35px, 5vw, 60px)/.88 var(--font-display); letter-spacing: -.05em; text-transform: uppercase; }
+.guide-callout p { max-width: 500px; margin: 18px 0 24px; color: rgba(17, 17, 17, .72); }
+.guide-callout .button-orange { background: #111; border-color: #111; color: var(--orange); }
+
+@media (max-width: 700px) {
+  .faq-list { grid-template-columns: 1fr; }
+  .guide-hero { padding: 62px 0 60px; }
+  .guide-lede { font-size: 15px; }
+  .guide-section { padding: 68px 0; }
+  .guide-layout { display: block; }
+  .guide-aside { position: static; margin-top: 42px; }
+  .guide-callout { margin-top: 48px; padding: 25px; }
+}
+
 /* Footer */
 .site-footer { background: var(--surface); }
 .footer-top { display: flex; align-items: center; gap: 34px; min-height: 108px; }

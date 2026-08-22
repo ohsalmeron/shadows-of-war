@@ -5,13 +5,13 @@ close = "CLOSE"
 [[sections]]
 heading = "Acceptance"
 paragraphs = [
-  "By playing Shadows of War on shadowsofwar.io, partner platforms, or native clients, you agree to these terms.",
+  "By playing Shadows of War on shadowsofwar.io, a future partner platform, or a native client, you agree to these terms.",
 ]
 
 [[sections]]
 heading = "The game"
 paragraphs = [
-  "Shadows of War is free-to-play strategy software provided as-is. Multiplayer requires network access to our servers. We may modify, suspend, or discontinue services at any time.",
+  "Shadows of War is multiplayer strategy software provided as-is. Multiplayer requires network access to our servers. We may modify, suspend, or discontinue services at any time.",
 ]
 
 [[sections]]

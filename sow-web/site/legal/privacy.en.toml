@@ -5,7 +5,7 @@ close = "CLOSE"
 [[sections]]
 heading = "Overview"
 paragraphs = [
-  "Shadows of War is a browser and native multiplayer strategy game. This policy describes what data we process when you play on shadowsofwar.io or partner platforms (CrazyGames, Poki).",
+  "Shadows of War is a browser and native multiplayer strategy game. This policy describes what data we process when you play on shadowsofwar.io. If the game is later published through a partner platform, that platform may apply its own privacy policy and SDK rules.",
 ]
 
 [[sections]]
@@ -13,7 +13,7 @@ heading = "Data we collect"
 bullets = [
   "Gameplay: Display name, clan tag, leader/civilization choices, and match inputs required for lockstep multiplayer.",
   "Technical: Client build version, WebSocket connection metadata, and basic server logs for abuse prevention.",
-  "Partner platforms: When published on CrazyGames or Poki, their SDKs may collect analytics per their respective policies. We do not sell personal data.",
+  "Partner platforms: If the game is later published through a partner platform, its SDK may collect analytics under its own policy. We do not sell personal data.",
 ]
 
 [[sections]]

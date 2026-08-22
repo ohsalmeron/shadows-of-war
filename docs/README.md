@@ -1,8 +1,10 @@
 # Shadows of War
 
-**[shadowsofwar.io](https://shadowsofwar.io)** — A free, open-source MMORTS featuring world maps, civilizations, alliances, expansion, and economy. 
+**[shadowsofwar.io](https://shadowsofwar.io)** — An open-source, match-based browser MMORTS featuring world maps, civilizations, alliances, expansion, and economy.
 
 *Shadows of War* is built entirely in **Rust** from the ground up. It shares a single deterministic game engine across Web (WASM), native Desktop (Windows/macOS/Linux), and Mobile (iOS/Android) clients, providing a seamless and highly scalable multiplayer experience.
+
+Shipping map: [launch graph](launch-graph.md) · [launch kit](launch-kit.md).
 
 ---
 
@@ -67,19 +69,16 @@ The project uses `./sow` as its single build and deployment entrypoint.
 
 ### Playing / Testing Locally
 
-**1. Run the Web (WASM) version locally:**
-This will build the WASM payload, serve it locally, and automatically connect to the public production WebSockets (no `.env` required).
-```bash
-./sow local
-# or its alias:
-./sow l
-```
-
-**2. Run the Native Desktop client:**
+**Run the Native Desktop client:**
 The native client directly connects to the production endpoints by default.
 ```bash
+./sow native
+# or:
 cargo run --release -p sow-client
 ```
+
+The current `./sow` entrypoint exposes `native` and `p` (production) only; the
+older `./sow local` / `./sow l` web-preview instructions are no longer valid.
 
 ### Running on Mobile (iOS & Android)
 

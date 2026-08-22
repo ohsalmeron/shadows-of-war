@@ -18,9 +18,9 @@ Thank you for your interest in contributing!
 
 Static HTML lives in `sow-web/site/` (landing, privacy, terms). The WASM game shell lives in `sow-web/shell/` — see `sow-web/README.md`. Do not embed game code in the marketing pages.
 
-```bash
-cargo run -p sow-dist -- local   # or: ./sow local
-```
+The current entrypoint does not expose a local WASM preview command; use the
+production packaging path for a deployable web build and `./sow native` for a
+local desktop run.
 
 ## Pull requests
 
@@ -65,4 +65,3 @@ Native dev tools (FPS overlay, dev sidebar, map shader sliders) require `--featu
 ```bash
 cargo run -p sow-client --features dev
 ```
-

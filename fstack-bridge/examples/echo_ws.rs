@@ -33,8 +33,18 @@ fn main() {
         .map(|a| CString::new(a).unwrap())
         .collect();
 
+    // TAP dev loop (same EAL args as examples/echo.rs): --no-pci + net_tap0.
+    let mut extra_eal: Vec<&str> = Vec::new();
+    if std::env::var("FSTACK_TAP").ok().as_deref() == Some("1") {
+        extra_eal.push("--no-pci");
+        extra_eal.push("--iova-mode=va");
+        extra_eal.push("--vdev=net_tap0,iface=tap0");
+        extra_eal.push("--vdev=net_vdev_netvsc,ignore=1");
+        eprintln!("[echo-ws] TAP mode (--no-pci + net_tap0)");
+    }
+
     unsafe {
-        if let Err(code) = fstack_bridge::init(&prog_args, &[]) {
+        if let Err(code) = fstack_bridge::init(&prog_args, &extra_eal) {
             eprintln!("[echo-ws] init failed (code={})", code);
             std::process::exit(1);
         }
