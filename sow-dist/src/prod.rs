@@ -964,7 +964,10 @@ fn build_relay(paths: &Paths, config: &Config) -> Result<PathBuf> {
     )?;
 
     let fstack_cache = paths.root.join("dist/.sow-state/fstack-build");
-    if !fs::read_to_string(&fstack_cache).is_ok_and(|value| value.trim() == fstack_hash) {
+    // The cache key includes the make flags: the same tree can produce a lib
+    // without the bridge's zc API if FF_ZC_RECV is dropped from the build.
+    let fstack_key = format!("{fstack_hash}:FF_ZC_RECV=1");
+    if !fs::read_to_string(&fstack_cache).is_ok_and(|value| value.trim() == fstack_key) {
         println!(
             "==> F-Stack changed ({}) — restoring DPDK headers + rebuilding libfstack.a on relay host",
             &fstack_hash[..12]
@@ -986,7 +989,7 @@ fn build_relay(paths: &Paths, config: &Config) -> Result<PathBuf> {
             fstack_root = shell_quote(RELAY_FSTACK_ROOT)
         );
         run("ssh", &[&config.relay_host, &prepare], None)?;
-        fs::write(&fstack_cache, format!("{fstack_hash}\n"))?;
+        fs::write(&fstack_cache, format!("{fstack_key}\n"))?;
     }
 
     let build = format!(
