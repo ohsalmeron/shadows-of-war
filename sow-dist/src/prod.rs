@@ -722,7 +722,7 @@ fn verify_relay_identity(config: &Config, release: &Release) -> Result<()> {
     // deployed file itself must match the release's recorded binary sha.
     let deployed = output(
         "ssh",
-        &[&config.relay_host, &format!("sha256sum {RELAY_EXEC}")],
+        &[&config.relay_host, &format!("sudo sha256sum {RELAY_EXEC}")],
     )?;
     if !deployed.starts_with(expected_bin_sha) {
         bail!(
