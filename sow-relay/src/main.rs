@@ -468,7 +468,19 @@ const PER_CLIENT_CHANNEL: usize = 128;
 
 /// Outbound WebSocket frame write timeout in milliseconds.
 /// Set to 15000ms (15.0s) to tolerate transient TCP windowing and geographic/proxy latency.
-const WS_WRITE_TIMEOUT_MS: u64 = 15000;
+/// Overridable via SOW_WS_WRITE_TIMEOUT_MS so the deployed value is registered
+/// in the unit drop-in and visible in the [BOOT] line; the pipeline records it
+/// in the relay manifest for every release.
+fn ws_write_timeout_ms() -> u64 {
+    static TIMEOUT: OnceLock<u64> = OnceLock::new();
+    *TIMEOUT.get_or_init(|| {
+        std::env::var("SOW_WS_WRITE_TIMEOUT_MS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .filter(|value| *value >= 100)
+            .unwrap_or(15000)
+    })
+}
 
 /// Per-connection bridge RX capacity (inbound DPDK mbuf guards).
 const BRIDGE_RX_CAP: usize = 256;
@@ -1090,6 +1102,14 @@ fn main() {
     info!(
         "[BOOT] admission max_connections={} max_connections_per_ip={} handshakes_per_ip={}",
         policy.max_connections, policy.max_connections_per_ip, policy.handshakes_per_ip
+    );
+    // Identity line: the pipeline stamps git/f-stack/knob into the unit drop-in
+    // so every deployed build is attributable from the journal alone.
+    info!(
+        "[BOOT] git={} fstack={} ws_write_timeout_ms={}",
+        std::env::var("SOW_RELAY_GIT").unwrap_or_else(|_| "unknown".to_string()),
+        std::env::var("SOW_FSTACK_VERSION").unwrap_or_else(|_| "unknown".to_string()),
+        ws_write_timeout_ms()
     );
 
     let prog_args: Vec<CString> = std::env::args()
@@ -2348,7 +2368,7 @@ async fn ws_task(
                         last_rx = std::time::Instant::now();
                         if let Message::Ping(payload) = &msg {
                             let _ = tokio::time::timeout(
-                                Duration::from_millis(WS_WRITE_TIMEOUT_MS),
+                                Duration::from_millis(ws_write_timeout_ms()),
                                 write.send(Message::Pong(payload.clone())),
                             )
                             .await;
@@ -2428,7 +2448,7 @@ async fn ws_task(
                 if last_ping.elapsed() >= Duration::from_secs(WS_PING_SECS) {
                     last_ping = std::time::Instant::now();
                     if tokio::time::timeout(
-                        Duration::from_millis(WS_WRITE_TIMEOUT_MS),
+                        Duration::from_millis(ws_write_timeout_ms()),
                         write.send(Message::Ping(Vec::new())),
                     )
                     .await
@@ -2450,7 +2470,7 @@ async fn ws_task(
                     info!("[DIAG RELAY TX] fd={} sent frame #{} len={}", fd, frames_out, direct_data.len());
                 }
                 match tokio::time::timeout(
-                    Duration::from_millis(WS_WRITE_TIMEOUT_MS),
+                    Duration::from_millis(ws_write_timeout_ms()),
                     write.send(Message::Binary((*direct_data).clone())),
                 )
                 .await
@@ -2461,7 +2481,7 @@ async fn ws_task(
                         break;
                     }
                     Err(_) => {
-                        warn!("[DIAG RELAY TX] write.send timed out (>{}ms) fd={}", WS_WRITE_TIMEOUT_MS, fd);
+                        warn!("[DIAG RELAY TX] write.send timed out (>{}ms) fd={}", ws_write_timeout_ms(), fd);
                         break;
                     }
                 }
@@ -2493,7 +2513,7 @@ async fn ws_task(
                     break;
                 }
                 if tokio::time::timeout(
-                    Duration::from_millis(WS_WRITE_TIMEOUT_MS),
+                    Duration::from_millis(ws_write_timeout_ms()),
                     write.send(Message::Ping(Vec::new())),
                 )
                 .await
@@ -2700,7 +2720,7 @@ async fn orchestrator_task(
                     lobbies,
                 });
                 if let Ok(json) = bincode::serialize(&msg) {
-                    match tokio::time::timeout(Duration::from_millis(WS_WRITE_TIMEOUT_MS), write.send(Message::Binary(json))).await {
+                    match tokio::time::timeout(Duration::from_millis(ws_write_timeout_ms()), write.send(Message::Binary(json))).await {
                         Ok(Ok(())) => {}
                         _ => break,
                     }

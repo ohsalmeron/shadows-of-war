@@ -7,6 +7,17 @@ const BUILD_HOST: &str = "freebsd";
 const BUILD_ROOT: &str = "/home/bizkit/shadows-of-war";
 const CONTROL_HOST: &str = "ionos";
 const RELAY_HOST: &str = "relay";
+const RELAY_ROOT: &str = "/home/azureuser/shadows-of-war";
+const RELAY_FSTACK_ROOT: &str = "/home/azureuser/f-stack-src";
+const RELAY_USER: &str = "sowrelay";
+const RELAY_GROUP: &str = "sowrelay";
+const RELAY_EXEC: &str = "/usr/local/libexec/sow-relay/sow-relay";
+const RELAY_CONFIG: &str = "/usr/local/etc/sow/echo-vf.ini";
+const RELAY_STATE: &str = "/var/lib/sow-relay";
+const RELAY_REPLAYS: &str = "/var/lib/sow-relay/replays";
+const RELAY_MANIFEST: &str = "/var/lib/sow-relay/manifest.json";
+const RELAY_STAGE: &str = "/home/azureuser/.sow-deploy/relay";
+const FSTACK_LOCAL_REPO: &str = "/home/bizkit/Github/infra/f-stack";
 const REMOTE_STAGE: &str = "/home/bizkit/.sow-deploy";
 const REMOTE_RELEASES: &str = "/srv/sow/releases";
 const PUBLIC_ORIGIN: &str = "https://shadowsofwar.io";
@@ -18,6 +29,8 @@ struct Config {
     build_root: String,
     control_host: String,
     relay_host: String,
+    relay_root: String,
+    fstack_repo: String,
     remote_stage: String,
     public_origin: String,
     require_public: bool,
@@ -30,6 +43,8 @@ impl Config {
             build_root: env_or("SOW_FREEBSD_BUILDER_ROOT", BUILD_ROOT),
             control_host: env_or_alias("SOW_CONTROL_HOST", "SOW_PROD_HOST", CONTROL_HOST),
             relay_host: env_or("SOW_RELAY_DEPLOY_HOST", RELAY_HOST),
+            relay_root: env_or("SOW_RELAY_ROOT", RELAY_ROOT),
+            fstack_repo: env_or("SOW_FSTACK_REPO", FSTACK_LOCAL_REPO),
             remote_stage: env_or("SOW_REMOTE_STAGE", REMOTE_STAGE),
             public_origin: env_or("SOW_PUBLIC_ORIGIN", PUBLIC_ORIGIN)
                 .trim_end_matches('/')
@@ -52,11 +67,12 @@ struct ComponentPlan {
     server: bool,
     database: bool,
     ops: bool,
+    relay: bool,
 }
 
 impl ComponentPlan {
     fn any(&self) -> bool {
-        self.web || self.maps || self.server || self.database || self.ops
+        self.web || self.maps || self.server || self.database || self.ops || self.relay
     }
 }
 
@@ -71,19 +87,23 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
     preflight(paths, &config)?;
 
     println!("==> 2/8 Build candidates");
-    let (_web, backend) = std::thread::scope(|scope| {
+    let (_web, backend, _relay) = std::thread::scope(|scope| {
         let web = scope.spawn(|| build_web(paths, &version));
         let backend = scope.spawn(|| build_freebsd(paths, &config));
+        let relay = scope.spawn(|| build_relay(paths, &config));
         web.join()
             .map_err(|_| anyhow::anyhow!("web build panicked"))??;
         let backend = backend
             .join()
             .map_err(|_| anyhow::anyhow!("FreeBSD build panicked"))??;
-        Ok::<_, anyhow::Error>(((), backend))
+        let relay = relay
+            .join()
+            .map_err(|_| anyhow::anyhow!("relay build panicked"))??;
+        Ok::<_, anyhow::Error>(((), backend, relay))
     })?;
 
     println!("==> 3/8 Package immutable release");
-    let release = assemble_release(paths, &paths.dist_web, &backend, &version)?;
+    let release = assemble_release(paths, &paths.dist_web, &backend, &version, &config)?;
     println!("  release {}", release.id);
 
     println!("==> Runtime prerequisites");
@@ -99,7 +119,6 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
         plan.ops = true;
     }
     println!("  plan: {plan:?}");
-    println!("  relay: held; pipeline has no safe drain contract yet");
 
     if !plan.any() {
         println!("  no production component changed; no restart performed");
@@ -107,6 +126,7 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
         verify_relay_runtime(&config)?;
         verify_control_runtime_secret(&config)?;
         verify_relay_control_path(&config)?;
+        verify_relay_identity(&config, &release)?;
         retain_releases(&config)?;
         verify_public(paths, &config, &release)?;
         println!("✅ Production already serves the requested content");
@@ -115,15 +135,25 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
 
     println!("==> 5/8 Stage release (no service mutation)");
     stage_release(&config, &release)?;
+    if plan.relay {
+        stage_relay(&config, &release)?;
+    }
 
     println!("==> 6/8 Activate changed components only");
     activate_control_host(paths, &config, &release, &plan)?;
+    // Relay last: its worker swap force-kills active games (user-authorized
+    // drain mode until a non-destructive drain exists), so the control host
+    // must already be healthy before any relay worker is touched.
+    if plan.relay {
+        activate_relay_host(&config, &release)?;
+    }
 
     println!("==> 7/8 Healthcheck and retain");
     verify_control_host(&config, &plan)?;
     verify_relay_runtime(&config)?;
     verify_control_runtime_secret(&config)?;
     verify_relay_control_path(&config)?;
+    verify_relay_identity(&config, &release)?;
     retain_releases(&config)?;
 
     println!("==> 8/8 Public verification");
@@ -254,8 +284,16 @@ fn relay_runtime_command(start_missing: bool) -> Result<String> {
         ));
     }
     if start_missing {
+        // Recovery starts workers individually, never the aggregate unit:
+        // `systemctl start sow-relay.service` historically left every worker
+        // down (the group's Wants propagation does not recover stopped
+        // instances), causing a full relay outage.
+        let starts = (0..count)
+            .map(|id| format!("timeout 90s sudo systemctl start sow-relay@{id}.service"))
+            .collect::<Vec<_>>()
+            .join("; ");
         command.push_str(&format!(
-            " if [ \"$active\" -eq 0 ]; then sudo systemctl enable sow-relay.service >/dev/null; sudo systemctl stop sow-relay.service >/dev/null 2>&1 || true; sudo timeout 60s systemctl start sow-relay.service; elif [ \"$active\" -ne {count} ]; then echo 'partial relay worker failure; refusing unsafe DPDK recovery' >&2; exit 78; else sudo systemctl enable sow-relay.service >/dev/null; fi;"
+            " if [ \"$active\" -eq 0 ]; then sudo systemctl enable sow-relay.service >/dev/null; sudo systemctl daemon-reload >/dev/null; {starts}; elif [ \"$active\" -ne {count} ]; then echo 'partial relay worker failure; refusing unsafe DPDK recovery' >&2; exit 78; else sudo systemctl enable sow-relay.service >/dev/null; fi;"
         ));
     }
     command.push_str(" systemctl is-enabled --quiet sow-relay.service; systemctl is-active --quiet sow-relay.service; systemctl is-enabled --quiet chrony.service; systemctl is-active --quiet chrony.service; test \"$(timedatectl show -p NTPSynchronized --value)\" = yes;");
@@ -388,18 +426,19 @@ printf %s "$value" | sha256 -q"#;
     Ok(())
 }
 
-fn verify_relay_control_path(config: &Config) -> Result<()> {
+/// Authenticated GET to every relay worker's management port, executed from
+/// the control host (the only host the Azure NSG lets through). Returns one
+/// response body per worker, in worker-id order.
+fn relay_authed_get(config: &Config, path: &str) -> Result<Vec<(usize, String)>> {
     type HmacSha256 = Hmac<Sha256>;
 
     let secret = env::var("SOW_RELAY_CONTROL_SECRET")?;
-    let scheme = env_or("SOW_RELAY_MGMT_SCHEME", "https");
-    if scheme != "https" {
+    if env_or("SOW_RELAY_MGMT_SCHEME", "https") != "https" {
         bail!("SOW_RELAY_MGMT_SCHEME must be https in production");
     }
     let resolve_ip = env::var("SOW_RELAY_MGMT_RESOLVE_IP")
         .context("SOW_RELAY_MGMT_RESOLVE_IP is required for relay verification")?;
-    let path = "/internal/metrics";
-    let worker_count = relay_worker_count()?;
+    let mut responses = Vec::new();
     for (worker_id, (host, port)) in relay_management_workers()?.into_iter().enumerate() {
         let timestamp = output("ssh", &[&config.control_host, "date -u +%s"])?;
         let mut nonce_bytes = [0u8; 16];
@@ -427,8 +466,38 @@ fn verify_relay_control_path(config: &Config) -> Result<()> {
         );
         let response = output("ssh", &[&config.control_host, &command])
             .with_context(|| format!("authenticated relay probe failed for worker port {port}"))?;
-        let metrics: serde_json::Value = serde_json::from_str(&response)
-            .with_context(|| format!("worker port {port} returned invalid metrics"))?;
+        responses.push((worker_id, response));
+    }
+    Ok(responses)
+}
+
+/// Total live relay-player connections across all workers (drain report).
+/// Informational only: the current drain mode is an authorized force-kill.
+fn relay_active_connections(config: &Config) -> Result<usize> {
+    let mut total = 0usize;
+    for (worker_id, body) in relay_authed_get(config, "/internal/lobbies")? {
+        let value: serde_json::Value = serde_json::from_str(&body)
+            .with_context(|| format!("worker port {worker_id} returned invalid lobbies"))?;
+        if let Some(lobbies) = value.get("lobbies").and_then(serde_json::Value::as_array) {
+            for lobby in lobbies {
+                if let Some(count) = lobby
+                    .get("active_relay_connections")
+                    .and_then(serde_json::Value::as_u64)
+                {
+                    total += count as usize;
+                }
+            }
+        }
+    }
+    Ok(total)
+}
+
+fn verify_relay_control_path(config: &Config) -> Result<()> {
+    let path = "/internal/metrics";
+    let worker_count = relay_worker_count()?;
+    for (worker_id, body) in relay_authed_get(config, path)? {
+        let metrics: serde_json::Value = serde_json::from_str(&body)
+            .with_context(|| format!("worker port {worker_id} returned invalid metrics"))?;
         if metrics.get("queue_id").and_then(serde_json::Value::as_u64) != Some(worker_id as u64)
             || metrics
                 .get("queue_count")
@@ -436,13 +505,203 @@ fn verify_relay_control_path(config: &Config) -> Result<()> {
                 != Some(worker_count as u64)
         {
             bail!(
-                "relay worker port {port} reports queue_id/queue_count {:?}/{:?}, expected {worker_id}/{worker_count}",
+                "relay worker port {worker_id} reports queue_id/queue_count {:?}/{:?}, expected {worker_id}/{worker_count}",
                 metrics.get("queue_id"),
                 metrics.get("queue_count")
             );
         }
     }
     println!("  authenticated IONOS -> relay control path verified");
+    Ok(())
+}
+
+fn stage_relay(config: &Config, release: &Release) -> Result<()> {
+    let source = format!("{}/", release.dir.join("relay").display());
+    let destination = format!("{}:{}", config.relay_host, RELAY_STAGE);
+    run(
+        "rsync",
+        &["-azc", "--delete", &source, &destination],
+        Some(&release.dir),
+    )
+}
+
+/// Activate the relay component on the Azure host. Drain mode is an
+/// authorized force-kill (user GO 2026-08-21: lobbies never drain on their
+/// own, so workers are stopped and started individually — never the group
+/// unit — and the kill is registered in the manifest).
+fn activate_relay_host(config: &Config, release: &Release) -> Result<()> {
+    let active = relay_active_connections(config)?;
+    println!(
+        "  relay drain: {active} active client connection(s) across workers — force-kill (registered)"
+    );
+    let env = RelayEnv::load()?;
+    let revision = output("git", &["rev-parse", "--short=12", "HEAD"])?;
+    let relay_fstack = fstack_version(config)?;
+    let release_json: serde_json::Value =
+        serde_json::from_slice(&fs::read(release.dir.join("release.json"))?)?;
+    let relay_component = release_json
+        .get("relay")
+        .and_then(|relay| relay.get("sha256"))
+        .and_then(serde_json::Value::as_str)
+        .context("release.json relay sha256 missing")?;
+    let db_secret = env::var("SOW_DB_SECRET")?;
+    let control_secret = env::var("SOW_RELAY_CONTROL_SECRET")?;
+    let db_path = format!("/tmp/sow-relay-db-secret-{}", std::process::id());
+    let control_path = format!("/tmp/sow-relay-control-secret-{}", std::process::id());
+    stage_secret(&config.relay_host, &db_secret, &db_path)?;
+    stage_secret(&config.relay_host, &control_secret, &control_path)?;
+
+    let ids = (0..env.count)
+        .map(|id| id.to_string())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let units = (0..env.count)
+        .map(|id| format!("sow-relay@{id}.service"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let remote = format!(
+        r#"set -eu
+stage={stage}
+ts=$(date +%s)
+for f in {exec} {config} /usr/local/sbin/sow-relay-worker /etc/systemd/system/sow-relay.service /etc/systemd/system/sow-relay@.service /etc/systemd/system/sow-relay@.service.d/override.conf /etc/tmpfiles.d/sow-relay.conf /etc/systemd/journald.conf.d/30-sow-relay.conf; do
+  if sudo test -e "$f"; then sudo cp -p "$f" "$f.bak_$ts"; fi
+done
+if ! getent group {group} >/dev/null; then sudo groupadd --system {group}; fi
+if ! id -u {user} >/dev/null 2>&1; then sudo useradd --system --gid {group} --home-dir /nonexistent --shell /usr/sbin/nologin {user}; fi
+sudo install -d -o root -g {group} -m 0750 /usr/local/libexec/sow-relay /usr/local/etc/sow
+sudo install -d -o {user} -g {group} -m 0750 {state} {replays}
+sudo install -d -o {user} -g {group} -m 0700 /var/run/dpdk
+sudo chown -R {user}:{group} /var/run/dpdk /dev/hugepages 2>/dev/null || true
+sudo tee /etc/tmpfiles.d/sow-relay.conf >/dev/null <<'EOF'
+d /var/run/dpdk 0700 sowrelay sowrelay -
+Z /dev/hugepages 0700 sowrelay sowrelay -
+EOF
+sudo install -d -m 0755 /etc/systemd/journald.conf.d
+sudo tee /etc/systemd/journald.conf.d/30-sow-relay.conf >/dev/null <<'EOF'
+[Journal]
+SystemMaxUse=256M
+RuntimeMaxUse=128M
+MaxRetentionSec=7day
+RateLimitIntervalSec=30s
+RateLimitBurst=10000
+EOF
+sudo install -o root -g {group} -m 0750 "$stage/bin/sow-relay" {exec}
+sudo install -o root -g {group} -m 0640 "$stage/conf/echo-vf.ini" {config}
+sudo install -o root -g root -m 0755 "$stage/ops/linux/sow-relay-worker" /usr/local/sbin/sow-relay-worker
+sudo install -o root -g root -m 0644 "$stage/ops/linux/sow-relay.service" /etc/systemd/system/sow-relay.service
+sudo install -o root -g root -m 0644 "$stage/ops/linux/sow-relay@.service" /etc/systemd/system/sow-relay@.service
+sudo mkdir -p /etc/systemd/system/sow-relay@.service.d
+db=$(cat {db_path}); ctl=$(cat {control_path}); rm -f {db_path} {control_path}
+sed -e "s|__SOW_DB_SECRET__|$db|" -e "s|__SOW_RELAY_CONTROL_SECRET__|$ctl|" "$stage/ops/linux/sow-relay-override.conf.tmpl" | sudo tee /etc/systemd/system/sow-relay@.service.d/override.conf >/dev/null
+sudo chmod 0600 /etc/systemd/system/sow-relay@.service.d/override.conf
+sudo test -s /usr/local/etc/sow/relay.crt
+sudo test -s /usr/local/etc/sow/relay.key
+sudo openssl x509 -in /usr/local/etc/sow/relay.crt -noout -checkend 86400 >/dev/null
+sudo systemctl daemon-reload
+sudo systemctl enable sow-relay.service >/dev/null
+for id in {ids}; do sudo systemctl stop "sow-relay@$id.service" 2>/dev/null || true; done
+for id in {ids}; do
+  sudo systemctl start "sow-relay@$id.service"
+  port=$((8080+id))
+  i=0
+  until curl -kfsS --max-time 5 "https://127.0.0.1:$port/healthz" >/dev/null; do
+    i=$((i+1))
+    if [ "$i" -ge 60 ]; then echo "relay worker $id failed healthz after start" >&2; exit 78; fi
+    sleep 1
+  done
+done
+test "$(sudo stat -c '%a %U:%G' {exec})" = '750 root:{group}'
+test "$(sudo stat -c '%a %U:%G' {config})" = '640 root:{group}'
+test "$(sudo stat -c '%a' /etc/systemd/system/sow-relay@.service.d/override.conf)" = 600
+for u in {units}; do
+  test "$(systemctl show "$u" -p User --value)" = {user}
+  test "$(systemctl show "$u" -p ActiveState --value)" = active
+  test "$(systemctl show "$u" -p Result --value)" = success
+  test "$(systemctl show "$u" -p ExecMainStatus --value)" = 0
+done
+sudo tee {manifest} >/dev/null <<EOF
+{{"version":"{version}","release":"{release_id}","git":"{revision}","fstack":"{relay_fstack}","relay_sha256":"{relay_component}","ws_write_timeout_ms":{knob},"drain":"force-kill (user-authorized 2026-08-21; non-destructive drain pending)","deployed_at":"$ts"}}
+EOF
+sudo chown root:root {manifest}
+sudo chmod 0644 {manifest}
+"#,
+        stage = RELAY_STAGE,
+        exec = RELAY_EXEC,
+        config = RELAY_CONFIG,
+        group = RELAY_GROUP,
+        user = RELAY_USER,
+        state = RELAY_STATE,
+        replays = RELAY_REPLAYS,
+        manifest = RELAY_MANIFEST,
+        db_path = db_path,
+        control_path = control_path,
+        ids = ids,
+        units = units,
+        version = release.version,
+        release_id = release.id,
+        revision = revision,
+        relay_fstack = relay_fstack,
+        relay_component = relay_component,
+        knob = env.knob,
+    );
+    run("ssh", &[&config.relay_host, &remote], None)
+        .context("relay activation failed")?;
+    println!("  relay activated and registered ({})", &relay_component[..12]);
+    Ok(())
+}
+
+/// The deployed relay must match the release exactly: manifest fields and the
+/// [BOOT] identity line of the running worker. No manifest = the relay was
+/// never deployed through the pipeline.
+fn verify_relay_identity(config: &Config, release: &Release) -> Result<()> {
+    let release_json: serde_json::Value =
+        serde_json::from_slice(&fs::read(release.dir.join("release.json"))?)?;
+    let relay = release_json.get("relay").context("release.json has no relay metadata")?;
+    let expected_sha = relay
+        .get("sha256")
+        .and_then(serde_json::Value::as_str)
+        .context("release relay sha256 missing")?;
+    let expected_knob = relay
+        .get("ws_write_timeout_ms")
+        .and_then(serde_json::Value::as_u64)
+        .context("release relay knob missing")?;
+    let expected_git = relay
+        .get("git")
+        .and_then(serde_json::Value::as_str)
+        .context("release relay git missing")?;
+    let expected_fstack = relay
+        .get("fstack")
+        .and_then(serde_json::Value::as_str)
+        .context("release relay fstack missing")?;
+    let manifest = relay_manifest_remote(config)?
+        .context("relay host has no registered manifest — relay never deployed through ./sow p")?;
+    for (key, expected) in [
+        ("relay_sha256", expected_sha),
+        ("git", expected_git),
+        ("fstack", expected_fstack),
+    ] {
+        let actual = manifest.get(key).and_then(serde_json::Value::as_str).unwrap_or("");
+        if actual != expected {
+            bail!("relay manifest {key}={actual}, release expects {expected}");
+        }
+    }
+    if manifest.get("ws_write_timeout_ms").and_then(serde_json::Value::as_u64) != Some(expected_knob)
+    {
+        bail!("relay manifest knob mismatch");
+    }
+    let boot = output(
+        "ssh",
+        &[&config.relay_host,
+            "sudo journalctl -u sow-relay@0.service --no-pager -n 8000 2>/dev/null | grep '\\[BOOT\\] git=' | tail -1"],
+    )?;
+    if !boot.contains(&format!("git={expected_git}"))
+        || !boot.contains(&format!("ws_write_timeout_ms={expected_knob}"))
+    {
+        bail!("relay worker 0 [BOOT] identity mismatch: {boot}");
+    }
+    println!(
+        "  relay identity verified (git={expected_git} fstack={expected_fstack} knob={expected_knob})"
+    );
     Ok(())
 }
 
@@ -552,6 +811,191 @@ fn build_freebsd(paths: &Paths, config: &Config) -> Result<PathBuf> {
     Ok(local)
 }
 
+/// Registered WS write timeout (ms) for the relay. The pipeline stamps it into
+/// the unit drop-in and the relay manifest, and the relay prints it in [BOOT].
+fn relay_knob_ms() -> u64 {
+    env_or("SOW_WS_WRITE_TIMEOUT_MS", "15000")
+        .parse::<u64>()
+        .unwrap_or(15000)
+}
+
+/// Relay runtime environment rendered into the unit drop-in. Every value here
+/// is release content: it participates in the relay component hash, so a knob
+/// or admission change re-deploys the relay instead of ghosting.
+struct RelayEnv {
+    count: usize,
+    tickets_required: String,
+    max_connections: String,
+    max_connections_per_ip: String,
+    handshakes_per_ip: String,
+    db_url: String,
+    db_resolve_ip: String,
+    replay_spool: String,
+    knob: u64,
+}
+
+impl RelayEnv {
+    fn load() -> Result<Self> {
+        let count = relay_worker_count()?;
+        let tickets_required = env_or("SOW_RELAY_TICKETS_REQUIRED", "1");
+        if tickets_required != "0" && tickets_required != "1" {
+            bail!("SOW_RELAY_TICKETS_REQUIRED must be 0 or 1");
+        }
+        let max_connections = env_or("SOW_RELAY_MAX_CONNECTIONS", "32768");
+        let max_connections_per_ip = env_or("SOW_RELAY_MAX_CONNECTIONS_PER_IP", "4096");
+        let handshakes_per_ip = env_or("SOW_RELAY_HANDSHAKES_PER_IP", "512");
+        let max_connections = max_connections
+            .parse::<usize>()
+            .context("SOW_RELAY_MAX_CONNECTIONS must be an integer")?;
+        let max_connections_per_ip = max_connections_per_ip
+            .parse::<usize>()
+            .context("SOW_RELAY_MAX_CONNECTIONS_PER_IP must be an integer")?;
+        let handshakes_per_ip = handshakes_per_ip
+            .parse::<u32>()
+            .context("SOW_RELAY_HANDSHAKES_PER_IP must be an integer")?;
+        if max_connections == 0 || max_connections_per_ip == 0 || handshakes_per_ip == 0 {
+            bail!("relay admission limits must be positive");
+        }
+        if max_connections_per_ip > max_connections {
+            bail!("SOW_RELAY_MAX_CONNECTIONS_PER_IP must not exceed SOW_RELAY_MAX_CONNECTIONS");
+        }
+        let db_url = env_or("SOW_DB_URL", "https://shadowsofwar.io");
+        if !db_url.starts_with("https://") {
+            bail!("SOW_DB_URL must use https for relay production deploys");
+        }
+        let db_resolve_ip = env_or("SOW_DB_RESOLVE_IP", "74.208.246.177");
+        db_resolve_ip
+            .parse::<std::net::IpAddr>()
+            .with_context(|| format!("invalid SOW_DB_RESOLVE_IP={db_resolve_ip}"))?;
+        Ok(Self {
+            count,
+            tickets_required,
+            max_connections: max_connections.to_string(),
+            max_connections_per_ip: max_connections_per_ip.to_string(),
+            handshakes_per_ip: handshakes_per_ip.to_string(),
+            db_url,
+            db_resolve_ip,
+            replay_spool: RELAY_REPLAYS.to_string(),
+            knob: relay_knob_ms(),
+        })
+    }
+}
+
+/// Registered identity of the f-stack tree used for the relay build.
+fn fstack_version(config: &Config) -> Result<String> {
+    let rev = output("git", &["-C", &config.fstack_repo, "rev-parse", "--short=12", "HEAD"])
+        .with_context(|| format!("f-stack repo has no HEAD: {}", config.fstack_repo))?;
+    let dirty = output("git", &["-C", &config.fstack_repo, "status", "--porcelain"])?;
+    Ok(if dirty.is_empty() {
+        rev
+    } else {
+        format!("{rev}-dirty")
+    })
+}
+
+/// Build the relay on the Azure host (f-stack lib + binary) and fetch the
+/// binary back into dist/relay-bin. Source of truth is always the repo: both
+/// trees are rsynced with --delete before compiling.
+fn build_relay(paths: &Paths, config: &Config) -> Result<PathBuf> {
+    let fstack_hash = input_fingerprint("fstack-v1", "", &[Path::new(&config.fstack_repo)])?;
+    let local = paths.root.join("dist/relay-bin");
+    let fingerprint = input_fingerprint(
+        "relay-v1",
+        &fstack_hash,
+        &[
+            &paths.root.join("Cargo.toml"),
+            &paths.root.join("Cargo.lock"),
+            &paths.root.join("sow-relay"),
+            &paths.root.join("fstack-bridge"),
+            &paths.root.join("sow-dist/deploy/linux"),
+            &paths.root.join("fstack-bridge/echo-vf.ini"),
+        ],
+    )?;
+    let cache = paths.root.join("dist/.sow-state/relay-build");
+    if local.join("sow-relay").is_file()
+        && fs::read_to_string(&cache).is_ok_and(|value| value.trim() == fingerprint)
+    {
+        println!("==> Relay unchanged — reusing binary");
+        return Ok(local);
+    }
+
+    println!("==> Building relay on {}", config.relay_host);
+    let source = format!("{}/", paths.root.display());
+    let destination = format!("{}:{}/", config.relay_host, config.relay_root);
+    run(
+        "rsync",
+        &[
+            "-azc",
+            "--delete",
+            "--exclude=.git",
+            "--exclude=dist",
+            "--exclude=target",
+            "--exclude=sow-dist/.env",
+            "--exclude=replays",
+            &source,
+            &destination,
+        ],
+        Some(&paths.root),
+    )?;
+
+    let fstack_source = format!("{}/", config.fstack_repo.trim_end_matches('/'));
+    let fstack_destination = format!("{}:{}", config.relay_host, RELAY_FSTACK_ROOT);
+    run(
+        "rsync",
+        &[
+            "-azc",
+            "--delete",
+            "--exclude=.git",
+            "--exclude=dpdk",
+            &fstack_source,
+            &fstack_destination,
+        ],
+        Some(Path::new(&config.fstack_repo)),
+    )?;
+
+    let fstack_cache = paths.root.join("dist/.sow-state/fstack-build");
+    if !fs::read_to_string(&fstack_cache).is_ok_and(|value| value.trim() == fstack_hash) {
+        println!(
+            "==> F-Stack changed ({}) — rebuilding libfstack.a on relay host",
+            &fstack_hash[..12]
+        );
+        let make = format!(
+            "set -eu; export PATH=$HOME/.cargo/bin:$PATH; cd {} && make -C lib -j$(nproc)",
+            shell_quote(RELAY_FSTACK_ROOT)
+        );
+        run("ssh", &[&config.relay_host, &make], None)?;
+        fs::write(&fstack_cache, format!("{fstack_hash}\n"))?;
+    }
+
+    let build = format!(
+        "set -eu; export PATH=$HOME/.cargo/bin:$PATH; export FSTACK_LIB_DIR={}; cd {} && cargo build --release -p sow-relay",
+        shell_quote(&format!("{RELAY_FSTACK_ROOT}/lib")),
+        shell_quote(&config.relay_root)
+    );
+    run("ssh", &[&config.relay_host, &build], None)?;
+
+    if local.exists() {
+        fs::remove_dir_all(&local)?;
+    }
+    fs::create_dir_all(&local)?;
+    let remote = format!(
+        "{}:{}/target/release/sow-relay",
+        config.relay_host, config.relay_root
+    );
+    let destination = local.join("sow-relay");
+    run(
+        "scp",
+        &[&remote, destination.to_str().context("relay path is not UTF-8")?],
+        None,
+    )?;
+    require_file(&destination, "relay binary")?;
+    fs::set_permissions(&destination, fs::Permissions::from_mode(0o550))?;
+    fs::create_dir_all(cache.parent().context("relay cache parent missing")?)?;
+    fs::write(cache, format!("{fingerprint}\n"))?;
+    println!("  relay binary fetched ({} bytes)", fs::metadata(&destination)?.len());
+    Ok(local)
+}
+
 fn input_fingerprint(tag: &str, value: &str, inputs: &[&Path]) -> Result<String> {
     let mut hash = Sha256::new();
     hash.update(tag.as_bytes());
@@ -586,7 +1030,13 @@ fn input_fingerprint(tag: &str, value: &str, inputs: &[&Path]) -> Result<String>
     Ok(format!("{:x}", hash.finalize()))
 }
 
-fn assemble_release(paths: &Paths, web: &Path, binaries: &Path, version: &str) -> Result<Release> {
+fn assemble_release(
+    paths: &Paths,
+    web: &Path,
+    binaries: &Path,
+    version: &str,
+    config: &Config,
+) -> Result<Release> {
     let revision = output("git", &["rev-parse", "--short=12", "HEAD"])?;
     let work = paths.root.join("dist/.release");
     if work.exists() {
@@ -618,6 +1068,83 @@ fn assemble_release(paths: &Paths, web: &Path, binaries: &Path, version: &str) -
         &work.join("ops/snippets"),
     )?;
 
+    // Relay component: binary, config, systemd units, wrapper, and the rendered
+    // drop-in template (secrets stay as placeholders, injected on the host).
+    // Everything here is release content — the relay component hash changes
+    // when the knob, admission limits, units, or binary change, so the plan
+    // diff detects drift instead of ghosting.
+    let relay = work.join("relay");
+    fs::create_dir_all(relay.join("bin"))?;
+    fs::create_dir_all(relay.join("conf"))?;
+    fs::copy(
+        paths.root.join("dist/relay-bin/sow-relay"),
+        relay.join("bin/sow-relay"),
+    )?;
+    fs::set_permissions(relay.join("bin/sow-relay"), fs::Permissions::from_mode(0o550))?;
+    fs::copy(
+        paths.root.join("fstack-bridge/echo-vf.ini"),
+        relay.join("conf/echo-vf.ini"),
+    )?;
+    let ops = relay.join("ops/linux");
+    fs::create_dir_all(&ops)?;
+    let env = RelayEnv::load()?;
+    let wants = (0..env.count)
+        .map(|id| format!("sow-relay@{id}.service"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let stops = (0..env.count)
+        .rev()
+        .map(|id| format!("sow-relay@{id}.service"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let secondary_ids = if env.count > 1 {
+        (1..env.count)
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+            .join("|")
+    } else {
+        String::new()
+    };
+    for (name, tokens) in [
+        ("sow-relay.service", &[("__WANTS__", wants.as_str()), ("__STOPS__", stops.as_str())][..]),
+        ("sow-relay-worker", &[("__SECONDARY_IDS__", secondary_ids.as_str())][..]),
+        ("sow-relay@.service", &[][..]),
+    ] {
+        let src = paths
+            .root
+            .join("sow-dist/deploy/linux")
+            .join(format!("{name}.tmpl"));
+        let mut content = fs::read_to_string(&src)?;
+        for (token, value) in tokens {
+            content = content.replace(token, value);
+        }
+        fs::write(ops.join(name), content)?;
+    }
+    let mut override_tpl =
+        fs::read_to_string(paths.root.join("sow-dist/deploy/linux/sow-relay-override.conf.tmpl"))?;
+    let relay_fstack = fstack_version(config)?;
+    for (token, value) in [
+        ("__SOW_RELAY_WORKER_COUNT__", env.count.to_string()),
+        ("__SOW_RELAY_TICKETS_REQUIRED__", env.tickets_required.clone()),
+        ("__SOW_RELAY_MAX_CONNECTIONS__", env.max_connections.clone()),
+        ("__SOW_RELAY_MAX_CONNECTIONS_PER_IP__", env.max_connections_per_ip.clone()),
+        ("__SOW_RELAY_HANDSHAKES_PER_IP__", env.handshakes_per_ip.clone()),
+        ("__SOW_DB_URL__", env.db_url.clone()),
+        ("__SOW_DB_RESOLVE_IP__", env.db_resolve_ip.clone()),
+        ("__SOW_REPLAY_SPOOL_DIR__", env.replay_spool.clone()),
+        ("__SOW_WS_WRITE_TIMEOUT_MS__", env.knob.to_string()),
+        ("__SOW_RELAY_GIT__", revision.clone()),
+        ("__SOW_FSTACK_VERSION__", relay_fstack.clone()),
+    ] {
+        override_tpl = override_tpl.replace(token, &value);
+    }
+    if override_tpl.contains("__SOW_") {
+        bail!("relay override template has an unrendered token");
+    }
+    fs::write(ops.join("sow-relay-override.conf.tmpl"), override_tpl)?;
+    require_file(&relay.join("bin/sow-relay"), "relay binary")?;
+    require_file(&relay.join("conf/echo-vf.ini"), "relay config")?;
+
     let nginx_site = fs::read_to_string(
         paths
             .root
@@ -647,6 +1174,7 @@ fn assemble_release(paths: &Paths, web: &Path, binaries: &Path, version: &str) -
         ("server", component_hash(&work.join("bin/sow-server"))?),
         ("database", component_hash(&work.join("bin/sow-database"))?),
         ("ops", component_hash(&work.join("ops"))?),
+        ("relay", component_hash(&work.join("relay"))?),
     ];
     let component_text = components
         .iter()
@@ -655,12 +1183,23 @@ fn assemble_release(paths: &Paths, web: &Path, binaries: &Path, version: &str) -
         .join("\n");
     fs::write(work.join("COMPONENTS"), format!("{component_text}\n"))?;
     fs::write(work.join("VERSION"), format!("{version}\n"))?;
+    let relay_component = components
+        .iter()
+        .find(|(name, _)| *name == "relay")
+        .map(|(_, hash)| hash.clone())
+        .context("relay component missing")?;
     fs::write(
         work.join("release.json"),
         serde_json::to_vec_pretty(&json!({
             "version": version,
             "git": revision,
             "components": components.iter().map(|(name, hash)| json!({"name": name, "sha256": hash})).collect::<Vec<_>>(),
+            "relay": json!({
+                "sha256": relay_component,
+                "fstack": relay_fstack,
+                "ws_write_timeout_ms": env.knob,
+                "drain": "force-kill (user-authorized 2026-08-21; non-destructive drain pending)",
+            }),
         }))?,
     )?;
     let manifest = write_manifest(&work)?;
@@ -703,6 +1242,20 @@ fn write_manifest(root: &Path) -> Result<PathBuf> {
     Ok(path)
 }
 
+/// The relay host's registered deploy manifest (written by activate_relay_host).
+fn relay_manifest_remote(config: &Config) -> Result<Option<serde_json::Value>> {
+    let raw = output(
+        "ssh",
+        &[&config.relay_host, &format!("sudo cat {RELAY_MANIFEST} 2>/dev/null || true")],
+    )?;
+    if raw.is_empty() {
+        return Ok(None);
+    }
+    serde_json::from_str(&raw)
+        .map(Some)
+        .context("relay host manifest is not valid JSON")
+}
+
 fn remote_plan(config: &Config, release: &Release) -> Result<ComponentPlan> {
     let remote = output(
         "ssh",
@@ -713,12 +1266,20 @@ fn remote_plan(config: &Config, release: &Release) -> Result<ComponentPlan> {
     )?;
     let current = parse_components(&remote);
     let local = parse_components(&fs::read_to_string(release.dir.join("COMPONENTS"))?);
+    let relay_remote = relay_manifest_remote(config)?
+        .and_then(|manifest| {
+            manifest
+                .get("relay_sha256")
+                .and_then(|value| value.as_str())
+                .map(|value| value.to_string())
+        });
     Ok(ComponentPlan {
         web: current.get("web") != local.get("web"),
         maps: current.get("maps") != local.get("maps"),
         server: current.get("server") != local.get("server"),
         database: current.get("database") != local.get("database"),
         ops: current.get("ops") != local.get("ops"),
+        relay: relay_remote != local.get("relay").cloned(),
     })
 }
 

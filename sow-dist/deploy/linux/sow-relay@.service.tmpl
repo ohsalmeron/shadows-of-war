@@ -1,0 +1,28 @@
+[Unit]
+Description=SOW F-Stack relay worker %i
+After=network-online.target systemd-tmpfiles-setup.service
+Wants=network-online.target
+PartOf=sow-relay.service
+[Service]
+Type=simple
+User=sowrelay
+Group=sowrelay
+UMask=0077
+LimitNOFILE=1000000
+LimitMEMLOCK=infinity
+CapabilityBoundingSet=CAP_IPC_LOCK CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_NICE
+AmbientCapabilities=CAP_IPC_LOCK CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_NICE
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=full
+RuntimeDirectory=sow-relay
+RuntimeDirectoryMode=0700
+Environment=RUNTIME_DIRECTORY=/run/sow-relay
+WorkingDirectory=/var/lib/sow-relay
+ExecStart=/usr/local/sbin/sow-relay-worker %i
+Restart=on-failure
+RestartSec=5
+ExecStartPre=/bin/sh -c 'test "%i" = 0 || until curl -kfsS --max-time 1 https://127.0.0.1:8080/healthz >/dev/null; do sleep 1; done'
+[Install]
+WantedBy=sow-relay.service

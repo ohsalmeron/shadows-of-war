@@ -1,0 +1,11 @@
+[Unit]
+Description=SOW F-Stack relay worker group
+Wants=__WANTS__
+After=network-online.target
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/true
+ExecStop=/usr/bin/systemctl stop __STOPS__
+[Install]
+WantedBy=multi-user.target
