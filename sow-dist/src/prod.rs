@@ -946,7 +946,12 @@ fn build_relay(paths: &Paths, config: &Config) -> Result<PathBuf> {
             "-azc",
             "--delete",
             "--exclude=.git",
-            "--exclude=dpdk",
+            // dpdk/ is the DPDK 24.11.6 source tree (exact match for the host's
+            // installed librte archives); it is synced so f-stack can compile
+            // against it. dpdk/build is the meson build dir created on the host
+            // when restoring the missing DPDK headers — never synced back or
+            // wiped, or every deploy would trigger a full DPDK rebuild.
+            "--exclude=dpdk/build",
             &fstack_source,
             &fstack_destination,
         ],
@@ -956,14 +961,23 @@ fn build_relay(paths: &Paths, config: &Config) -> Result<PathBuf> {
     let fstack_cache = paths.root.join("dist/.sow-state/fstack-build");
     if !fs::read_to_string(&fstack_cache).is_ok_and(|value| value.trim() == fstack_hash) {
         println!(
-            "==> F-Stack changed ({}) — rebuilding libfstack.a on relay host",
+            "==> F-Stack changed ({}) — restoring DPDK headers + rebuilding libfstack.a on relay host",
             &fstack_hash[..12]
         );
-        let make = format!(
-            "set -eu; export PATH=$HOME/.cargo/bin:$PATH; cd {} && make -C lib -j$(nproc)",
-            shell_quote(RELAY_FSTACK_ROOT)
+        // f-stack compiles against DPDK headers installed at /usr/local/include
+        // (rte_config.h and friends). The host lost that header tree while the
+        // relay was outside the pipeline; restore it from the synced source
+        // (version-matched with the installed librte archives) via the official
+        // meson install, then build libfstack.a.
+        let prepare = format!(
+            "set -eu; export PATH=$HOME/.cargo/bin:$PATH; \
+             if ! command -v meson >/dev/null 2>&1; then sudo apt-get update -qq; sudo apt-get install -y -qq meson ninja-build; fi; \
+             if ! test -f /usr/local/include/rte_config.h; then cd {dpdk_root} && meson setup build --platform=generic && ninja -C build && sudo ninja -C build install; fi; \
+             cd {fstack_root} && make -C lib -j$(nproc)",
+            dpdk_root = shell_quote(&format!("{RELAY_FSTACK_ROOT}/dpdk")),
+            fstack_root = shell_quote(RELAY_FSTACK_ROOT)
         );
-        run("ssh", &[&config.relay_host, &make], None)?;
+        run("ssh", &[&config.relay_host, &prepare], None)?;
         fs::write(&fstack_cache, format!("{fstack_hash}\n"))?;
     }
 
