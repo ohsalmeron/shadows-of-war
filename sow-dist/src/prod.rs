@@ -671,10 +671,10 @@ fn verify_relay_identity(config: &Config, release: &Release) -> Result<()> {
         .get("ws_write_timeout_ms")
         .and_then(serde_json::Value::as_u64)
         .context("release relay knob missing")?;
-    let expected_git = relay
+    let expected_git = release_json
         .get("git")
         .and_then(serde_json::Value::as_str)
-        .context("release relay git missing")?;
+        .context("release git missing")?;
     let expected_fstack = relay
         .get("fstack")
         .and_then(serde_json::Value::as_str)
