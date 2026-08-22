@@ -946,11 +946,16 @@ fn build_relay(paths: &Paths, config: &Config) -> Result<PathBuf> {
             "-azc",
             "--delete",
             "--exclude=.git",
-            // dpdk/ is the DPDK 24.11.6 source tree (exact match for the host's
-            // installed librte archives); it is synced so f-stack can compile
-            // against it. dpdk/build is the meson build dir created on the host
-            // when restoring the missing DPDK headers — never synced back or
-            // wiped, or every deploy would trigger a full DPDK rebuild.
+            // Build artifacts (*.o/*.a) are gitignored local junk — never sync
+            // them to the host, or make links objects compiled with a different
+            // toolchain ("bad value" archive errors). dpdk/ is the DPDK 24.11.6
+            // source tree (exact match for the host's installed librte
+            // archives); it is synced so f-stack can compile against it.
+            // dpdk/build is the meson build dir created on the host when
+            // restoring the missing DPDK headers — never synced back or wiped,
+            // or every deploy would trigger a full DPDK rebuild.
+            "--exclude=*.o",
+            "--exclude=*.a",
             "--exclude=dpdk/build",
             &fstack_source,
             &fstack_destination,
@@ -974,7 +979,7 @@ fn build_relay(paths: &Paths, config: &Config) -> Result<PathBuf> {
              if ! command -v meson >/dev/null 2>&1; then sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq; sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq meson ninja-build python3-pyelftools; fi; \
              if ! python3 -c 'import elftools' >/dev/null 2>&1; then sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-pyelftools; fi; \
              if ! test -f /usr/local/include/rte_config.h; then cd {dpdk_root}; if test -f build/build.ninja; then meson setup --reconfigure build -Dplatform=generic >/dev/null; else meson setup build -Dplatform=generic; fi; ninja -C build; sudo ninja -C build install; fi; \
-             cd {fstack_root} && make -C lib -j$(nproc)",
+             cd {fstack_root} && make -C lib clean >/dev/null 2>&1; make -C lib -j$(nproc)",
             dpdk_root = shell_quote(&format!("{RELAY_FSTACK_ROOT}/dpdk")),
             fstack_root = shell_quote(RELAY_FSTACK_ROOT)
         );
