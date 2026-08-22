@@ -972,7 +972,7 @@ fn build_relay(paths: &Paths, config: &Config) -> Result<PathBuf> {
         let prepare = format!(
             "set -eu; export PATH=$HOME/.cargo/bin:$PATH; \
              if ! command -v meson >/dev/null 2>&1; then sudo apt-get update -qq; sudo apt-get install -y -qq meson ninja-build; fi; \
-             if ! test -f /usr/local/include/rte_config.h; then cd {dpdk_root} && meson setup build --platform=generic && ninja -C build && sudo ninja -C build install; fi; \
+             if ! test -f /usr/local/include/rte_config.h; then cd {dpdk_root} && meson setup build -Dplatform=generic && ninja -C build && sudo ninja -C build install; fi; \
              cd {fstack_root} && make -C lib -j$(nproc)",
             dpdk_root = shell_quote(&format!("{RELAY_FSTACK_ROOT}/dpdk")),
             fstack_root = shell_quote(RELAY_FSTACK_ROOT)
