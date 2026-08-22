@@ -527,7 +527,8 @@ fn stage_relay(config: &Config, release: &Release) -> Result<()> {
         "rsync",
         &["-azc", "--delete", &source, &destination],
         Some(&release.dir),
-    )?
+    )?;
+    Ok(())
 }
 
 /// Activate the relay component on the Azure host. Drain mode is an
