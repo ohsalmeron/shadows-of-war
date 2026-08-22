@@ -973,13 +973,15 @@ fn build_relay(paths: &Paths, config: &Config) -> Result<PathBuf> {
         // (rte_config.h and friends). The host lost that header tree while the
         // relay was outside the pipeline; restore it from the synced source
         // (version-matched with the installed librte archives) via the official
-        // meson install, then build libfstack.a.
+        // meson install, then build libfstack.a. FF_ZC_RECV=1 is required: the
+        // bridge uses the zero-copy recv API (ff_zc_recv*), which compiles out
+        // of the lib unless the make knob is set.
         let prepare = format!(
             "set -eu; export PATH=$HOME/.cargo/bin:$PATH; \
              if ! command -v meson >/dev/null 2>&1; then sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq; sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq meson ninja-build python3-pyelftools; fi; \
              if ! python3 -c 'import elftools' >/dev/null 2>&1; then sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-pyelftools; fi; \
              if ! test -f /usr/local/include/rte_config.h; then cd {dpdk_root}; if test -f build/build.ninja; then meson setup --reconfigure build -Dplatform=generic >/dev/null; else meson setup build -Dplatform=generic; fi; ninja -C build; sudo ninja -C build install; fi; \
-             cd {fstack_root} && make -C lib clean >/dev/null 2>&1; make -C lib -j$(nproc)",
+             cd {fstack_root} && make -C lib clean >/dev/null 2>&1; make -C lib -j$(nproc) FF_ZC_RECV=1",
             dpdk_root = shell_quote(&format!("{RELAY_FSTACK_ROOT}/dpdk")),
             fstack_root = shell_quote(RELAY_FSTACK_ROOT)
         );
