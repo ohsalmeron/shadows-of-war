@@ -971,8 +971,9 @@ fn build_relay(paths: &Paths, config: &Config) -> Result<PathBuf> {
         // meson install, then build libfstack.a.
         let prepare = format!(
             "set -eu; export PATH=$HOME/.cargo/bin:$PATH; \
-             if ! command -v meson >/dev/null 2>&1; then sudo apt-get update -qq; sudo apt-get install -y -qq meson ninja-build; fi; \
-             if ! test -f /usr/local/include/rte_config.h; then cd {dpdk_root} && meson setup build -Dplatform=generic && ninja -C build && sudo ninja -C build install; fi; \
+             if ! command -v meson >/dev/null 2>&1; then sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq; sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq meson ninja-build python3-pyelftools; fi; \
+             if ! python3 -c 'import elftools' >/dev/null 2>&1; then sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-pyelftools; fi; \
+             if ! test -f /usr/local/include/rte_config.h; then cd {dpdk_root}; if test -f build/build.ninja; then meson setup --reconfigure build -Dplatform=generic >/dev/null; else meson setup build -Dplatform=generic; fi; ninja -C build; sudo ninja -C build install; fi; \
              cd {fstack_root} && make -C lib -j$(nproc)",
             dpdk_root = shell_quote(&format!("{RELAY_FSTACK_ROOT}/dpdk")),
             fstack_root = shell_quote(RELAY_FSTACK_ROOT)
