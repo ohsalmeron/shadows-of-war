@@ -1163,7 +1163,12 @@ fn assemble_release(
     ] {
         override_tpl = override_tpl.replace(token, &value);
     }
-    if override_tpl.contains("__SOW_") {
+    // The two secret placeholders are injected on the host (sed) — they are
+    // the only tokens allowed to survive this check.
+    let secrets_only = override_tpl
+        .replace("__SOW_DB_SECRET__", "")
+        .replace("__SOW_RELAY_CONTROL_SECRET__", "");
+    if secrets_only.contains("__SOW_") {
         bail!("relay override template has an unrendered token");
     }
     fs::write(ops.join("sow-relay-override.conf.tmpl"), override_tpl)?;
