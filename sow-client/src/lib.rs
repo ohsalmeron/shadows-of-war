@@ -28,6 +28,7 @@ fn get_build_version() -> String {
 mod asset_config;
 mod anonymous_identity;
 mod config;
+pub mod diag;
 
 pub use asset_config::AssetConfig;
 
@@ -324,6 +325,7 @@ pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
 #[wasm_bindgen::prelude::wasm_bindgen(start)]
 pub fn wasm_main() {
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+    diag::init_from_url();
     console_log::init_with_level(log::Level::Info).expect("error initializing logger");
     log::info!("SOW ENGINE WASM STARTING...");
     crate::web_canvas::install_viewport_listeners();

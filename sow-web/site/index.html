@@ -48,10 +48,10 @@
       <nav class="desktop-nav" aria-label="Main navigation">
         <a href="#game">The game</a>
         <a href="#leaders">Leaders</a>
-        <a href="#media">Media</a>
+        <a href="#media">Gameplay</a>
         <a href="/how-to-play/">How to play</a>
         <a href="#faq">FAQ</a>
-        <a href="#play">Platforms</a>
+        <a href="#play">Play</a>
       </nav>
       <div class="nav-actions">
         <button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch color theme">
@@ -65,10 +65,10 @@
     <nav class="mobile-menu" id="mobile-menu" aria-label="Mobile navigation">
       <a href="#game">The game</a>
       <a href="#leaders">Leaders</a>
-      <a href="#media">Media</a>
+      <a href="#media">Gameplay</a>
       <a href="/how-to-play/">How to play</a>
       <a href="#faq">FAQ</a>
-      <a href="#play">Platforms</a>
+      <a href="#play">Play</a>
       <a class="button button-orange" href="/play/">Play now</a>
     </nav>
   </header>
@@ -95,7 +95,7 @@
             <div class="hero-frame-top"><span>LEADER SELECT</span><span data-hero-code>ROM / 01</span></div>
             <picture>
               <source media="(max-width: 700px)" data-hero-mobile srcset="/assets/cdn/leaders/caesar_mobile.webp">
-              <img data-hero-image src="/assets/cdn/leaders/caesar_desktop.webp" alt="Julius Caesar leader artwork">
+              <img data-hero-image src="/assets/cdn/leaders/caesar_desktop.webp" alt="Julius Caesar leader artwork" fetchpriority="high" decoding="async">
             </picture>
             <div class="hero-frame-gradient"></div>
             <div class="hero-leader-caption">
@@ -155,8 +155,8 @@
         </div>
         <div class="leaders-layout">
           <div class="leaders-grid" data-leaders-grid></div>
-          <aside class="leader-detail" data-leader-detail>
-            <div class="detail-image"><img data-detail-image src="/assets/cdn/leaders/caesar_desktop.webp" alt="Julius Caesar artwork" loading="lazy"></div>
+          <aside class="leader-detail" data-leader-detail aria-live="polite">
+            <div class="detail-image"><img data-detail-image src="/assets/cdn/leaders/caesar_desktop.webp" alt="Julius Caesar artwork" loading="lazy" decoding="async"></div>
             <div class="detail-body"><p class="mono-label" data-detail-code>ROM · 01</p><h3 data-detail-name>Julius Caesar</h3><p data-detail-civ>Roman Empire</p><div class="detail-rule"></div><p class="mono-label">COMMAND TRAIT</p><p class="detail-ability" data-detail-ability>Legions of Rome</p><p class="detail-description" data-detail-description>Armies fight 10% stronger.</p></div>
           </aside>
         </div>
@@ -172,7 +172,7 @@
         </div>
         <div class="media-grid">
           <div class="trailer-card">
-            <video controls muted preload="metadata" poster="/assets/media/session-expansion.webp">
+            <video controls muted playsinline preload="metadata" poster="/assets/media/session-expansion.webp" aria-label="Shadows of War gameplay capture">
               <source src="/assets/media/shadows-of-war-gameplay.mp4" type="video/mp4">
               Your browser does not support embedded video.
             </video>

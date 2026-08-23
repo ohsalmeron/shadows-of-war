@@ -112,18 +112,13 @@ impl SowApp {
                             }
                         }
                         ServerMessage::Turn(turn_msg) => {
-                            let intents_count = turn_msg.turn.intents.len();
-                            let q_len = self.sim.turn_queue.len() + 1;
-                            let turn_num = turn_msg.turn.turn_number;
-                            if q_len <= 3 || q_len % 20 == 0 || intents_count > 0 || turn_num % 50 == 0 {
-                                log::info!(
-                                    "[DIAG NET] 📦 Turn received: #{} intents={} turn_q_len={} phase={:?}",
-                                    turn_num,
-                                    intents_count,
-                                    q_len,
-                                    self.ui.app.phase
-                                );
-                            }
+                            // NOTE(2026-08-22): per-turn [DIAG NET] logging
+                            // disabled — added to diagnose the F-Stack relay
+                            // lag report; at 10 Hz it logged EVERY turn and
+                            // Chrome's console made DevTools-open sessions
+                            // noticeably slower. Relay forensics exonerated
+                            // the delivery path. Re-enable behind
+                            // `crate::diag::enabled()` if needed.
                             self.sim.turn_queue.push_back(turn_msg.turn);
                             self.ui.app.hud_state.sync_state = None;
                         }

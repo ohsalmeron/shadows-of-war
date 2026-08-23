@@ -41,8 +41,10 @@
       <nav class="desktop-nav" aria-label="Main navigation">
         <a href="/#game">The game</a>
         <a href="/#leaders">Leaders</a>
-        <a href="/how-to-play/">How to play</a>
+        <a href="/#media">Gameplay</a>
+        <a href="/how-to-play/" aria-current="page">How to play</a>
         <a href="/#faq">FAQ</a>
+        <a href="/#play">Play</a>
       </nav>
       <div class="nav-actions">
         <button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch color theme">
@@ -56,8 +58,10 @@
     <nav class="mobile-menu" id="mobile-menu" aria-label="Mobile navigation">
       <a href="/#game">The game</a>
       <a href="/#leaders">Leaders</a>
-      <a href="/how-to-play/">How to play</a>
+      <a href="/#media">Gameplay</a>
+      <a href="/how-to-play/" aria-current="page">How to play</a>
       <a href="/#faq">FAQ</a>
+      <a href="/#play">Play</a>
       <a class="button button-orange" href="/play/">Play now</a>
     </nav>
   </header>
@@ -116,6 +120,7 @@
       const toggle = document.querySelector('[data-theme-toggle]');
       const menu = document.querySelector('#mobile-menu');
       const menuToggle = document.querySelector('[data-menu-toggle]');
+      menu.setAttribute('aria-hidden', 'true');
       const applyTheme = theme => {
         root.dataset.theme = theme;
         localStorage.setItem('sow-theme', theme);
@@ -129,8 +134,15 @@
       menuToggle.addEventListener('click', () => {
         const open = menu.classList.toggle('is-open');
         menuToggle.setAttribute('aria-expanded', String(open));
+        menuToggle.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation');
+        menu.setAttribute('aria-hidden', String(!open));
       });
-      menu.querySelectorAll('a').forEach(link => link.addEventListener('click', () => menu.classList.remove('is-open')));
+      menu.querySelectorAll('a').forEach(link => link.addEventListener('click', () => {
+        menu.classList.remove('is-open');
+        menuToggle.setAttribute('aria-expanded', 'false');
+        menuToggle.setAttribute('aria-label', 'Open navigation');
+        menu.setAttribute('aria-hidden', 'true');
+      }));
     })();
   </script>
 </body>

@@ -846,6 +846,16 @@ unsafe fn accept_pending(listener_fd: c_int) {
         }
         let on: c_int = 1;
         crate::ffi::ff_ioctl(nfd, FIONBIO as libc::c_ulong, &on);
+        // Ticks are ~20B and latency-critical; Nagle's ACK-wait batches them
+        // into bursts when the path to Cloudflare delays ACKs, which clients
+        // read as stutter. Disable it on every accepted socket.
+        crate::ffi::ff_setsockopt(
+            nfd,
+            libc::IPPROTO_TCP,
+            libc::TCP_NODELAY,
+            &on as *const c_int as *const c_void,
+            mem::size_of::<c_int>() as socklen_t,
+        );
         ACCEPTS += 1;
         // The accept counter is strictly monotonic: it is this connection's
         // unique generation while it owns the fd.

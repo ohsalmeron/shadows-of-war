@@ -44,22 +44,21 @@ impl SowEngine {
             y: u32,
         }
         let mut geo_nations: Vec<GeoCand> = Vec::new();
-        let mut geo_tribes: Vec<GeoCand> = Vec::new();
+        let mut geo_tribes: Vec<&'static str> = Vec::new();
         if let Some(bounds) = self.state.geo_bounds {
             let (map_w, map_h) = (self.state.map.width, self.state.map.height);
             for entity in crate::geo_entities::all() {
                 if let Some((x, y)) =
                     bounds.project(entity.lat as f64, entity.lon as f64, map_w, map_h)
                 {
-                    let cand = GeoCand {
-                        name: entity.name,
-                        x,
-                        y,
-                    };
                     if entity.kind == crate::geo_entities::EntityKind::Tribe {
-                        geo_tribes.push(cand);
+                        geo_tribes.push(entity.name);
                     } else {
-                        geo_nations.push(cand);
+                        geo_nations.push(GeoCand {
+                            name: entity.name,
+                            x,
+                            y,
+                        });
                     }
                 }
             }
@@ -201,7 +200,10 @@ impl SowEngine {
             }
         }
 
-        // Spawn tribes (IDs above city-states)
+        // Spawn tribes (IDs above city-states).
+        // Tribes use historical/geo names for flavor, but spawn dynamically
+        // across all available land tiles with distance separation (OpenFront-style)
+        // rather than clustering on historical centroids.
         let tribe_start_id = 104 + total_city_states_to_spawn as u16;
         let fallback_pool = crate::tribes::FALLBACK_TRIBES;
         let mut fallback_indices: Vec<usize> = (0..fallback_pool.len()).collect();
@@ -212,19 +214,17 @@ impl SowEngine {
             let mut name = String::new();
             let mut found_name = false;
             let mut attempts = 0;
-            let mut spawn_point: Option<(u32, u32)> = None;
 
-            // Geo tier: tribes inside the map bounds at their historical homelands.
+            // Geo tier: historical tribe names inside the map bounds.
             while !found_name && !geo_tribe_indices.is_empty() {
                 let idx = (rng.rand() as usize) % geo_tribe_indices.len();
-                let cand = &geo_tribes[geo_tribe_indices[idx]];
+                let cand_name = geo_tribes[geo_tribe_indices[idx]];
                 geo_tribe_indices.swap_remove(idx);
-                if used_names.contains(cand.name) {
+                if used_names.contains(cand_name) {
                     continue;
                 }
-                name = cand.name.to_string();
+                name = cand_name.to_string();
                 used_names.insert(name.clone());
-                spawn_point = self.nearest_free_land(cand.x, cand.y);
                 found_name = true;
             }
 
@@ -250,9 +250,7 @@ impl SowEngine {
                 name = format!("Tribe {}", bot_id);
             }
 
-            if spawn_point.is_none() {
-                spawn_point = self.find_valid_spawn(&mut rng);
-            }
+            let spawn_point = self.find_valid_spawn(&mut rng);
 
             if let Some((sx, sy)) = spawn_point {
                 let color = crate::player::bot_territory_color(self.state.seed, bot_id);

@@ -1,19 +1,58 @@
 #!/usr/bin/env bash
-# Shadows of War — single entrypoint
-#   ./sow       → run native client
-#   ./sow l     → local web dev (WASM + serve :8787)
-#   ./sow p     → full production deployment (web + server)
+# Shadows of War — single entrypoint & official developer launcher
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${ROOT}"
 
-if [[ -f "${ROOT}/sow-dist/.env" ]]; then
-  set -a; source "${ROOT}/sow-dist/.env"; set +a
-fi
+show_help() {
+  cat <<'EOF'
+Shadows of War — Official Developer CLI & Launcher
 
-export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-${ROOT}/target}"
-mkdir -p "${CARGO_TARGET_DIR}"
+USAGE:
+  ./sow [COMMAND] [OPTIONS]
 
-BIN="${CARGO_TARGET_DIR}/debug/sow"
-cargo build -p sow-dist
-exec "${BIN}" "${@:-native}"
+COMMANDS:
+  (no args) / native   Run native desktop game client directly
+  p, prod              Run full production build & deploy pipeline (WASM + FreeBSD + Azure)
+  help, -h, --help     Show this help message
+
+EXAMPLES:
+  ./sow                # Launch desktop game client
+  ./sow p              # Full production build and deploy to IONOS & Azure
+  ./sow p -v           # Production deploy with version bump
+EOF
+}
+
+CMD="${1:-native}"
+
+case "${CMD}" in
+  -h|--help|help)
+    show_help
+    exit 0
+    ;;
+  native|n)
+    export VERBOSE="${VERBOSE:-1}"
+    export SOW_WS_URL="${SOW_WS_URL:-wss://shadowsofwar.io/ws/}"
+    export SOW_MAPS_URL="${SOW_MAPS_URL:-https://shadowsofwar.io/maps}"
+    export SOW_ASSETS_URL="${SOW_ASSETS_URL:-https://shadowsofwar.io/assets}"
+    export SOW_DATABASE_URL="${SOW_DATABASE_URL:-https://shadowsofwar.io/api}"
+    shift 2>/dev/null || true
+    exec cargo run --bin client -- "$@"
+    ;;
+  p|prod|play)
+    if [[ -f "${ROOT}/sow-dist/.env" ]]; then
+      set -a; source "${ROOT}/sow-dist/.env"; set +a
+    fi
+    export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-${ROOT}/target}"
+    mkdir -p "${CARGO_TARGET_DIR}"
+    BIN="${CARGO_TARGET_DIR}/debug/sow"
+    cargo build -p sow-dist
+    exec "${BIN}" "$@"
+    ;;
+  *)
+    echo "Unknown command: ${CMD}" >&2
+    echo "" >&2
+    show_help >&2
+    exit 1
+    ;;
+esac

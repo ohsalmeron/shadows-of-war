@@ -1,6 +1,6 @@
 # Relay Architecture: F-Stack as the TLS endpoint
 
-> Status: live. Verified 2026-08-08 with an end-to-end TLS + WebSocket test.
+> Status: live. Verified 2026-08-22 with `./sow p` release `0.1.2-3b977aa9f91c` (relay `3ff15be`, bin `002edc46`, `ws_write_timeout_ms 15000`) and real game traffic `319 [DIAG RELAY TX]` on worker 1.
 
 ## Why this exists
 
@@ -23,16 +23,14 @@ are distributed, and how to operate/recover it.
                     │                   │              │  NIC DPDK ConnectX-5 VF 100Gbps      │
                     └───────────────────┘              │  RSS hash → queue                     │
                                                        │  queue 0 → worker 0 (mgmt :8080)     │
-  Browser ──wss://relay.shadowsofwar.io:25592──►       │  queue 1 → worker 1 (mgmt :8081)     │
-   (DNS gray-cloud → 20.122.128.185, no CF)  ───►      │  queue 2 → worker 2 (mgmt :8082)     │
+   Browser ──wss://relay.shadowsofwar.io:25592──►       │  queue 1 → worker 1 (mgmt :8081)     │
+    (DNS relay.shadowsofwar.io → 20.122.128.185 via Cloudflare) ───► │  queue 2 → worker 2 (mgmt :8082)     │
                                                        │  queue 3 → worker 3 (mgmt :8083)     │
                                                        └──────────────────────────────────────┘
 ```
 
-- IONOS = orchestrator (matchmaking, web, API, lobby creation). OUT of the
-  game data path.
-- Azure = relay only. Each worker is a full endpoint: DPDK RX → F-Stack
-  userspace TCP (FreeBSD stack) → rustls TLS → WebSocket → game loop.
+- IONOS (`74.208.246.177`, `ionos`) = orchestrator (matchmaking, web, API, lobby creation). OUT of the game data path. Release at `/srv/sow/current`.
+- Azure (`sow-dev-2nic`, `relay`) = relay only. Two PIPs: mgmt `20.230.49.9` (eth0, SSH/control, NSG 8080-8083 only from IONOS) and data `20.122.128.185` (eth1, game, NSG 25590-26500 open). Each worker is a full endpoint: DPDK RX → F-Stack userspace TCP (FreeBSD 15, `52fa8f9ae666`) → rustls TLS → WebSocket → game loop. Workers `sow-relay@0..3`, mgmt HTTPS `8080-8083` (HMAC), game ports `25592-26500` dynamic. State at `/var/lib/sow-relay/manifest.json`.
 
 ## How connections are distributed (worker-per-queue)
 
@@ -73,26 +71,16 @@ fix (this doc's era) removed the branch and gave the relay its own TLS.
 - rustls (tokio-rustls) wraps the bridge `Conn` before the WebSocket upgrade
   in `sow-relay/src/main.rs` (`MaybeTlsConn` unifies plain/TLS streams).
 - Cert: Let's Encrypt via DNS-01 (`certbot-dns-cloudflare`) for
-  `relay.shadowsofwar.io`. DNS record is gray-cloud (proxied=false) so
-  browsers connect directly to Azure, no Cloudflare in the path.
-- Env: `SOW_RELAY_TLS_CERT` / `SOW_RELAY_TLS_KEY` on the relay VM
-  (systemd drop-in `/etc/systemd/system/sow-relay@.service.d/override.conf`).
-- If the cert is missing the relay logs `[BOOT] TLS disabled` and serves plain
-  ws:// — clients expecting wss:// will fail. This is the first thing to check
-  in an outage.
+  `relay.shadowsofwar.io` (SAN verified). Files at `/usr/local/etc/sow/relay.crt` / `relay.key` (checked by pipeline: `test -s` + `openssl x509 -checkend 86400`). DNS `relay.shadowsofwar.io` → Cloudflare → data PIP.
+- Secrets: systemd drop-in `/etc/systemd/system/sow-relay@.service.d/override.conf` (`0600`) carries `SOW_RELAY_CONTROL_SECRET` / `SOW_DB_SECRET` (injected via `sed` on the host) plus `SOW_WS_WRITE_TIMEOUT_MS=15000` (`[BOOT] ws_write_timeout_ms` verified). TLS cert is not an env var.
+- If the cert is missing/expired the relay logs `[BOOT] TLS disabled` and serves plain ws:// — clients expecting wss:// will fail. This is the first thing to check in an outage.
 
-## Pipeline (./sow p)
+## Pipeline (./sow p — `sow-dist/src/prod.rs`)
 
-`./sow p` now owns the control-host release lifecycle only: build, package,
-hash, stage, atomically activate, restart only affected jail services, and
-verify. Relay workers are deliberately not restarted by this path. A relay
-deployment requires a real drain/ownership protocol first; killing a worker
-with active games is not an acceptable fallback.
+`./sow p` owns the full lifecycle (8 steps). Control last verified `0.1.2-3b977aa9f91c`:
+1. Preflight (cargo/curl/rsync/ssh/wasm-opt + hosts). 2. Builds parallel: WASM local, FreeBSD on builder (`freebsd`), relay on Azure (`rsync` + `make -C lib FF_ZC_RECV=1` + `cargo build -p sow-relay`, `FSTACK_LIB_DIR=f-stack-src/lib`, `cargo:rerun-if-changed` on `libfstack.a`). 3. Assemble immutable release (`COMPONENTS` web/maps/server/database/ops/relay + `release.json` with `relay.bin_sha256`, `fstack`, `ws_write_timeout_ms`). 4. `remote_plan` diffs `/srv/sow/current/COMPONENTS` vs local and `relay_sha256` in `/var/lib/sow-relay/manifest.json`; if `!plan.any()` → `no production component changed; no restart performed`. 5. Stage (`~/.sow-deploy/release` on IONOS, `~/.sow-deploy/relay` on Azure if `plan.relay`). 6. Activate granular: symlink swap + only affected `sow_server`/`sow_database`/`nginx`; relay **last** via `activate_relay_host` — per-worker `stop/start sow-relay@N` with `healthz` poll, backups `.bak_$ts`, perms `750 root:sowrelay`, `drain=force-kill (user-authorized 2026-08-21; non-destructive drain pending)` in manifest. 7. Healthcheck (`verify_relay_runtime` systemctl + `https://127.0.0.1:808x/healthz`, HMAC `GET /internal/metrics` queue_id/count, `verify_relay_identity` manifest + `[BOOT] git=` + `sudo sha256sum`). 8. Public verification.
 
-The worker catalog (`SOW_RELAY_HOST`/`SOW_RELAY_WORKERS`) is runtime
-configuration for `sow-server` and is synchronized only when a server-side
-runtime component changes. The advertised `host` remains the TLS hostname,
-not a raw IP.
+The worker catalog (`SOW_RELAY_WORKERS`, `SOW_RELAY_MGMT_RESOLVE_IP=20.230.49.9`, `SOW_WS_WRITE_TIMEOUT_MS=15000`) is release content — it hashes into the relay component, so changes redeploy via the plan instead of ghosting. Advertised `host` remains `relay.shadowsofwar.io`.
 
 ## Operations
 
@@ -111,11 +99,9 @@ not a raw IP.
 
 ## Certificate renewal
 
-Cert expires 90 days after issuance (see `notAfter`). Renewal:
+Cert expires 90 days after issuance (see `notAfter`). Pipeline checks `openssl x509 -checkend 86400` during activate — expired cert fails deploy.
 
-Renewal and relay-worker restart are a separate operational lifecycle. Do not
-use `./sow p` as a relay restart workaround; the production pipeline will not
-destroy active games to install a certificate.
+Renewal still requires a worker restart; that restart now goes through `./sow p` (per-worker `stop/start` with the `force-kill` drain registered in the manifest). Non-destructive drain is pending — current mode is user-authorized force-kill.
 
 ## Disaster recovery (from a dead laptop)
 
@@ -125,11 +111,11 @@ regenerable.
 
 ```
 1. new machine:  git clone https://github.com/worldofunreal/shadows-of-war
-2. cp sow-dist/.env.example sow-dist/.env     # fill hosts (documented inline)
+2. cp sow-dist/.env.example sow-dist/.env     # fill SOW_DB_SECRET, SOW_RELAY_CONTROL_SECRET, hosts (inline)
 3. restore Cloudflare API token from vault → ~/.cloudflared/cert.pem.bak format:
    {"zoneID":"1e4d2979bf3209a3d03a3248a116da3c","accountID":"...",
     "apiToken":"cfut_..."}                    # or create a fresh token in CF UI
 4. restore or provision the relay VM using the infrastructure provider's
-   separate, reviewed provisioning process
-5. run `./sow p` for the control-host release only
+    separate, reviewed provisioning process
+5. run `./sow p` (full: control + relay if plan.relay; early exits with no restart if unchanged)
 ```

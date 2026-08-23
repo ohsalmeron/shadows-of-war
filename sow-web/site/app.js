@@ -63,7 +63,11 @@
     $('[data-detail-civ]').textContent = leader.civ;
     $('[data-detail-ability]').textContent = leader.ability;
     $('[data-detail-description]').textContent = leader.description;
-    $$('.leader-chip, .leader-card').forEach((item, itemIndex) => item.classList.toggle('is-active', itemIndex === index));
+    $$('.leader-chip, .leader-card').forEach((item, itemIndex) => {
+      const active = itemIndex === index;
+      item.classList.toggle('is-active', active);
+      item.setAttribute('aria-pressed', String(active));
+    });
   }
 
   function renderLeaderRail() {
@@ -73,6 +77,7 @@
       const button = document.createElement('button');
       button.className = 'leader-chip';
       button.type = 'button';
+      button.setAttribute('aria-pressed', 'false');
       button.title = leader.name;
       button.setAttribute('aria-label', `Select ${leader.name}`);
       button.innerHTML = `<img src="${avatar(leader)}" alt=""><span>${String(index + 1).padStart(2, '0')}</span>`;
@@ -88,6 +93,7 @@
       const button = document.createElement('button');
       button.className = 'leader-card';
       button.type = 'button';
+      button.setAttribute('aria-pressed', 'false');
       button.setAttribute('aria-label', `Inspect ${leader.name}`);
       button.innerHTML = `<img src="${asset(leader)}" alt="${leader.name} artwork" loading="lazy"><span class="leader-card-info"><b>${leader.name}</b><span>${leader.civ}</span></span>`;
       button.addEventListener('click', () => {
@@ -102,14 +108,17 @@
     const menu = $('#mobile-menu');
     const toggle = $('[data-menu-toggle]');
     if (!menu || !toggle) return;
+    menu.setAttribute('aria-hidden', 'true');
     toggle.addEventListener('click', () => {
       const open = menu.classList.toggle('is-open');
       toggle.setAttribute('aria-expanded', String(open));
       toggle.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation');
+      menu.setAttribute('aria-hidden', String(!open));
     });
     $$('#mobile-menu a').forEach(link => link.addEventListener('click', () => {
       menu.classList.remove('is-open');
       toggle.setAttribute('aria-expanded', 'false');
+      menu.setAttribute('aria-hidden', 'true');
     }));
   }
 

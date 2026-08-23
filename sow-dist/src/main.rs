@@ -180,6 +180,7 @@ fn compile_wasm(paths: &Paths, dev: bool) -> Result<()> {
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
     c.env("RUSTFLAGS", "-C target-feature=-bulk-memory");
+    c.env("CARGO_BUILD_JOBS", "4");
     if !c.spawn()?.wait()?.success() {
         bail!("WASM compile failed");
     }
@@ -624,19 +625,19 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
     }
     fs::write(
         out.join("robots.txt"),
-        "User-agent: *\nAllow: /\n\nSitemap: https://shadowsofwar.io/sitemap.xml\n",
+        "User-agent: *\nAllow: /\nDisallow: /internal/\nDisallow: /api/\nDisallow: /assets/cdn/\nDisallow: /*.wasm$\nDisallow: /*.wasm.br$\n\nSitemap: https://shadowsofwar.io/sitemap.xml\n",
     )?;
     fs::write(
         out.join("sitemap.xml"),
         concat!(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n",
             "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n",
-            "  <url><loc>https://shadowsofwar.io/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>\n",
-            "  <url><loc>https://shadowsofwar.io/play/</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>\n",
-            "  <url><loc>https://shadowsofwar.io/privacy/</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>\n",
-            "  <url><loc>https://shadowsofwar.io/terms/</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>\n",
-            "  <url><loc>https://shadowsofwar.io/support/</loc><changefreq>monthly</changefreq><priority>0.4</priority></url>\n",
-            "  <url><loc>https://shadowsofwar.io/how-to-play/</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>\n",
+            "  <url>\n    <loc>https://shadowsofwar.io/</loc>\n    <lastmod>2026-08-23</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>1.0</priority>\n  </url>\n",
+            "  <url>\n    <loc>https://shadowsofwar.io/play/</loc>\n    <lastmod>2026-08-23</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.9</priority>\n  </url>\n",
+            "  <url>\n    <loc>https://shadowsofwar.io/how-to-play/</loc>\n    <lastmod>2026-08-23</lastmod>\n    <changefreq>monthly</changefreq>\n    <priority>0.8</priority>\n  </url>\n",
+            "  <url>\n    <loc>https://shadowsofwar.io/support/</loc>\n    <lastmod>2026-08-23</lastmod>\n    <changefreq>monthly</changefreq>\n    <priority>0.4</priority>\n  </url>\n",
+            "  <url>\n    <loc>https://shadowsofwar.io/privacy/</loc>\n    <lastmod>2026-08-23</lastmod>\n    <changefreq>yearly</changefreq>\n    <priority>0.3</priority>\n  </url>\n",
+            "  <url>\n    <loc>https://shadowsofwar.io/terms/</loc>\n    <lastmod>2026-08-23</lastmod>\n    <changefreq>yearly</changefreq>\n    <priority>0.3</priority>\n  </url>\n",
             "</urlset>\n",
         ),
     )?;

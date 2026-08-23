@@ -532,15 +532,25 @@ mod tests {
                 "kind mismatch for {}",
                 player.name
             );
-            let (x, y) = bounds
-                .project(entity.lat as f64, entity.lon as f64, 1000, 800)
-                .expect("spawned geo entity must project inside bounds");
-            // place_spawn paints a radius-5 disc; allow drift from collisions.
-            assert!(
-                owned_tile_near(&engine.state, player.id, x, y, 12),
-                "{} spawned far from its homeland tile ({x}, {y})",
-                player.name
-            );
+
+            if player.player_type == crate::player::PlayerType::Nation {
+                let (x, y) = bounds
+                    .project(entity.lat as f64, entity.lon as f64, 1000, 800)
+                    .expect("spawned geo entity must project inside bounds");
+                // Nations are anchored to their geo homeland coordinates
+                assert!(
+                    owned_tile_near(&engine.state, player.id, x, y, 12),
+                    "Nation {} spawned far from its homeland tile ({x}, {y})",
+                    player.name
+                );
+            } else {
+                // Tribes spawn dynamically across available land with territorial presence
+                assert!(
+                    player.tile_count > 0,
+                    "Tribe {} must have spawned on valid land tiles",
+                    player.name
+                );
+            }
         }
     }
 

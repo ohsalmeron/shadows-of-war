@@ -7,8 +7,6 @@ const BUILD_HOST: &str = "freebsd";
 const BUILD_ROOT: &str = "/home/bizkit/shadows-of-war";
 const CONTROL_HOST: &str = "ionos";
 const RELAY_HOST: &str = "relay";
-const RELAY_ROOT: &str = "/home/azureuser/shadows-of-war";
-const RELAY_FSTACK_ROOT: &str = "/home/azureuser/f-stack-src";
 const RELAY_USER: &str = "sowrelay";
 const RELAY_GROUP: &str = "sowrelay";
 const RELAY_EXEC: &str = "/usr/local/libexec/sow-relay/sow-relay";
@@ -29,7 +27,6 @@ struct Config {
     build_root: String,
     control_host: String,
     relay_host: String,
-    relay_root: String,
     fstack_repo: String,
     remote_stage: String,
     public_origin: String,
@@ -43,7 +40,6 @@ impl Config {
             build_root: env_or("SOW_FREEBSD_BUILDER_ROOT", BUILD_ROOT),
             control_host: env_or_alias("SOW_CONTROL_HOST", "SOW_PROD_HOST", CONTROL_HOST),
             relay_host: env_or("SOW_RELAY_DEPLOY_HOST", RELAY_HOST),
-            relay_root: env_or("SOW_RELAY_ROOT", RELAY_ROOT),
             fstack_repo: env_or("SOW_FSTACK_REPO", FSTACK_LOCAL_REPO),
             remote_stage: env_or("SOW_REMOTE_STAGE", REMOTE_STAGE),
             public_origin: env_or("SOW_PUBLIC_ORIGIN", PUBLIC_ORIGIN)
@@ -230,6 +226,8 @@ fn preflight(paths: &Paths, config: &Config) -> Result<()> {
         bail!("Rust WASM standard library missing");
     }
     require_file(&paths.root.join("Cargo.toml"), "workspace Cargo.toml")?;
+    run("sudo", &["test", "-d", "/var/lib/machines/debian12"], None)
+        .context("Debian 12 nspawn container (/var/lib/machines/debian12) missing")?;
     run(
         "ssh",
         &[
@@ -923,11 +921,11 @@ fn fstack_version(config: &Config) -> Result<String> {
     })
 }
 
-/// Build the relay on the Azure host (f-stack lib + binary) and fetch the
-/// binary back into dist/relay-bin. Source of truth is always the repo: both
-/// trees are rsynced with --delete before compiling.
+/// Build the relay locally in the Debian 12 (bookworm) systemd-nspawn container
+/// (f-stack lib + binary) to produce a glibc 2.36 binary compatible with Ubuntu 24.04.
+/// Azure receives only the packaged binary — zero compiler/source on production.
 fn build_relay(paths: &Paths, config: &Config) -> Result<PathBuf> {
-    let fstack_hash = input_fingerprint("fstack-v1", "", &[Path::new(&config.fstack_repo)])?;
+    let fstack_hash = fstack_version(config)?;
     let local = paths.root.join("dist/relay-bin");
     let fingerprint = input_fingerprint(
         "relay-v1",
@@ -949,105 +947,72 @@ fn build_relay(paths: &Paths, config: &Config) -> Result<PathBuf> {
         return Ok(local);
     }
 
-    println!("==> Building relay on {}", config.relay_host);
-    let source = format!("{}/", paths.root.display());
-    let destination = format!("{}:{}/", config.relay_host, config.relay_root);
-    run(
-        "rsync",
-        &[
-            "-azc",
-            "--delete",
-            "--exclude=.git",
-            "--exclude=dist",
-            "--exclude=target",
-            "--exclude=sow-dist/.env",
-            "--exclude=replays",
-            &source,
-            &destination,
-        ],
-        Some(&paths.root),
-    )?;
-
-    let fstack_source = format!("{}/", config.fstack_repo.trim_end_matches('/'));
-    let fstack_destination = format!("{}:{}", config.relay_host, RELAY_FSTACK_ROOT);
-    run(
-        "rsync",
-        &[
-            "-azc",
-            "--delete",
-            "--exclude=.git",
-            // Build artifacts (*.o/*.a) are gitignored local junk — never sync
-            // them to the host, or make links objects compiled with a different
-            // toolchain ("bad value" archive errors). dpdk/ is the DPDK 24.11.6
-            // source tree (exact match for the host's installed librte
-            // archives); it is synced so f-stack can compile against it.
-            // dpdk/build is the meson build dir created on the host when
-            // restoring the missing DPDK headers — never synced back or wiped,
-            // or every deploy would trigger a full DPDK rebuild.
-            "--exclude=*.o",
-            "--exclude=*.a",
-            "--exclude=dpdk/build",
-            &fstack_source,
-            &fstack_destination,
-        ],
-        Some(Path::new(&config.fstack_repo)),
-    )?;
+    println!("==> Building relay in local Debian 12 container (nspawn)...");
 
     let fstack_cache = paths.root.join("dist/.sow-state/fstack-build");
-    // The cache key includes the make flags: the same tree can produce a lib
-    // without the bridge's zc API if FF_ZC_RECV is dropped from the build.
     let fstack_key = format!("{fstack_hash}:FF_ZC_RECV=1");
     if !fs::read_to_string(&fstack_cache).is_ok_and(|value| value.trim() == fstack_key) {
         println!(
-            "==> F-Stack changed ({}) — restoring DPDK headers + rebuilding libfstack.a on relay host",
+            "==> F-Stack changed ({}) — rebuilding libfstack.a in Debian 12 container",
             &fstack_hash[..12]
         );
-        // f-stack compiles against DPDK headers installed at /usr/local/include
-        // (rte_config.h and friends). The host lost that header tree while the
-        // relay was outside the pipeline; restore it from the synced source
-        // (version-matched with the installed librte archives) via the official
-        // meson install, then build libfstack.a. FF_ZC_RECV=1 is required: the
-        // bridge uses the zero-copy recv API (ff_zc_recv*), which compiles out
-        // of the lib unless the make knob is set.
         let prepare = format!(
-            "set -eu; export PATH=$HOME/.cargo/bin:$PATH; \
-             if ! command -v meson >/dev/null 2>&1; then sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq; sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq meson ninja-build python3-pyelftools; fi; \
-             if ! python3 -c 'import elftools' >/dev/null 2>&1; then sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-pyelftools; fi; \
-             if ! test -f /usr/local/include/rte_config.h; then cd {dpdk_root}; if test -f build/build.ninja; then meson setup --reconfigure build -Dplatform=generic >/dev/null; else meson setup build -Dplatform=generic; fi; ninja -C build; sudo ninja -C build install; fi; \
-             cd {fstack_root} && make -C lib clean >/dev/null 2>&1; make -C lib -j$(nproc) FF_ZC_RECV=1",
-            dpdk_root = shell_quote(&format!("{RELAY_FSTACK_ROOT}/dpdk")),
-            fstack_root = shell_quote(RELAY_FSTACK_ROOT)
+            "set -eu; cd {}/lib && make clean >/dev/null 2>&1 || true; make -j$(nproc) FF_ZC_RECV=1",
+            shell_quote(&config.fstack_repo)
         );
-        run("ssh", &[&config.relay_host, &prepare], None)?;
+        run(
+            "sudo",
+            &[
+                "systemd-nspawn",
+                "-D",
+                "/var/lib/machines/debian12",
+                "--as-pid2",
+                "bash",
+                "-c",
+                &prepare,
+            ],
+            None,
+        )?;
+        fs::create_dir_all(fstack_cache.parent().context("fstack cache parent missing")?)?;
         fs::write(&fstack_cache, format!("{fstack_key}\n"))?;
     }
 
     let build = format!(
-        "set -eu; export PATH=$HOME/.cargo/bin:$PATH; export FSTACK_LIB_DIR={}; cd {} && cargo build --release -p sow-relay",
-        shell_quote(&format!("{RELAY_FSTACK_ROOT}/lib")),
-        shell_quote(&config.relay_root)
+        "set -eu; export PATH=$HOME/.cargo/bin:$PATH; \
+         export FSTACK_LIB_DIR={}; \
+         cd {} && cargo build --release -p sow-relay; \
+         chown -R 1000:1000 {}/target {}/lib 2>/dev/null || true",
+        shell_quote(&format!("{}/lib", config.fstack_repo)),
+        shell_quote(&paths.root.display().to_string()),
+        shell_quote(&paths.root.display().to_string()),
+        shell_quote(&config.fstack_repo)
     );
-    run("ssh", &[&config.relay_host, &build], None)?;
+    run(
+        "sudo",
+        &[
+            "systemd-nspawn",
+            "-D",
+            "/var/lib/machines/debian12",
+            "--as-pid2",
+            "bash",
+            "-c",
+            &build,
+        ],
+        None,
+    )?;
 
     if local.exists() {
         fs::remove_dir_all(&local)?;
     }
     fs::create_dir_all(&local)?;
-    let remote = format!(
-        "{}:{}/target/release/sow-relay",
-        config.relay_host, config.relay_root
-    );
+    let compiled = paths.root.join("target/release/sow-relay");
     let destination = local.join("sow-relay");
-    run(
-        "scp",
-        &[&remote, destination.to_str().context("relay path is not UTF-8")?],
-        None,
-    )?;
+    fs::copy(&compiled, &destination)?;
     require_file(&destination, "relay binary")?;
     fs::set_permissions(&destination, fs::Permissions::from_mode(0o550))?;
     fs::create_dir_all(cache.parent().context("relay cache parent missing")?)?;
     fs::write(cache, format!("{fingerprint}\n"))?;
-    println!("  relay binary fetched ({} bytes)", fs::metadata(&destination)?.len());
+    println!("  relay binary built ({} bytes)", fs::metadata(&destination)?.len());
     Ok(local)
 }
 
@@ -1069,7 +1034,19 @@ fn input_fingerprint(tag: &str, value: &str, inputs: &[&Path]) -> Result<String>
         let mut files = walkdir::WalkDir::new(input)
             .into_iter()
             .collect::<std::result::Result<Vec<_>, _>>()?;
-        files.retain(|entry| entry.file_type().is_file());
+        files.retain(|entry| {
+            if !entry.file_type().is_file() {
+                return false;
+            }
+            let name = entry.file_name().to_string_lossy();
+            let path = entry.path().to_string_lossy();
+            !path.contains("/.git/")
+                && !path.contains("/target/")
+                && !path.contains("/dpdk/build/")
+                && !name.ends_with(".o")
+                && !name.ends_with(".a")
+                && !name.ends_with(".tmp")
+        });
         files.sort_by_key(|entry| entry.path().to_path_buf());
         for entry in files {
             hash.update(

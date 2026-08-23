@@ -26,6 +26,18 @@ impl SowApp {
                     ticks_processed += 1;
                     self.dispatch_sim_command(sow_core::protocol::SimCommand::Turn(turn));
 
+                    // NOTE(2026-08-22): sim-tick perf instrumentation added to
+                    // diagnose the F-Stack relay lag report (sow-dist/prod.rs
+                    // era). Forensics exonerated BOTH the relay and the sim —
+                    // p50=9ms @ 558 players, 3 anomalous ticks in ~16k — the
+                    // only real cost was Chrome stack-capturing these very
+                    // console.warn lines when DevTools was open. Disabled so
+                    // the console stays free. Re-enable via `crate::diag` if a
+                    // regression ever needs measuring:
+                    //   let tick_start = Instant::now();
+                    //   ... dispatch ...
+                    //   crate::diag::record_tick((Instant::now() - tick_start).as_micros() as u64);
+
                     // Update UI HUD State from my player id
                     self.sync_hud_player_state();
                     // Show notifications for actual resource transfers only
@@ -155,15 +167,12 @@ impl SowApp {
                     }
                 }
                 if ticks_processed > 0 {
-                    let cur_tick = self.sim.current_snapshot.as_ref().map(|s| s.tick).unwrap_or(0);
-                    if cur_tick <= 5 || cur_tick % 50 == 0 || ticks_processed > 1 {
-                        log::info!(
-                            "[DIAG SIM TICK] Dispatched {} ticks this frame, sim_tick={}, turn_q_remaining={}",
-                            ticks_processed,
-                            cur_tick,
-                            self.sim.turn_queue.len()
-                        );
-                    }
+                    // NOTE(2026-08-22): [SIM PERF]/[DIAG SIM TICK] reporting
+                    // disabled — added to diagnose the F-Stack relay lag
+                    // report; forensics exonerated relay and sim (p50=9ms @
+                    // 558 players), and each console.warn line made DevTools
+                    // stack-capture a 12-frame wasm trace, which was the only
+                    // measurable lag. See `crate::diag` to re-enable.
                 }
             } else {
                 // Singleplayer: pace ticks from wall clock + lobby tick_rate_ms (same as relay).
