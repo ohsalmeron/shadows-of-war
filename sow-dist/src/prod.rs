@@ -736,7 +736,7 @@ fn verify_relay_identity(config: &Config, release: &Release) -> Result<()> {
 fn build_web(paths: &Paths, version: &str) -> Result<()> {
     compile_wasm(paths, false)?;
     let fingerprint = input_fingerprint(
-        "web-v6",
+        "web-v7",
         version,
         &[
             &paths.wasm_input,
@@ -747,6 +747,7 @@ fn build_web(paths: &Paths, version: &str) -> Result<()> {
             &paths.root.join("sow-i18n/src"),
             &paths.root.join("sow-i18n/strings"),
             &paths.root.join("sow-web/site"),
+            &paths.root.join("sow-dist/src/main.rs"),
         ],
     )?;
     let cache = paths.root.join("dist/.sow-state/web-package");
@@ -1200,6 +1201,7 @@ fn assemble_release(
 
     require_file(&work.join("web/index.html"), "website index")?;
     require_file(&work.join("web/play/index.html"), "game index")?;
+    require_file(&work.join("web/leaders/index.html"), "leaders index")?;
     require_file(&work.join("web/robots.txt"), "robots.txt")?;
     require_file(&work.join("web/sitemap.xml"), "sitemap.xml")?;
     require_file(&work.join("web/game-manifest.json"), "game manifest")?;
@@ -1446,6 +1448,14 @@ link="/srv/sow/.current.$$"
 sudo ln -s "releases/__ID__" "$link"
 sudo mv -hf "$link" /srv/sow/current
 if __NGINX_RELOAD__; then
+    for legacy_security in \
+        /usr/local/etc/nginx/conf.d/00-00-security.conf \
+        /usr/local/etc/nginx/conf.d/00-sow-security.conf; do
+        if sudo test -f "$legacy_security"; then
+            sudo cp -p "$legacy_security" "$legacy_security.bak_$(date +%s)"
+            sudo rm -f "$legacy_security"
+        fi
+    done
     for f in "$target"/ops/conf.d/*; do [ -f "$f" ] || continue; sudo install -o root -g wheel -m 0644 "$f" "/usr/local/etc/nginx/conf.d/$(basename "$f")"; done
     for f in "$target"/ops/snippets/*; do [ -f "$f" ] || continue; sudo install -o root -g wheel -m 0644 "$f" "/usr/local/etc/nginx/snippets/$(basename "$f")"; done
     sudo nginx -t || rollback

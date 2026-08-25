@@ -40,7 +40,7 @@
       </a>
       <nav class="desktop-nav" aria-label="Main navigation">
         <a href="/#game">The game</a>
-        <a href="/#leaders">Leaders</a>
+        <a href="/leaders/">Leaders</a>
         <a href="/#media">Gameplay</a>
         <a href="/how-to-play/" aria-current="page">How to play</a>
         <a href="/#faq">FAQ</a>
@@ -57,7 +57,7 @@
     </div>
     <nav class="mobile-menu" id="mobile-menu" aria-label="Mobile navigation">
       <a href="/#game">The game</a>
-      <a href="/#leaders">Leaders</a>
+      <a href="/leaders/">Leaders</a>
       <a href="/#media">Gameplay</a>
       <a href="/how-to-play/" aria-current="page">How to play</a>
       <a href="/#faq">FAQ</a>
@@ -71,8 +71,11 @@
       <div class="container">
         <p class="eyebrow"><span class="eyebrow-dot"></span> Field manual · current web build</p>
         <h1>Take the<br><em>map.</em></h1>
-        <p class="guide-lede">Shadows of War is a match-based browser MMORTS. Start with a leader, turn territory into an economy, and decide when diplomacy ends.</p>
-        <a class="button button-orange" href="/play/">Play now <span aria-hidden="true">↗</span></a>
+        <p class="guide-lede">Shadows of War is a real-time browser MMORTS. Start with a legendary commander, transform raw territory into an industrial war economy, forge temporary alliances, and conquer the map.</p>
+        <div class="hero-actions" style="display: flex; gap: 12px; flex-wrap: wrap;">
+          <a class="button button-orange" href="/play/">Play now <span aria-hidden="true">↗</span></a>
+          <a class="button button-outline" href="/leaders/">View 12 leaders compendium <span aria-hidden="true">→</span></a>
+        </div>
       </div>
     </section>
 
@@ -81,21 +84,63 @@
         <div class="guide-steps">
           <p class="eyebrow">01 · First deployment</p>
           <h2>Five moves<br>to understand<br>the match.</h2>
-          <article class="guide-step"><span>01</span><div><h3>Join matchmaking</h3><p>Open Play Now and enter the current matchmaking lobby. The web build starts in your browser without an account or a separate download.</p></div></article>
-          <article class="guide-step"><span>02</span><div><h3>Choose your commander</h3><p>Select one of the current leaders. Their command trait changes a strategic edge such as armies, expansion, production, defense, troop capacity, or income.</p></div></article>
-          <article class="guide-step"><span>03</span><div><h3>Expand and build</h3><p>Claim connected territory, grow your border, and construct structures. Cities, factories, ports, armories, and defense towers turn land into leverage.</p></div></article>
-          <article class="guide-step"><span>04</span><div><h3>Build the economy</h3><p>Gold and troop income create momentum. Protect your production, use ports for naval support, and attack when the cost is worth the ground gained.</p></div></article>
-          <article class="guide-step"><span>05</span><div><h3>Ally, betray, control</h3><p>Form alliances, coordinate resources, and break an alliance when the front line demands it. In the default FFA rules, controlling 60% of the land or eliminating the opposition ends the match.</p></div></article>
+          <article class="guide-step">
+            <span>01</span>
+            <div>
+              <h3>Join matchmaking &amp; select match mode</h3>
+              <p>Launch the web client instantly from your browser with no account or download required. The server runs a continuous rolling matchmaking lobby cycling between <strong>Free-For-All (FFA)</strong>, <strong>Team Battles</strong>, and <strong>Humans vs. World Nations</strong> across diverse world maps (Europe, Asia, Africa, East Anglia, Americas).</p>
+            </div>
+          </article>
+          <article class="guide-step">
+            <span>02</span>
+            <div>
+              <h3>Choose your commander &amp; civilizational edge</h3>
+              <p>Pick one of twelve historical commanders. Each leader provides a permanent mechanical multiplier—such as Julius Caesar's 1.10x combat strength, Cleopatra's +50% factory gold, Sun Tzu's 20% troop production rate, or Ragnar's +50% port gold. <a class="inline-link" href="/leaders/" style="color: var(--orange); text-decoration: underline;">Compare all 12 command traits in the compendium →</a></p>
+            </div>
+          </article>
+          <article class="guide-step">
+            <span>03</span>
+            <div>
+              <h3>Claim territory &amp; construct specialized districts</h3>
+              <p>Expand outwards to capture adjacent tiles. Every captured tile scales baseline gold and troop income. Construct specialized buildings on your territory:</p>
+              <ul style="margin: 8px 0 0; padding-left: 20px; color: var(--muted); font-size: 13px; line-height: 1.8;">
+                <li><strong>Cities:</strong> Increase max troop capacity and generate passive troop and gold income.</li>
+                <li><strong>Factories:</strong> Generate gold revenue and increase troop recruitment speed.</li>
+                <li><strong>Ports:</strong> Placed on coastal tiles to generate gold, troop income, and provide water access.</li>
+                <li><strong>Bunkers:</strong> Fortify defensive frontiers, extend defensive coverage, and reduce incoming troop losses. City Armory modules increase maximum troop capacity.</li>
+              </ul>
+            </div>
+          </article>
+          <article class="guide-step">
+            <span>04</span>
+            <div>
+              <h3>Manage economy, terrain &amp; army momentum</h3>
+              <p>Conquest consumes troops. Reinvest gold from factories, cities, and ports to fund further construction. Use natural terrain multipliers (highlands and mountains increase attack defense cost) to anchor strong defensive frontiers while directing army momentum toward high-value targets.</p>
+            </div>
+          </article>
+          <article class="guide-step">
+            <span>05</span>
+            <div>
+              <h3>Diplomacy, betrayal &amp; map control victory</h3>
+              <p>Form non-aggression alliances with neighboring players to coordinate fronts. A player secures victory by reaching the <strong>map control win threshold</strong> (controlling the required majority of total landmass) or by eliminating all rival commanders. Betrayal breaks an alliance immediately, turning shared borders into active combat frontiers.</p>
+            </div>
+          </article>
         </div>
         <aside class="guide-aside">
           <h3>Match structure</h3>
           <p>The server keeps one rolling matchmaking lobby and rotates the mode and map selection over time.</p>
           <ul>
-            <li>FFA</li>
-            <li>Teams</li>
-            <li>Humans vs Nations</li>
+            <li>FFA (60% land victory)</li>
+            <li>Teams &amp; Coalitions</li>
+            <li>Humans vs World Nations</li>
             <li>Weighted world-map rotation</li>
+            <li>Real-time tick engine</li>
           </ul>
+          <div style="margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line);">
+            <p class="mono-label" style="color: var(--orange); margin-bottom: 8px;">COMPENDIUM</p>
+            <p style="font-size: 12px; color: var(--muted);">Compare all leader traits before entering matchmaking.</p>
+            <a class="button button-small button-outline" href="/leaders/" style="margin-top: 10px; width: 100%;">Inspect leaders →</a>
+          </div>
         </aside>
       </div>
       <div class="container guide-callout">
@@ -110,7 +155,7 @@
     <div class="container footer-top">
       <a class="brand" href="/"><span class="brand-mark">S<span>W</span></span><span class="brand-name">SHADOWS <i>OF</i> WAR</span></a>
       <p>A multiplayer strategy game by World of Unreal.</p>
-      <div class="footer-links"><a href="/">Home</a><a href="/#faq">FAQ</a><a href="/support/">Support</a><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a></div>
+      <div class="footer-links"><a href="/">Home</a><a href="/leaders/">Leaders</a><a href="/how-to-play/">How to play</a><a href="/#faq">FAQ</a><a href="/support/">Support</a><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a></div>
     </div>
     <div class="container footer-bottom"><span>© 2026 World of Unreal</span><span>Built for the next campaign.</span></div>
   </footer>

@@ -1,23 +1,20 @@
 (() => {
-  const leaders = [
-    { id: 'caesar', name: 'Julius Caesar', civ: 'Roman Empire', code: 'ROM', ability: 'Legions of Rome', description: 'Armies fight 10% stronger.', image: 'caesar' },
-    { id: 'cleopatra', name: 'Cleopatra VII', civ: 'Egyptian Empire', code: 'EGY', ability: 'Gift of the Nile', description: 'Factory districts generate +50% Gold.', image: 'cleopatra' },
-    { id: 'ragnar', name: 'Ragnar Lothbrok', civ: 'Norse Kingdom', code: 'NOR', ability: 'Longship Raid', description: 'Ports generate +50% Gold.', image: 'ragnar' },
-    { id: 'suntzu', name: 'Sun Tzu', civ: 'Chinese Empire', code: 'CHN', ability: 'Art of War', description: 'Factory districts produce troops 20% faster.', image: 'sun_tzu' },
-    { id: 'alexander', name: 'Alexander the Great', civ: 'Macedonian Empire', code: 'MAC', ability: 'Great Conquest', description: 'Territory conquest expands 15% faster.', image: 'alexander' },
-    { id: 'genghiskhan', name: 'Genghis Khan', civ: 'Mongol Horde', code: 'MON', ability: 'Horde Momentum', description: 'Gain 10% gold spent by defeated enemies.', image: 'genghis_khan' },
-    { id: 'richard', name: 'Richard the Lionheart', civ: 'Angevin Empire', code: 'ENG', ability: 'Crusader Fortresses', description: 'City districts grant +50% max troop capacity.', image: 'richard_the_lionheart' },
-    { id: 'vercingetorix', name: 'Vercingetorix', civ: 'Gallic Tribes', code: 'GAL', ability: 'Hillfort Gaul', description: 'City districts generate +50% troop income.', image: 'vercingetorix' },
-    { id: 'boudica', name: 'Boudica', civ: 'Iceni Kingdom', code: 'ICE', ability: 'Iceni Revolt', description: 'City districts generate +50% Gold.', image: 'boudica' },
-    { id: 'ladysixsky', name: 'Lady Six Sky', civ: 'Maya Civilization', code: 'MAY', ability: 'Temple of the Sky', description: 'Factory districts generate +50% Gold.', image: 'lady_six_sky' },
-    { id: 'leonidas', name: 'King Leonidas', civ: 'Sparta', code: 'SPA', ability: 'Spartan Phalanx', description: 'Armory districts grant +50% max troop capacity.', image: 'leonidas' },
-    { id: 'napoleon', name: 'Napoleon Bonaparte', civ: 'Kingdom of France', code: 'FRA', ability: 'Grande Armée', description: 'Territory expansion moves 20% faster.', image: 'napoleon' }
-  ];
+  const $ = selector => document.querySelector(selector);
+  const $$ = selector => [...document.querySelectorAll(selector)];
+
+  const cards = $$('.leader-card[data-leader-id]');
+  const leaders = cards.map(c => ({
+    id: c.dataset.leaderId,
+    name: c.dataset.name,
+    civ: c.dataset.civ,
+    code: c.dataset.code,
+    ability: c.dataset.ability,
+    description: c.dataset.description,
+    image: c.dataset.image
+  }));
 
   const asset = (leader, mobile = false) => `/assets/cdn/leaders/${leader.image}_${mobile ? 'mobile' : 'desktop'}.webp`;
   const avatar = leader => `/assets/cdn/avatars/${leader.image}.webp`;
-  const $ = selector => document.querySelector(selector);
-  const $$ = selector => [...document.querySelectorAll(selector)];
 
   function setTheme(theme) {
     document.documentElement.dataset.theme = theme;
@@ -52,18 +49,36 @@
       heroImage.alt = `${leader.name} leader artwork`;
     }
     if (mobileImage) mobileImage.srcset = asset(leader, true);
-    $('[data-hero-name]').textContent = leader.name;
-    $('[data-hero-civ]').textContent = leader.civ;
-    $('[data-hero-code]').textContent = `${leader.code} / ${String(index + 1).padStart(2, '0')}`;
-    $('.hero-frame-index').innerHTML = `${String(index + 1).padStart(2, '0')} <span>/</span> 12`;
-    $('[data-detail-image]').src = asset(leader);
-    $('[data-detail-image]').alt = `${leader.name} artwork`;
-    $('[data-detail-code]').textContent = `${leader.code} · ${String(index + 1).padStart(2, '0')}`;
-    $('[data-detail-name]').textContent = leader.name;
-    $('[data-detail-civ]').textContent = leader.civ;
-    $('[data-detail-ability]').textContent = leader.ability;
-    $('[data-detail-description]').textContent = leader.description;
-    $$('.leader-chip, .leader-card').forEach((item, itemIndex) => {
+    const heroName = $('[data-hero-name]');
+    if (heroName) heroName.textContent = leader.name;
+    const heroCiv = $('[data-hero-civ]');
+    if (heroCiv) heroCiv.textContent = leader.civ;
+    const heroCode = $('[data-hero-code]');
+    if (heroCode) heroCode.textContent = `${leader.code} / ${String(index + 1).padStart(2, '0')}`;
+    const heroIndex = $('.hero-frame-index');
+    if (heroIndex) heroIndex.innerHTML = `${String(index + 1).padStart(2, '0')} <span>/</span> 12`;
+    const detailImage = $('[data-detail-image]');
+    if (detailImage) {
+      detailImage.src = asset(leader);
+      detailImage.alt = `${leader.name} artwork`;
+    }
+    const detailCode = $('[data-detail-code]');
+    if (detailCode) detailCode.textContent = `${leader.code} · ${String(index + 1).padStart(2, '0')}`;
+    const detailName = $('[data-detail-name]');
+    if (detailName) detailName.textContent = leader.name;
+    const detailCiv = $('[data-detail-civ]');
+    if (detailCiv) detailCiv.textContent = leader.civ;
+    const detailAbility = $('[data-detail-ability]');
+    if (detailAbility) detailAbility.textContent = leader.ability;
+    const detailDesc = $('[data-detail-description]');
+    if (detailDesc) detailDesc.textContent = leader.description;
+
+    $$('.leader-chip').forEach((item, itemIndex) => {
+      const active = itemIndex === index;
+      item.classList.toggle('is-active', active);
+      item.setAttribute('aria-pressed', String(active));
+    });
+    cards.forEach((item, itemIndex) => {
       const active = itemIndex === index;
       item.classList.toggle('is-active', active);
       item.setAttribute('aria-pressed', String(active));
@@ -72,12 +87,13 @@
 
   function renderLeaderRail() {
     const rail = $('[data-leader-rail]');
-    if (!rail) return;
+    if (!rail || !leaders.length) return;
+    rail.innerHTML = '';
     leaders.forEach((leader, index) => {
       const button = document.createElement('button');
-      button.className = 'leader-chip';
+      button.className = `leader-chip${index === 0 ? ' is-active' : ''}`;
       button.type = 'button';
-      button.setAttribute('aria-pressed', 'false');
+      button.setAttribute('aria-pressed', index === 0 ? 'true' : 'false');
       button.title = leader.name;
       button.setAttribute('aria-label', `Select ${leader.name}`);
       button.innerHTML = `<img src="${avatar(leader)}" alt=""><span>${String(index + 1).padStart(2, '0')}</span>`;
@@ -86,21 +102,12 @@
     });
   }
 
-  function renderLeaderGrid() {
-    const grid = $('[data-leaders-grid]');
-    if (!grid) return;
-    leaders.forEach((leader, index) => {
-      const button = document.createElement('button');
-      button.className = 'leader-card';
-      button.type = 'button';
-      button.setAttribute('aria-pressed', 'false');
-      button.setAttribute('aria-label', `Inspect ${leader.name}`);
-      button.innerHTML = `<img src="${asset(leader)}" alt="${leader.name} artwork" loading="lazy"><span class="leader-card-info"><b>${leader.name}</b><span>${leader.civ}</span></span>`;
-      button.addEventListener('click', () => {
+  function bindLeaderGrid() {
+    cards.forEach((card, index) => {
+      card.addEventListener('click', () => {
         updateLeader(index);
         $('[data-leader-detail]')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       });
-      grid.appendChild(button);
     });
   }
 
@@ -124,7 +131,9 @@
 
   initTheme();
   renderLeaderRail();
-  renderLeaderGrid();
-  updateLeader(0);
+  bindLeaderGrid();
+  if (leaders.length) {
+    updateLeader(0);
+  }
   initMenu();
 })();

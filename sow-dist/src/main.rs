@@ -498,6 +498,8 @@ fn verify_layout(dir: &Path) -> Result<()> {
         "terms/index.html",
         "support/index.html",
         "how-to-play/index.html",
+        "leaders/index.html",
+        "8d227b8f9e6140d39e3381a1829e1db3.txt",
         "sow.svg",
     ] {
         if !dir.join(required).is_file() {
@@ -596,14 +598,20 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
 
     // Marketing website at the webroot root (game shell lives under play/).
     let site = paths.root.join("sow-web/site");
-    for name in ["index.html", "app.js", "styles.css", "legal.css"] {
+    for name in [
+        "index.html",
+        "app.js",
+        "styles.css",
+        "legal.css",
+        "8d227b8f9e6140d39e3381a1829e1db3.txt",
+    ] {
         let src = site.join(name);
         if !src.is_file() {
             bail!("website source missing: {}", src.display());
         }
         fs::copy(&src, out.join(name))?;
     }
-    for path in ["privacy", "terms", "support", "how-to-play"] {
+    for path in ["privacy", "terms", "support", "how-to-play", "leaders"] {
         let src = site.join(path);
         if !src.is_dir() {
             bail!("website legal page missing: {}", src.display());
@@ -632,12 +640,13 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
         concat!(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n",
             "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n",
-            "  <url>\n    <loc>https://shadowsofwar.io/</loc>\n    <lastmod>2026-08-23</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>1.0</priority>\n  </url>\n",
-            "  <url>\n    <loc>https://shadowsofwar.io/play/</loc>\n    <lastmod>2026-08-23</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.9</priority>\n  </url>\n",
-            "  <url>\n    <loc>https://shadowsofwar.io/how-to-play/</loc>\n    <lastmod>2026-08-23</lastmod>\n    <changefreq>monthly</changefreq>\n    <priority>0.8</priority>\n  </url>\n",
-            "  <url>\n    <loc>https://shadowsofwar.io/support/</loc>\n    <lastmod>2026-08-23</lastmod>\n    <changefreq>monthly</changefreq>\n    <priority>0.4</priority>\n  </url>\n",
-            "  <url>\n    <loc>https://shadowsofwar.io/privacy/</loc>\n    <lastmod>2026-08-23</lastmod>\n    <changefreq>yearly</changefreq>\n    <priority>0.3</priority>\n  </url>\n",
-            "  <url>\n    <loc>https://shadowsofwar.io/terms/</loc>\n    <lastmod>2026-08-23</lastmod>\n    <changefreq>yearly</changefreq>\n    <priority>0.3</priority>\n  </url>\n",
+            "  <url>\n    <loc>https://shadowsofwar.io/</loc>\n    <lastmod>2026-08-25</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>1.0</priority>\n  </url>\n",
+            "  <url>\n    <loc>https://shadowsofwar.io/play/</loc>\n    <lastmod>2026-08-25</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.9</priority>\n  </url>\n",
+            "  <url>\n    <loc>https://shadowsofwar.io/leaders/</loc>\n    <lastmod>2026-08-25</lastmod>\n    <changefreq>monthly</changefreq>\n    <priority>0.8</priority>\n  </url>\n",
+            "  <url>\n    <loc>https://shadowsofwar.io/how-to-play/</loc>\n    <lastmod>2026-08-25</lastmod>\n    <changefreq>monthly</changefreq>\n    <priority>0.8</priority>\n  </url>\n",
+            "  <url>\n    <loc>https://shadowsofwar.io/support/</loc>\n    <lastmod>2026-08-25</lastmod>\n    <changefreq>monthly</changefreq>\n    <priority>0.4</priority>\n  </url>\n",
+            "  <url>\n    <loc>https://shadowsofwar.io/privacy/</loc>\n    <lastmod>2026-08-25</lastmod>\n    <changefreq>yearly</changefreq>\n    <priority>0.3</priority>\n  </url>\n",
+            "  <url>\n    <loc>https://shadowsofwar.io/terms/</loc>\n    <lastmod>2026-08-25</lastmod>\n    <changefreq>yearly</changefreq>\n    <priority>0.3</priority>\n  </url>\n",
             "</urlset>\n",
         ),
     )?;
@@ -896,5 +905,135 @@ fn main() -> Result<()> {
             eprintln!("Usage: ./sow [p|native]");
             std::process::exit(1);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_web_site_sources_present() -> Result<()> {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .canonicalize()?;
+        let site = root.join("sow-web/site");
+        for required in [
+            "index.html",
+            "app.js",
+            "styles.css",
+            "legal.css",
+            "how-to-play/index.html",
+            "leaders/index.html",
+            "8d227b8f9e6140d39e3381a1829e1db3.txt",
+            "privacy/index.html",
+            "terms/index.html",
+            "support/index.html",
+        ] {
+            assert!(
+                site.join(required).is_file(),
+                "Required site source file missing: {required}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_leader_compendium_contains_all_twelve_leaders() -> Result<()> {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .canonicalize()?;
+        let leaders_html = fs::read_to_string(root.join("sow-web/site/leaders/index.html"))?;
+        for leader_id in [
+            "caesar",
+            "cleopatra",
+            "ragnar",
+            "suntzu",
+            "alexander",
+            "genghiskhan",
+            "richard",
+            "vercingetorix",
+            "boudica",
+            "ladysixsky",
+            "leonidas",
+            "napoleon",
+        ] {
+            assert!(
+                leaders_html.contains(&format!("id=\"{leader_id}\"")),
+                "leaders/index.html missing section for leader id: {leader_id}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_index_html_prerenders_all_twelve_leaders() -> Result<()> {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .canonicalize()?;
+        let index_html = fs::read_to_string(root.join("sow-web/site/index.html"))?;
+        for leader_id in [
+            "caesar",
+            "cleopatra",
+            "ragnar",
+            "suntzu",
+            "alexander",
+            "genghiskhan",
+            "richard",
+            "vercingetorix",
+            "boudica",
+            "ladysixsky",
+            "leonidas",
+            "napoleon",
+        ] {
+            assert!(
+                index_html.contains(&format!("data-leader-id=\"{leader_id}\"")),
+                "index.html missing prerendered card for leader id: {leader_id}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_marketing_mechanics_match_engine_terms() -> Result<()> {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .canonicalize()?;
+        let leaders_html = fs::read_to_string(root.join("sow-web/site/leaders/index.html"))?;
+        let how_to_play = fs::read_to_string(root.join("sow-web/site/how-to-play/index.html"))?;
+        assert!(leaders_html.contains("Armory modules grant +50% max troop capacity."));
+        assert!(!leaders_html.contains("Armory / Bunker districts"));
+        assert!(!how_to_play.contains("raise garrison limits"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_nginx_conf_redirects_www() -> Result<()> {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .canonicalize()?;
+        let conf = fs::read_to_string(
+            root.join("sow-dist/deploy/freebsd/conf.d/shadowsofwar.io.conf"),
+        )?;
+        assert!(
+            conf.contains("server_name www.shadowsofwar.io;"),
+            "Nginx missing dedicated www server_name"
+        );
+        assert!(
+            conf.contains("return 301 https://shadowsofwar.io$request_uri;"),
+            "Nginx missing 301 redirect to canonical root"
+        );
+        let security = fs::read_to_string(
+            root.join("sow-dist/deploy/freebsd/conf.d/00-00-security.conf"),
+        )?;
+        assert!(
+            security.contains("log_format origin_bypass"),
+            "Nginx security config missing origin_bypass log format"
+        );
+        assert!(
+            security.contains("map $is_cloudflare_or_local $is_origin_bypass"),
+            "Nginx security config missing origin cloaking map"
+        );
+        Ok(())
     }
 }
