@@ -472,6 +472,14 @@ impl SowApp {
                             self.ui.app.splash_state.target_phase =
                                 Some(sow_ui_kit::ClientPhase::Playing);
                             crate::store_portals::gameplay_start();
+                            if !self.net.is_offline {
+                                crate::analytics::track_with(
+                                    "match_started_client",
+                                    serde_json::json!({
+                                        "tutorial": self.sim.config.tutorial,
+                                    }),
+                                );
+                            }
                         }
 
                         // Clear pending init data to completely finish EnterGame phase

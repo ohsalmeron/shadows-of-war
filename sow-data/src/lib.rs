@@ -5,9 +5,12 @@ pub mod colors;
 pub mod crazygames;
 #[cfg(feature = "server")]
 pub mod db;
+#[cfg(feature = "server")]
+pub mod events;
 pub mod emoji;
 pub mod geo_entities;
 pub mod leaders;
+pub mod rewards;
 #[cfg(feature = "server")]
 pub mod metadata_db;
 #[cfg(feature = "server")]

@@ -579,9 +579,19 @@ impl SowApp {
                     // No fallback: continuing without an identity once masked a
                     // 403 from a misrouted endpoint and booted the wrong mode.
                     // A failed identity load is a hard failure — crash loudly.
-                    panic!(
+                        panic!(
                         "[identity] profile request id={request_id} failed status={status:?} — no fallback, refusing to continue without identity"
+                        );
+                    }
+                crate::player_progress::DbEvent::TutorialCompletionFailed { request_id, status } => {
+                    self.profile_request_in_flight = false;
+                    log::warn!(
+                        "[tutorial] completion request id={request_id} failed status={status:?}; local reward retained"
                     );
+                    if self.profile_refresh_pending {
+                        self.profile_refresh_pending = false;
+                        self.fetch_cloud_progress();
+                    }
                 }
             }
         }

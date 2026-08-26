@@ -148,7 +148,8 @@ impl SowApp {
         if idx != self.ui.tutorial_step_idx {
             // Flash a "Quest Complete" notification through the same bottom-panel modal the briefs
             // use; it shows first, then the next quest's brief.
-            self.ui.tutorial_pending_completion = Some(steps[self.ui.tutorial_step_idx].title);
+            let completed_title = steps[self.ui.tutorial_step_idx].title;
+            self.ui.tutorial_pending_completion = Some(completed_title);
 
             self.ui.tutorial_step_idx = idx;
             self.ui.tutorial_modal_dismissed = false; // open the new step's modal
@@ -158,6 +159,17 @@ impl SowApp {
                 idx,
                 steps[idx].title,
                 gained
+            );
+            crate::analytics::track_with(
+                "tutorial_objective_complete",
+                serde_json::json!({
+                    "title": completed_title,
+                    "next_step": idx,
+                }),
+            );
+            crate::analytics::track_with(
+                "tutorial_step",
+                serde_json::json!({ "idx": idx, "title": steps[idx].title }),
             );
         }
         let step = &steps[idx];
@@ -349,6 +361,19 @@ impl SowApp {
                 !is_last_step && elapsed > 0.5 && ctx.input(|i| i.pointer.any_click());
             if let Some(btn_idx) = clicked {
                 if is_last_step {
+                    crate::analytics::track_with(
+                        "tutorial_dialog_choice",
+                        serde_json::json!({
+                            "choice": if btn_idx == 0 { "continue" } else { "stay_fight" },
+                            "step": idx,
+                        }),
+                    );
+                    let completed_now = self.progress.complete_tutorial_with_reward();
+                    if completed_now {
+                        self.save_local_progress();
+                        self.persist_tutorial_completion();
+                        log::info!("tutorial: intro completed from final modal interaction");
+                    }
                     if btn_idx == 0 {
                         // Continue -> exit to main menu
                         self.begin_exit_to_main_menu(true);

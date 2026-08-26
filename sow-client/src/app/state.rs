@@ -107,6 +107,7 @@ impl LoadTelemetry {
         let now = web_time::Instant::now();
         *target = Some(now);
         Self::log_phase(phase, self.started_at, now);
+        crate::analytics::track_with("load_stage", serde_json::json!({ "stage": phase }));
     }
 
     fn log_phase(
@@ -281,6 +282,9 @@ pub struct UiState {
     pub floating_notices: Vec<FloatingNotice>,
     /// Cached endgame copy for panel fade-out (is_victory, title, subtitle).
     pub endgame_cache: Option<(bool, String, String)>,
+    /// Deterministic reward preview for the current match, cached when the
+    /// outcome is first observed so the endgame panel does not double-award.
+    pub reward_cache: Option<sow_data::rewards::MatchReward>,
 
     pub cached_hovered_building_id: Option<u64>,
     pub cached_hovered_building_level: u8,

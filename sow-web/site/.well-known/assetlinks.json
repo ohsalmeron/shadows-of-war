@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.shadowsofwar",
+      "sha256_cert_fingerprints": [
+        "67:16:D6:77:4E:9B:23:D7:19:2C:92:82:97:72:38:6D:E4:16:74:AB:ED:DF:7D:45:87:85:BB:82:FF:3B:61:C2"
+      ]
+    }
+  }
+]

@@ -2,7 +2,7 @@
 extern crate sow_ui as sow_ui_kit;
 use sow_net::client::SowClient;
 
-fn get_build_version() -> String {
+pub(crate) fn get_build_version() -> String {
     #[cfg(target_arch = "wasm32")]
     {
         if let Some(window) = web_sys::window() {
@@ -25,6 +25,7 @@ fn get_build_version() -> String {
     }
 }
 
+mod analytics;
 mod asset_config;
 mod anonymous_identity;
 mod config;

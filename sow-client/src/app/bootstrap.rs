@@ -45,6 +45,8 @@ impl SowApp {
 
         // ── UI State ────────────────────────────────────────────────────────────
         let asset_config = crate::AssetConfig::resolve();
+        crate::analytics::configure(&asset_config.database_base);
+        crate::analytics::track("boot_start");
         let mut app = ClientApp::new();
         crate::map_cache::hydrate_asset_maps(&mut app.asset_loader.maps);
         #[cfg(target_arch = "wasm32")]
@@ -295,6 +297,7 @@ impl SowApp {
                 star_svg_registered: false,
                 floating_notices: Vec::new(),
                 endgame_cache: None,
+                reward_cache: None,
 
                 cached_hovered_building_id: None,
                 cached_hovered_building_level: 0,

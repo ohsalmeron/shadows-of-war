@@ -5,6 +5,7 @@ impl SowApp {
         self.progress_match_recorded = false;
         self.progress_stats_submitted = false;
         self.progress_session_defeats = crate::player_progress::SessionDefeats::default();
+        self.ui.reward_cache = None;
     }
 
     pub(crate) fn maybe_submit_online_stats(&mut self, snap: &sow_core::protocol::SimSnapshot) {
@@ -28,13 +29,20 @@ impl SowApp {
         }
         self.progress_stats_submitted = true;
 
-        let msg = sow_core::protocol::ClientMessage::SubmitStats {
+        let msg = sow_core::protocol::ClientMessage::SubmitStatsWithLeader {
             kills: me.kills,
             deaths: me.deaths,
             assists: me.assists,
             players_defeated: self.progress_session_defeats.players,
             empires_defeated: self.progress_session_defeats.empires,
             tribes_defeated: self.progress_session_defeats.tribes,
+            leader: self
+                .ui
+                .app
+                .main_menu_state
+                .selected_leader
+                .name()
+                .to_string(),
         };
         if let Ok(json) = bincode::serialize(&msg) {
             if let Some(c) = self.net.client.as_ref() {
@@ -51,6 +59,7 @@ impl SowApp {
 
     pub(crate) fn maybe_record_match_progress(
         &mut self,
+        snap: &sow_core::protocol::SimSnapshot,
         winner: Option<u16>,
         winning_team: Option<sow_core::protocol::Team>,
         my_team: Option<sow_core::protocol::Team>,
@@ -58,14 +67,47 @@ impl SowApp {
         if self.progress_match_recorded {
             return;
         }
-        let Some(winner_id) = winner else {
-            return;
-        };
         let my_id = self.sim.my_player_id.unwrap_or(0);
         if my_id == 0 {
             return;
         }
+
+        let Some(me) = snap.players.iter().find(|p| p.id == my_id) else {
+            return;
+        };
+        let eliminated = !me.alive && me.has_spawned;
+        let Some(winner_id) = winner.or_else(|| eliminated.then_some(0)) else {
+            return;
+        };
         self.progress_match_recorded = true;
+
+        let won = if let Some(team) = winning_team {
+            my_team == Some(team)
+        } else {
+            winner_id == my_id
+        };
+        let defeats = self.progress_session_defeats;
+        let (kills, deaths, assists) = (me.kills, me.deaths, me.assists);
+        crate::analytics::track_with(
+            "match_ended_client",
+            serde_json::json!({
+                "won": won,
+                "offline": self.net.is_offline,
+                "tutorial": self.sim.config.tutorial,
+                "kills": kills,
+            }),
+        );
+        self.ui.reward_cache = Some(sow_data::rewards::calculate(
+            sow_data::rewards::RewardInput {
+                won,
+                players_defeated: defeats.players,
+                empires_defeated: defeats.empires,
+                tribes_defeated: defeats.tribes,
+                kills,
+                assists,
+                ..Default::default()
+            },
+        ));
 
         // Online ranked matches: relay + sow-database own the outcome; client only reads profile later.
         if self.progress_account_id.is_some() && !self.net.is_offline {
@@ -75,19 +117,6 @@ impl SowApp {
             return;
         }
 
-        let won = if let Some(team) = winning_team {
-            my_team == Some(team)
-        } else {
-            winner_id == my_id
-        };
-        let defeats = self.progress_session_defeats;
-        let (kills, deaths, assists) = self
-            .sim
-            .current_snapshot
-            .as_ref()
-            .and_then(|s| s.players.iter().find(|p| p.id == my_id))
-            .map(|p| (p.kills, p.deaths, p.assists))
-            .unwrap_or((0, 0, 0));
         self.progress.preferred_leader = Some(self.ui.app.main_menu_state.selected_leader);
         self.progress
             .record_match_with_kda(won, defeats, kills, deaths, assists);

@@ -1,5 +1,5 @@
 title = "Shadows of War — Privacy Policy"
-updated = "Last updated: May 2026"
+updated = "Last updated: August 2026"
 close = "CLOSE"
 
 [[sections]]
@@ -13,6 +13,7 @@ heading = "Data we collect"
 bullets = [
   "Gameplay: Display name, clan tag, leader/civilization choices, and match inputs required for lockstep multiplayer.",
   "Technical: Client build version, WebSocket connection metadata, and basic server logs for abuse prevention.",
+  "Product analytics: Anonymous usage events (boot, tutorial progress, match start/end) tied to a random session identifier and your account ID. We use them to measure funnels such as where new players stop; they contain no advertising identifiers.",
   "Partner platforms: If the game is later published through a partner platform, its SDK may collect analytics under its own policy. We do not sell personal data.",
 ]
 

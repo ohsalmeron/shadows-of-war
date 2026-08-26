@@ -19,6 +19,7 @@
   <meta name="twitter:description" content="Legendary leaders clash across world maps in a browser MMORTS of expansion, alliances, betrayal, and real-time conquest.">
   <meta name="twitter:image" content="https://shadowsofwar.io/assets/cdn/ui/sow-splash-desktop.webp">
   <link rel="icon" type="image/svg+xml" href="/sow.svg">
+  <link rel="manifest" href="/manifest.webmanifest">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&family=Outfit:wght@600;700;800;900&display=swap" rel="stylesheet">
@@ -65,7 +66,11 @@
           <span class="theme-icon" aria-hidden="true">☼</span>
           <span class="theme-label">Light mode</span>
         </button>
-        <a class="button button-small button-orange" href="/play/">Play now</a>
+        <button class="button button-small button-outline wou-auth-btn" type="button" id="wou-auth-trigger" aria-label="World of Unreal Universal Identity">
+          <span class="wou-icon">⬡</span>
+          <span id="wou-auth-label">Sign in</span>
+        </button>
+        <a class="button button-small button-orange" href="/play/">Play Now</a>
         <button class="menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="mobile-menu" aria-label="Open navigation">☰</button>
       </div>
     </div>
@@ -76,21 +81,23 @@
       <a href="/how-to-play/">How to play</a>
       <a href="#faq">FAQ</a>
       <a href="#play">Play</a>
-      <a class="button button-orange" href="/play/">Play now</a>
+      <a class="button button-orange" href="/play/">Play Now</a>
     </nav>
   </header>
 
   <main>
     <section class="hero section-rule">
-      <div class="hero-wash" aria-hidden="true"></div>
+      <div class="hero-wash" aria-hidden="true">
+        <canvas id="tactical-grid" class="hero-grid-canvas" aria-hidden="true"></canvas>
+      </div>
       <div class="container hero-grid">
         <div class="hero-copy">
           <p class="eyebrow"><span class="eyebrow-dot"></span> Match-based browser MMORTS · play now</p>
           <h1>Rewrite<br><em>history.</em></h1>
           <p class="hero-lede">Command one of twelve legendary leaders in real-time territory wars. Build cities and ports, forge alliances, betray rivals, and redraw the world map—instantly in your browser.</p>
           <div class="hero-actions">
-            <a class="button button-orange" href="/play/">Enter the battlefield <span aria-hidden="true">↗</span></a>
-            <a class="button button-outline" href="#media">Watch gameplay <span aria-hidden="true">▶</span></a>
+            <a class="button button-orange" href="/play/"><span class="sheen" aria-hidden="true"></span>Enter the battlefield <span aria-hidden="true">↗</span></a>
+            <a class="button button-outline" href="#media"><span class="sheen" aria-hidden="true"></span>Watch gameplay <span aria-hidden="true">▶</span></a>
           </div>
           <div class="hero-notes">
             <span><b class="status-dot"></b> Play instantly in browser</span>
@@ -98,7 +105,9 @@
           </div>
         </div>
         <div class="hero-stage">
-          <div class="hero-frame">
+          <div class="hero-frame hud-frame">
+            <div class="hologram-scanlines" aria-hidden="true"></div>
+            <div class="hologram-glitch" aria-hidden="true"></div>
             <div class="hero-frame-top"><span>LEADER SELECT</span><span data-hero-code>ROM / 01</span></div>
             <picture>
               <source media="(max-width: 700px)" data-hero-mobile srcset="/assets/cdn/leaders/caesar_mobile.webp">
@@ -305,6 +314,77 @@
     </div>
     <div class="container footer-bottom"><span>© 2026 World of Unreal</span><span>Built for the next campaign.</span></div>
   </footer>
+  <!-- WOU-ID Tactical Universal Auth Modal -->
+  <div id="wou-auth-modal" class="wou-modal-backdrop hidden" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="wou-modal-card hud-frame">
+      <div class="wou-modal-header">
+        <div class="wou-modal-title">
+          <span class="wou-modal-brand">⬡ WORLD OF UNREAL ID</span>
+          <h3>COMMANDER IDENTITY</h3>
+        </div>
+        <button type="button" class="wou-modal-close" id="wou-modal-close-btn" aria-label="Close modal">✕</button>
+      </div>
+
+      <div id="wou-auth-logged-view" class="wou-modal-body hidden">
+        <div class="wou-profile-badge">
+          <div class="wou-avatar" id="wou-user-avatar">⚔️</div>
+          <div class="wou-user-meta">
+            <h4 id="wou-user-name">Commander</h4>
+            <p id="wou-user-clan">Clan: None</p>
+            <p id="wou-user-id" class="wou-user-sub">ID: ...</p>
+          </div>
+        </div>
+        <div class="wou-modal-actions">
+          <a href="https://worldofunreal.com" target="_blank" rel="noopener" class="button button-outline button-full">Universal Hub ↗</a>
+          <button type="button" class="button button-outline button-full button-danger" id="wou-logout-btn">Disconnect Identity</button>
+        </div>
+      </div>
+
+      <div id="wou-auth-unlogged-view" class="wou-modal-body">
+        <p class="wou-modal-desc">Universal cross-game progression, clans, and battle history across all World of Unreal titles.</p>
+
+        <div class="wou-sso-grid">
+          <button type="button" class="wou-sso-btn wou-sso-google" id="wou-login-google">
+            <span class="sso-icon">G</span> Google
+          </button>
+          <button type="button" class="wou-sso-btn wou-sso-discord" id="wou-login-discord">
+            <span class="sso-icon">🎮</span> Discord
+          </button>
+        </div>
+
+        <div class="wou-divider"><span>OR WALLET / PASSKEY</span></div>
+
+        <div class="wou-sso-grid">
+          <button type="button" class="wou-sso-btn" id="wou-login-eth">
+            <span class="sso-icon">🦊</span> MetaMask
+          </button>
+          <button type="button" class="wou-sso-btn" id="wou-login-sol">
+            <span class="sso-icon">🟣</span> Phantom
+          </button>
+          <button type="button" class="wou-sso-btn" id="wou-login-passkey">
+            <span class="sso-icon">🔑</span> Passkey
+          </button>
+        </div>
+
+        <div class="wou-divider"><span>EMAIL OTP</span></div>
+
+        <form id="wou-email-form" class="wou-email-form">
+          <div class="wou-input-group" id="wou-email-step-1">
+            <input type="email" id="wou-email-input" placeholder="commander@domain.com" required class="wou-input">
+            <button type="submit" class="button button-orange button-small">Send Code</button>
+          </div>
+          <div class="wou-input-group hidden" id="wou-email-step-2">
+            <input type="text" id="wou-otp-input" placeholder="6-digit code" maxlength="8" class="wou-input">
+            <button type="button" id="wou-verify-otp-btn" class="button button-orange button-small">Verify</button>
+          </div>
+          <p id="wou-auth-msg" class="wou-msg hidden"></p>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="./grid-bg.js"></script>
+  <script src="./wou-auth.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>

@@ -40,7 +40,7 @@ impl SowApp {
             .find(|p| p.id == my_id)
             .and_then(|p| p.team);
         self.maybe_submit_online_stats(&snap);
-        self.maybe_record_match_progress(snap.winner, snap.winning_team, my_team);
+        self.maybe_record_match_progress(&snap, snap.winner, snap.winning_team, my_team);
 
         // Viewport Alerts: Victory / Defeat
         if let Some(winner) = snap.winner {

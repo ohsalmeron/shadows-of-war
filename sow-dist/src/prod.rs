@@ -114,6 +114,10 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
         println!("  runtime env drift: SOW_MAPS_CATALOG_PATH");
         plan.ops = true;
     }
+    if wou_id_config_drift(&config)? {
+        println!("  runtime env drift: WOU_ID_URL/WOU_ID_RESOLVE_IP");
+        plan.database = true;
+    }
     println!("  plan: {plan:?}");
 
     if !plan.any() {
@@ -202,6 +206,15 @@ fn version(paths: &Paths, bump: bool) -> Result<String> {
 }
 
 fn preflight(paths: &Paths, config: &Config) -> Result<()> {
+    let dirty_files = workspace_dirty_files(paths)?;
+    if dirty_files.is_empty() {
+        println!("  worktree clean");
+    } else {
+        println!("  WARNING: production release includes uncommitted files:");
+        for file in &dirty_files {
+            println!("    {file}");
+        }
+    }
     for command in ["cargo", "curl", "rsync", "rustc", "scp", "ssh", "wasm-opt"] {
         if !Command::new("/bin/sh")
             .args(["-c", &format!("command -v {command} >/dev/null")])
@@ -258,6 +271,14 @@ fn preflight(paths: &Paths, config: &Config) -> Result<()> {
         None,
     )
     .context("relay host preflight failed")
+}
+
+fn workspace_dirty_files(paths: &Paths) -> Result<Vec<String>> {
+    let root = paths.root.to_str().context("workspace path is not UTF-8")?;
+    Ok(output("git", &["-C", root, "status", "--porcelain=v1"])?
+        .lines()
+        .map(str::to_string)
+        .collect())
 }
 
 fn relay_worker_count() -> Result<usize> {
@@ -1071,6 +1092,7 @@ fn assemble_release(
     config: &Config,
 ) -> Result<Release> {
     let revision = output("git", &["rev-parse", "--short=12", "HEAD"])?;
+    let dirty_files = workspace_dirty_files(paths)?;
     let work = paths.root.join("dist/.release");
     if work.exists() {
         fs::remove_dir_all(&work)?;
@@ -1233,6 +1255,8 @@ fn assemble_release(
         serde_json::to_vec_pretty(&json!({
             "version": version,
             "git": revision,
+            "dirty": !dirty_files.is_empty(),
+            "dirty_files": dirty_files,
             "components": components.iter().map(|(name, hash)| json!({"name": name, "sha256": hash})).collect::<Vec<_>>(),
             "relay": json!({
                 "sha256": relay_component,
@@ -1337,6 +1361,28 @@ fn maps_catalog_path_drift(config: &Config) -> Result<bool> {
     Ok(values.len() != 3 || values.iter().any(|value| *value != expected))
 }
 
+fn wou_id_config_drift(config: &Config) -> Result<bool> {
+    let expected_url = env_or("WOU_ID_URL", "https://id.worldofunreal.com");
+    let expected_resolve_ip = env_or("WOU_ID_RESOLVE_IP", "104.21.87.220");
+    let remote = output(
+        "ssh",
+        &[
+            &config.control_host,
+            r#"for f in /usr/local/etc/sow/sow.env /zroot/jails/sow-server/usr/local/etc/sow/sow.env /zroot/jails/sow-database/usr/local/etc/sow/sow.env; do if sudo test -f "$f"; then sudo awk -F= '$1=="WOU_ID_URL" || $1=="WOU_ID_RESOLVE_IP" {print $1 "=" $2}' "$f"; fi; done"#,
+        ],
+    )?;
+    let actual = remote.lines().map(str::trim).collect::<Vec<_>>();
+    let expected = (0..3)
+        .flat_map(|_| {
+            [
+                format!("WOU_ID_URL={expected_url}"),
+                format!("WOU_ID_RESOLVE_IP={expected_resolve_ip}"),
+            ]
+        })
+        .collect::<Vec<_>>();
+    Ok(actual != expected)
+}
+
 fn parse_components(text: &str) -> BTreeMap<String, String> {
     text.lines()
         .filter_map(|line| line.split_once('='))
@@ -1392,9 +1438,11 @@ fn activate_control_host(
     let relay_tickets_required = env_or("SOW_RELAY_TICKETS_REQUIRED", "1");
     let maps_root = env_or("SOW_MAPS_ROOT", "/srv/sow/current/maps");
     let maps_catalog_path = env_or("SOW_MAPS_CATALOG_PATH", "/var/db/sow/server/catalog.bin");
+    let wou_id_url = env_or("WOU_ID_URL", "https://id.worldofunreal.com");
+    let wou_id_resolve_ip = env_or("WOU_ID_RESOLVE_IP", "104.21.87.220");
     let env_update = if runtime_env {
         format!(
-            "mkdir -p /tmp/sow-env-update; for f in /usr/local/etc/sow/sow.env /zroot/jails/sow-server/usr/local/etc/sow/sow.env /zroot/jails/sow-database/usr/local/etc/sow/sow.env; do t=$(mktemp /tmp/sow.env.XXXXXX); if sudo test -f \"$f\"; then sudo grep -v -E '^(SOW_MAPS_ROOT|SOW_MAPS_CATALOG_PATH|SOW_DB_SECRET|SOW_RELAY_CONTROL_SECRET|SOW_RELAY_HOST|SOW_RELAY_WORKERS|SOW_RELAY_WORKER_COUNT|SOW_RELAY_MGMT_URL|SOW_RELAY_MGMT_SCHEME|SOW_RELAY_MGMT_RESOLVE_IP|SOW_RELAY_TICKETS_REQUIRED)=|^[0-9a-fA-F]{{64}}$' \"$f\" > \"$t\" || true; else : > \"$t\"; fi; printf '%s\\n' SOW_MAPS_ROOT={maps_root} SOW_MAPS_CATALOG_PATH={maps_catalog_path} SOW_RELAY_HOST={relay_host} SOW_RELAY_WORKERS={relay_workers} SOW_RELAY_WORKER_COUNT={relay_worker_count} SOW_RELAY_MGMT_URL={relay_mgmt_url} SOW_RELAY_MGMT_SCHEME={relay_mgmt_scheme} SOW_RELAY_MGMT_RESOLVE_IP={relay_mgmt_resolve_ip} SOW_RELAY_TICKETS_REQUIRED={relay_tickets_required} | sudo tee -a \"$t\" >/dev/null; printf '%s' 'SOW_DB_SECRET=' | sudo tee -a \"$t\" >/dev/null; sudo cat {db_secret} | sudo tee -a \"$t\" >/dev/null; printf '\\n' | sudo tee -a \"$t\" >/dev/null; printf '%s' 'SOW_RELAY_CONTROL_SECRET=' | sudo tee -a \"$t\" >/dev/null; sudo cat {control_secret} | sudo tee -a \"$t\" >/dev/null; printf '\\n' | sudo tee -a \"$t\" >/dev/null; sudo install -o root -g wheel -m 0600 \"$t\" \"$f\"; rm -f \"$t\"; done; rm -rf /tmp/sow-env-update",
+            "mkdir -p /tmp/sow-env-update; for f in /usr/local/etc/sow/sow.env /zroot/jails/sow-server/usr/local/etc/sow/sow.env /zroot/jails/sow-database/usr/local/etc/sow/sow.env; do t=$(mktemp /tmp/sow.env.XXXXXX); if sudo test -f \"$f\"; then sudo grep -v -E '^(SOW_MAPS_ROOT|SOW_MAPS_CATALOG_PATH|SOW_DB_SECRET|SOW_RELAY_CONTROL_SECRET|SOW_RELAY_HOST|SOW_RELAY_WORKERS|SOW_RELAY_WORKER_COUNT|SOW_RELAY_MGMT_URL|SOW_RELAY_MGMT_SCHEME|SOW_RELAY_MGMT_RESOLVE_IP|SOW_RELAY_TICKETS_REQUIRED|WOU_ID_URL|WOU_ID_RESOLVE_IP)=|^[0-9a-fA-F]{{64}}$' \"$f\" > \"$t\" || true; else : > \"$t\"; fi; printf '%s\\n' SOW_MAPS_ROOT={maps_root} SOW_MAPS_CATALOG_PATH={maps_catalog_path} SOW_RELAY_HOST={relay_host} SOW_RELAY_WORKERS={relay_workers} SOW_RELAY_WORKER_COUNT={relay_worker_count} SOW_RELAY_MGMT_URL={relay_mgmt_url} SOW_RELAY_MGMT_SCHEME={relay_mgmt_scheme} SOW_RELAY_MGMT_RESOLVE_IP={relay_mgmt_resolve_ip} SOW_RELAY_TICKETS_REQUIRED={relay_tickets_required} WOU_ID_URL={wou_id_url} WOU_ID_RESOLVE_IP={wou_id_resolve_ip} | sudo tee -a \"$t\" >/dev/null; printf '%s' 'SOW_DB_SECRET=' | sudo tee -a \"$t\" >/dev/null; sudo cat {db_secret} | sudo tee -a \"$t\" >/dev/null; printf '\\n' | sudo tee -a \"$t\" >/dev/null; printf '%s' 'SOW_RELAY_CONTROL_SECRET=' | sudo tee -a \"$t\" >/dev/null; sudo cat {control_secret} | sudo tee -a \"$t\" >/dev/null; printf '\\n' | sudo tee -a \"$t\" >/dev/null; sudo install -o root -g wheel -m 0600 \"$t\" \"$f\"; rm -f \"$t\"; done; rm -rf /tmp/sow-env-update",
             maps_root = shell_quote(&maps_root),
             maps_catalog_path = shell_quote(&maps_catalog_path),
             relay_host = shell_quote(&relay_host),
@@ -1404,6 +1452,8 @@ fn activate_control_host(
             relay_mgmt_scheme = shell_quote(&relay_mgmt_scheme),
             relay_mgmt_resolve_ip = shell_quote(&relay_mgmt_resolve_ip),
             relay_tickets_required = shell_quote(&relay_tickets_required),
+            wou_id_url = shell_quote(&wou_id_url),
+            wou_id_resolve_ip = shell_quote(&wou_id_resolve_ip),
             db_secret = shell_quote(db_secret_file.as_deref().unwrap()),
             control_secret = shell_quote(control_secret_file.as_deref().unwrap()),
         )
@@ -1462,7 +1512,15 @@ if __NGINX_RELOAD__; then
     sudo service nginx reload || rollback
 fi
 __ENV_UPDATE__
-if __DB_RESTART__; then sudo jexec sow-database service sow_database restart || rollback; fi
+if __DB_RESTART__; then
+    sudo jexec sow-database service sow_database restart || rollback
+    i=0
+    until curl -fsS --max-time 5 http://127.0.0.1:25585/healthz >/dev/null; do
+        i=$((i+1))
+        if [ "$i" -ge 180 ]; then echo "database healthz did not become ready before server restart" >&2; rollback; fi
+        sleep 1
+    done
+fi
 if __SERVER_RESTART__; then sudo jexec sow-server service sow_server restart || rollback; fi
 if ! sudo jexec sow-database service sow_database status >/dev/null 2>&1; then rollback; fi
 if ! sudo jexec sow-server service sow_server status >/dev/null 2>&1; then rollback; fi
@@ -1535,7 +1593,35 @@ fn stage_secret(host: &str, secret: &str, remote_path: &str) -> Result<()> {
 
 fn verify_control_host(config: &Config, plan: &ComponentPlan) -> Result<()> {
     let mut checks = String::from(
-        "set -eu; sudo jexec sow-database service sow_database status >/dev/null; sudo jexec sow-server service sow_server status >/dev/null; i=0; until curl -fsS --max-time 5 http://127.0.0.1:25585/healthz >/dev/null; do i=$((i+1)); [ \"$i\" -ge 180 ] && exit 1; sleep 1; done; /usr/local/bin/valkey-cli -h 127.0.0.1 ping | grep -q PONG; j=0; until sudo sockstat -4l | grep -q '127.0.0.1:25564'; do j=$((j+1)); [ \"$j\" -ge 180 ] && exit 1; sleep 1; done",
+        r#"set -eu
+fail() {
+    echo "CONTROL HEALTHCHECK FAILED: $1" >&2
+    echo "--- database.log (tail) ---" >&2
+    sudo tail -80 /var/log/sow/database.log >&2 || true
+    echo "--- server.log (tail) ---" >&2
+    sudo tail -120 /var/log/sow/server.log >&2 || true
+    exit 1
+}
+if ! sudo jexec sow-database service sow_database status; then fail "database service is not running"; fi
+if ! sudo jexec sow-server service sow_server status; then fail "server service is not running"; fi
+i=0
+until curl -fsS --max-time 5 http://127.0.0.1:25585/healthz >/dev/null; do
+    i=$((i+1))
+    if [ "$i" -ge 180 ]; then fail "database healthz timeout"; fi
+    sleep 1
+done
+if ! /usr/local/bin/valkey-cli -h 127.0.0.1 ping | grep -q PONG; then fail "valkey ping failed"; fi
+j=0
+until sudo sockstat -4l | grep -q '127.0.0.1:25564'; do
+    j=$((j+1))
+    if [ "$j" -ge 180 ]; then fail "server websocket port timeout"; fi
+    sleep 1
+done
+bot_line=$(sudo tail -500 /var/log/sow/server.log | grep '\[BOT_POOL\].*installed with' | tail -1 || true)
+echo "  $bot_line"
+if ! printf '%s\n' "$bot_line" | grep -Eq 'installed with [1-9][0-9]* identities'; then
+    fail "Ghost bot pool was not installed with identities"
+fi"#,
     );
     if plan.web || plan.ops {
         checks.push_str("; sudo nginx -t");

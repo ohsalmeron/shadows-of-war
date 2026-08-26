@@ -77,6 +77,10 @@ pub struct MainMenuState {
     pub notice: Option<LobbyNotice>,
     pub notice_at: Option<f64>,
     pub safe_area_bottom: f32,
+    /// Compact account progression shown beside the identity header.
+    pub account_level: u32,
+    pub account_xp: u32,
+    pub laurels: u64,
 }
 
 impl Default for MainMenuState {
@@ -143,6 +147,9 @@ impl Default for MainMenuState {
             notice: None,
             notice_at: None,
             safe_area_bottom: 0.0,
+            account_level: 1,
+            account_xp: 0,
+            laurels: 0,
         }
     }
 }

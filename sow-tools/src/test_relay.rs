@@ -397,11 +397,11 @@ mod tests {
     #[test]
     fn relay_base_url_overrides_the_orchestrator_origin() {
         let orchestrator = parse_websocket_url("wss://shadowsofwar.io/ws/").unwrap();
-        let relay_base = parse_websocket_url("ws://YOUR_AZURE_IP").unwrap();
+        let relay_base = parse_websocket_url("ws://your_azure_ip").unwrap();
 
         assert_eq!(
             relay_url(&orchestrator, Some(&relay_base), 26_500).as_str(),
-            "ws://YOUR_AZURE_IP/relay/26500/ws/"
+            "ws://your_azure_ip/relay/26500/ws/"
         );
     }
 

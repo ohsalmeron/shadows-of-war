@@ -76,10 +76,12 @@ fn take_window_bool(_name: &str) -> bool {
 }
 
 pub fn gameplay_start() {
+    crate::analytics::gameplay_start();
     call_window_hook("SOW_portalGameplayStart");
 }
 
 pub fn gameplay_stop() {
+    crate::analytics::gameplay_stop();
     call_window_hook("SOW_portalGameplayStop");
 }
 
@@ -146,18 +148,24 @@ pub fn should_fetch_cloud_profile() -> bool {
 pub fn load_portal_progress() -> Option<crate::player_progress::PlayerProgress> {
     #[cfg(target_arch = "wasm32")]
     {
-        let json = get_window_value("SOW_PORTAL_PROGRESS_JSON")?.as_string()?;
-        if json.is_empty() {
-            return None;
-        }
+        let json = get_window_value("SOW_PORTAL_PROGRESS_JSON")
+            .and_then(|value| value.as_string())
+            .filter(|value| !value.is_empty())
+            .or_else(|| {
+                window()
+                    .and_then(|window| window.local_storage().ok().flatten())
+                    .and_then(|storage| storage.get_item(crate::player_progress::STORAGE_KEY).ok().flatten())
+            })?;
         serde_json::from_str(&json).ok()
     }
-    // Native has no portal progress bridge; its anonymous account storage is
-    // handled by anonymous_identity and the database profile remains the
-    // source of truth for online stats.
+    // Native uses the same JSON shape in its local data directory; the
+    // anonymous account remains the source of truth for online stats.
     #[cfg(not(target_arch = "wasm32"))]
     {
-        None
+        let path = crate::paths::native_data_dir().join(crate::player_progress::STORAGE_KEY);
+        std::fs::read_to_string(path)
+            .ok()
+            .and_then(|json| serde_json::from_str(&json).ok())
     }
 }
 
@@ -165,8 +173,19 @@ pub fn save_portal_progress(progress: &crate::player_progress::PlayerProgress) {
     let Ok(json) = serde_json::to_string(progress) else {
         return;
     };
-    // No-op on native (see `load_portal_progress`): nothing is saved until native logins land.
     call_window_hook_str("SOW_portalSaveProgress", &json);
+    #[cfg(target_arch = "wasm32")]
+    if let Some(storage) = window().and_then(|window| window.local_storage().ok().flatten()) {
+        let _ = storage.set_item(crate::player_progress::STORAGE_KEY, &json);
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let path = crate::paths::native_data_dir().join(crate::player_progress::STORAGE_KEY);
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(path, json);
+    }
 }
 
 /// Read platform identity set by the portal SDK during init.
@@ -184,6 +203,7 @@ pub fn load_identity(fallback_name: &str) -> PlatformIdentity {
                 let name_locked = js_bool_field(&obj, "nameLocked").unwrap_or(false);
                 let auth_token = js_string_field(&obj, "token");
                 let provider_static: &'static str = match provider.as_str() {
+                    "wou" | "wou_id" | "world_of_unreal" => "wou",
                     "crazygames" => "crazygames",
                     "poki" => "poki",
                     "gamecenter" => "gamecenter",
@@ -202,6 +222,24 @@ pub fn load_identity(fallback_name: &str) -> PlatformIdentity {
                     name_locked,
                     auth_token,
                 };
+            }
+        }
+        if let Some(storage) = window().and_then(|w| w.local_storage().ok().flatten()) {
+            if let Ok(Some(token)) = storage.get_item("wou_session_token") {
+                if let Ok(Some(user_raw)) = storage.get_item("wou_user_data") {
+                    if let Ok(user_val) = serde_json::from_str::<serde_json::Value>(&user_raw) {
+                        let id = user_val.get("id").and_then(|v| v.as_str()).map(ToString::to_string);
+                        let name = user_val.get("display_name").and_then(|v| v.as_str()).unwrap_or(fallback_name).to_string();
+                        return PlatformIdentity {
+                            provider: "wou",
+                            display_name: name,
+                            external_id: id,
+                            avatar_url: None,
+                            name_locked: false,
+                            auth_token: Some(token),
+                        };
+                    }
+                }
             }
         }
     }

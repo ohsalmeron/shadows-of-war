@@ -6,19 +6,17 @@ use serde::{Deserialize, Serialize};
 const ANALYTICS_UNIQUE: &str = "sow:analytics:unique_users";
 const ANALYTICS_ACTIVE_PREFIX: &str = "sow:analytics:active:";
 const ANALYTICS_DAU_TTL_SECS: i64 = 35 * 24 * 3600;
+const ANALYTICS_EVENT_COUNT_PREFIX: &str = "sow:analytics:event:";
+const ANALYTICS_EVENT_USERS_PREFIX: &str = "sow:analytics:event_users:";
+const ANALYTICS_COHORT_PREFIX: &str = "sow:analytics:cohort:";
+const ANALYTICS_ACTIVATED_PREFIX: &str = "sow:analytics:activated:";
+const ANALYTICS_RETENTION_TTL_SECS: i64 = 100 * 24 * 3600;
 
 /// SET index of all bot account_ids — populated by `seed_bot_pool`, used for
 /// pool introspection and analytics. Account records carry a canonical
 /// display_name field; the bot allocator may choose its presentation name.
 const BOT_POOL_KEY: &str = "sow:bot:pool";
 
-const XP_WIN: u32 = 100;
-const XP_MATCH: u32 = 20;
-
-const XP_PER_PLAYER: u32 = 15;
-const XP_PER_EMPIRE: u32 = 8;
-const XP_PER_TRIBE: u32 = 2;
-const XP_PER_ASSIST: u32 = 5;
 const ACCOUNT_ID_HEX_LEN: usize = 32;
 pub const DISPLAY_NAME_MAX_CHARS: usize = 16;
 
@@ -57,12 +55,13 @@ pub struct SessionDefeats {
     pub tribes: u32,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct MatchOutcomeKda {
     pub defeats: SessionDefeats,
     pub kills: u32,
     pub deaths: u32,
     pub assists: u32,
+    pub leader: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -81,6 +80,12 @@ pub struct PlayerProfile {
     pub deaths: u32,
     #[serde(default)]
     pub assists: u32,
+    #[serde(default)]
+    pub leader_xp: std::collections::BTreeMap<String, u32>,
+    #[serde(default)]
+    pub laurels: u64,
+    #[serde(default)]
+    pub intro_completed: bool,
 }
 
 impl Default for PlayerProfile {
@@ -97,6 +102,9 @@ impl Default for PlayerProfile {
             kills: 0,
             deaths: 0,
             assists: 0,
+            leader_xp: std::collections::BTreeMap::new(),
+            laurels: 0,
+            intro_completed: false,
         }
     }
 }
@@ -111,6 +119,17 @@ impl PlayerProfile {
         self.sync_level();
     }
 
+    pub fn apply_reward(
+        &mut self,
+        leader: &str,
+        reward: crate::rewards::MatchReward,
+    ) {
+        self.add_xp(reward.xp);
+        let entry = self.leader_xp.entry(leader.to_string()).or_default();
+        *entry = entry.saturating_add(reward.leader_xp);
+        self.laurels = self.laurels.saturating_add(reward.laurels);
+    }
+
     pub fn record_match_with_kda(
         &mut self,
         won: bool,
@@ -118,6 +137,18 @@ impl PlayerProfile {
         kills: u32,
         deaths: u32,
         assists: u32,
+    ) {
+        self.record_match_with_leader(won, defeats, kills, deaths, assists, None);
+    }
+
+    pub fn record_match_with_leader(
+        &mut self,
+        won: bool,
+        defeats: SessionDefeats,
+        kills: u32,
+        deaths: u32,
+        assists: u32,
+        leader: Option<&str>,
     ) {
         self.matches_played = self.matches_played.saturating_add(1);
         if won {
@@ -130,16 +161,20 @@ impl PlayerProfile {
         self.deaths = self.deaths.saturating_add(deaths);
         self.assists = self.assists.saturating_add(assists);
 
-        let mut xp_gain = XP_MATCH;
-        xp_gain = xp_gain.saturating_add(defeats.players.saturating_mul(XP_PER_PLAYER));
-        xp_gain = xp_gain.saturating_add(defeats.empires.saturating_mul(XP_PER_EMPIRE));
-        xp_gain = xp_gain.saturating_add(defeats.tribes.saturating_mul(XP_PER_TRIBE));
-        xp_gain = xp_gain.saturating_add(assists.saturating_mul(XP_PER_ASSIST));
-
-        if won {
-            xp_gain = xp_gain.saturating_add(XP_WIN);
-        }
-        self.add_xp(xp_gain);
+        let reward = crate::rewards::calculate(crate::rewards::RewardInput {
+            won,
+            players_defeated: defeats.players,
+            empires_defeated: defeats.empires,
+            tribes_defeated: defeats.tribes,
+            kills,
+            assists,
+            ..Default::default()
+        });
+        let leader = leader
+            .and_then(crate::rewards::canonical_leader_name)
+            .or_else(|| self.preferred_leader.clone())
+            .unwrap_or_else(|| "Caesar".to_string());
+        self.apply_reward(&leader, reward);
     }
 }
 
@@ -167,6 +202,16 @@ pub struct PlayerAccount {
     pub updated_at: u64,
 }
 
+impl PlayerAccount {
+    /// Remove the anonymous ownership proof before returning an account from
+    /// a public HTTP endpoint. The hash remains present in storage and in
+    /// authenticated internal responses.
+    pub fn without_auth_secret(mut self) -> Self {
+        self.auth_secret_hash = None;
+        self
+    }
+}
+
 /// Distinguishes real players from persistent bot accounts. Bots are
 /// full-fledged accounts (they have stats, profiles) — they just aren't
 /// driven by a human. Used for stat filtering, leaderboards, display.
@@ -191,8 +236,7 @@ pub struct PlayerDb {
 }
 
 fn utc_date_string() -> String {
-    let dt = crate::time_util::now_utc();
-    format!("{:04}-{:02}-{:02}", dt.year, dt.month, dt.day)
+    crate::events::utc_date_string()
 }
 
 impl PlayerDb {
@@ -302,7 +346,257 @@ impl PlayerDb {
         let day_key = format!("{ANALYTICS_ACTIVE_PREFIX}{}", utc_date_string());
         let _: () = con.pfadd(&day_key, account_id).await?;
         let _: () = con.expire(&day_key, ANALYTICS_DAU_TTL_SECS).await?;
+        let active_key = Self::daily_active_key(&utc_date_string());
+        let _: () = con.sadd(&active_key, account_id).await?;
+        let _: () = con.expire(&active_key, ANALYTICS_DAU_TTL_SECS).await?;
         Ok(())
+    }
+
+    async fn record_activation_in_connection(
+        con: &mut redis::aio::MultiplexedConnection,
+        account_id: &str,
+        date: &str,
+    ) -> Result<(), redis::RedisError> {
+        let activated_key = format!("{ANALYTICS_ACTIVATED_PREFIX}{account_id}");
+        let first_match: bool = con
+            .set_nx(&activated_key, date)
+            .await?;
+        if first_match {
+            let cohort_key = format!("{ANALYTICS_COHORT_PREFIX}{date}");
+            let _: () = redis::pipe()
+                .expire(&activated_key, ANALYTICS_RETENTION_TTL_SECS)
+                .sadd(&cohort_key, account_id)
+                .expire(&cohort_key, ANALYTICS_RETENTION_TTL_SECS)
+                .query_async(con)
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// Record a client-originated product event in hot counters and exact
+    /// daily activity sets. The JSONL sink remains the durable event source;
+    /// these keys make DAU/funnel/retention queries cheap without a vendor.
+    pub async fn record_product_event(
+        &self,
+        name: &str,
+        account_id: Option<&str>,
+    ) -> Result<(), redis::RedisError> {
+        let mut con = self.get_connection().await?;
+        let date = utc_date_string();
+        let count_key = format!("{ANALYTICS_EVENT_COUNT_PREFIX}{date}:{name}");
+        let _: u64 = con.incr(&count_key, 1_u64).await?;
+        let _: () = con.expire(&count_key, ANALYTICS_RETENTION_TTL_SECS).await?;
+
+        let Some(account_id) = account_id else {
+            return Ok(());
+        };
+        let is_bot: i8 = con.sismember(BOT_POOL_KEY, account_id).await?;
+        if is_bot == 1 {
+            return Ok(());
+        }
+
+        let event_users_key = format!("{ANALYTICS_EVENT_USERS_PREFIX}{date}:{name}");
+        let active_key = Self::daily_active_key(&date);
+        let _: () = redis::pipe()
+            .sadd(&event_users_key, account_id)
+            .expire(&event_users_key, ANALYTICS_RETENTION_TTL_SECS)
+            .sadd(&active_key, account_id)
+            .expire(&active_key, ANALYTICS_RETENTION_TTL_SECS)
+            .query_async(&mut con)
+            .await?;
+
+        if matches!(name, "match_ended" | "match_ended_client") {
+            Self::record_activation_in_connection(&mut con, account_id, &date).await?;
+        }
+        Ok(())
+    }
+
+    /// Mark every human participant in an authoritative completed match as
+    /// active and put first-time completers into the activation cohort.
+    pub async fn record_match_activation(
+        &self,
+        account_ids: &[String],
+    ) -> Result<(), redis::RedisError> {
+        let mut con = self.get_connection().await?;
+        let date = utc_date_string();
+        for account_id in account_ids {
+            let is_bot: i8 = con.sismember(BOT_POOL_KEY, account_id).await?;
+            if is_bot == 1 {
+                continue;
+            }
+            let active_key = Self::daily_active_key(&date);
+            let _: () = redis::pipe()
+                .sadd(&active_key, account_id)
+                .expire(&active_key, ANALYTICS_RETENTION_TTL_SECS)
+                .query_async(&mut con)
+                .await?;
+            Self::record_activation_in_connection(&mut con, account_id, &date).await?;
+        }
+        Ok(())
+    }
+
+    /// Return a compact, authenticated-only analytics snapshot for operators.
+    /// Retention uses exact daily sets, not HLL intersections.
+    pub async fn analytics_summary(
+        &self,
+        requested_days: u32,
+    ) -> Result<serde_json::Value, Box<dyn std::error::Error + Send + Sync>> {
+        let days = requested_days.clamp(1, 90) as i64;
+        let today = utc_date_string();
+        let names = [
+            "landing_visit",
+            "play_now_click",
+            "shell_loaded",
+            "matchmaking_joined",
+            "match_started",
+            "match_ended",
+        ];
+        let mut con = self.get_connection().await?;
+        let mut daily = Vec::new();
+        let mut funnel = serde_json::Map::new();
+        for offset in 0..days {
+            let date = crate::events::shift_date(&today, -offset).ok_or("invalid UTC date")?;
+            let mut counts = serde_json::Map::new();
+            for name in names {
+                let key = format!("{ANALYTICS_EVENT_COUNT_PREFIX}{date}:{name}");
+                // GET on a missing counter returns nil, which is a normal
+                // zero-count day—not a Redis failure.
+                let count: u64 = con.get::<_, Option<u64>>(&key).await?.unwrap_or(0);
+                counts.insert(name.to_string(), serde_json::json!(count));
+                let total = funnel
+                    .entry(name.to_string())
+                    .or_insert_with(|| serde_json::json!(0_u64));
+                *total = serde_json::json!(total.as_u64().unwrap_or(0).saturating_add(count));
+            }
+            let active_key = Self::daily_active_key(&date);
+            let active: usize = con.scard(&active_key).await?;
+            daily.push(serde_json::json!({
+                "date": date,
+                "active_users": active,
+                "events": counts,
+            }));
+        }
+
+        let mut eligible_cohorts = 0_u64;
+        let mut d1_returned = 0_u64;
+        let mut d7_returned = 0_u64;
+        for offset in 7..days {
+            let cohort_date = crate::events::shift_date(&today, -offset).ok_or("invalid cohort date")?;
+            let members: Vec<String> = con
+                .smembers(format!("{ANALYTICS_COHORT_PREFIX}{cohort_date}"))
+                .await?;
+            if members.is_empty() {
+                continue;
+            }
+            eligible_cohorts += members.len() as u64;
+            let day_one = crate::events::shift_date(&cohort_date, 1).ok_or("invalid D1 date")?;
+            let day_seven = crate::events::shift_date(&cohort_date, 7).ok_or("invalid D7 date")?;
+            for account_id in members {
+                if con
+                    .sismember::<_, _, bool>(Self::daily_active_key(&day_one), &account_id)
+                    .await?
+                {
+                    d1_returned += 1;
+                }
+                if con
+                    .sismember::<_, _, bool>(Self::daily_active_key(&day_seven), &account_id)
+                    .await?
+                {
+                    d7_returned += 1;
+                }
+            }
+        }
+        Ok(serde_json::json!({
+            "generated_at": today,
+            "days": days,
+            "funnel": funnel,
+            "daily": daily,
+            "retention": {
+                "eligible_activated_players": eligible_cohorts,
+                "d1_returned": d1_returned,
+                "d7_returned": d7_returned,
+            }
+        }))
+    }
+
+    /// Key holding the SET of account_ids active on a UTC date. Exact
+    /// membership (unlike the DAU HyperLogLog) is what makes D1/Dn retention
+    /// computable.
+    fn daily_active_key(date: &str) -> String {
+        format!("sow:active:{date}")
+    }
+
+    /// Membership check against the bot pool index — used to exclude synthetic
+    /// players from analytics ingestion and human counters.
+    pub async fn is_bot_account_checked(
+        &self,
+        account_id: &str,
+    ) -> Result<bool, redis::RedisError> {
+        let mut con = self.get_connection().await?;
+        Ok(con.sismember::<_, _, i8>(BOT_POOL_KEY, account_id).await? == 1)
+    }
+
+    pub async fn is_bot_account(&self, account_id: &str) -> bool {
+        match self.is_bot_account_checked(account_id).await {
+            Ok(is_bot) => is_bot,
+            Err(error) => {
+                error!("Bot-pool membership lookup failed for {account_id}: {error}");
+                false
+            }
+        }
+    }
+
+    /// Count non-bot account_ids in a match roster.
+    pub async fn count_human_players(&self, player_ids: &[String]) -> usize {
+        let Ok(mut con) = self.get_connection().await else {
+            return 0;
+        };
+        let mut humans = 0usize;
+        for id in player_ids {
+            let is_bot: i8 = match con.sismember(BOT_POOL_KEY, id).await {
+                Ok(value) => value,
+                Err(error) => {
+                    error!("bot-pool lookup failed while counting players: {error}");
+                    continue;
+                }
+            };
+            if is_bot == 0 {
+                humans += 1;
+            }
+        }
+        humans
+    }
+
+    /// Read a match's registered roster and exit order before finalize deletes them.
+    pub async fn match_participants(
+        &self,
+        match_id: &str,
+    ) -> Result<(Vec<String>, Vec<String>), Box<dyn std::error::Error + Send + Sync>> {
+        let mut con = self.get_connection().await?;
+        let players_json: Option<String> = con
+            .get(format!("sow:match:{match_id}:players"))
+            .await?;
+        let exits: Vec<String> = con
+            .lrange(format!("sow:match:{match_id}:exits"), 0, -1)
+            .await?;
+        let players = players_json
+            .and_then(|json| serde_json::from_str(&json).ok())
+            .unwrap_or_default();
+        Ok((players, exits))
+    }
+
+    /// Record exact daily activity for an account (retention cohorts).
+    pub async fn mark_daily_activity(&self, account_id: &str) {
+        let Ok(mut con) = self.get_connection().await else {
+            return;
+        };
+        let date = utc_date_string();
+        let key = Self::daily_active_key(&date);
+        let _: Result<(), _> = redis::pipe()
+            .sadd(&key, account_id)
+            .expire(&key, ANALYTICS_DAU_TTL_SECS)
+            .query_async(&mut con)
+            .await;
     }
 
     /// Get or create player account by platform identity
@@ -642,14 +936,21 @@ impl PlayerDb {
 
         if con.exists(&acc_key).await? {
             let account = Self::update_account_atomic(&mut con, &acc_key, |account| {
-                account.profile.record_match_with_kda(
+                let leader = preferred_leader
+                    .clone()
+                    .or_else(|| kda.leader.clone());
+                account.profile.record_match_with_leader(
                     won,
                     kda.defeats,
                     kda.kills,
                     kda.deaths,
                     kda.assists,
+                    leader.as_deref(),
                 );
-                if let Some(leader) = preferred_leader.clone() {
+                if let Some(leader) = leader
+                    .as_deref()
+                    .and_then(crate::rewards::canonical_leader_name)
+                {
                     account.profile.preferred_leader = Some(leader);
                 }
                 account.updated_at = std::time::SystemTime::now()
@@ -663,6 +964,37 @@ impl PlayerDb {
         } else {
             Err("Account not found".into())
         }
+    }
+
+    /// Complete the offline tutorial once and grant its fixed onboarding reward.
+    /// The account secret is verified by the HTTP handler before this method runs.
+    pub async fn complete_anonymous_tutorial(
+        &self,
+        account_id: &str,
+    ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
+        let mut con = self.get_connection().await?;
+        let acc_key = Self::account_key(account_id);
+        let account = Self::update_account_atomic(&mut con, &acc_key, |account| {
+            if account.profile.intro_completed {
+                return;
+            }
+            account.profile.intro_completed = true;
+            account.profile.preferred_leader = Some("Boudica".to_string());
+            account.profile.apply_reward(
+                "Boudica",
+                crate::rewards::calculate(crate::rewards::RewardInput {
+                    tutorial: true,
+                    ..Default::default()
+                }),
+            );
+            account.updated_at = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+        })
+        .await?;
+        self.save_player_account_to_redb(&account);
+        Ok(account)
     }
 
     /// Register expected players for an upcoming match.
@@ -725,7 +1057,7 @@ impl PlayerDb {
             let stats: Option<std::collections::HashMap<String, String>> =
                 con.hgetall(&stats_key).await?;
 
-            let (defeats, kills, deaths, assists) = if let Some(map) = stats {
+            let (defeats, kills, deaths, assists, leader) = if let Some(map) = stats {
                 let parse = |k: &str| map.get(k).and_then(|v| v.parse().ok()).unwrap_or(0);
                 (
                     SessionDefeats {
@@ -736,6 +1068,8 @@ impl PlayerDb {
                     parse("kills"),
                     parse("deaths"),
                     parse("assists"),
+                    map.get("leader")
+                        .and_then(|value| crate::rewards::canonical_leader_name(value)),
                 )
             } else {
                 (
@@ -747,6 +1081,7 @@ impl PlayerDb {
                     0,
                     0,
                     0,
+                    None,
                 )
             };
 
@@ -759,6 +1094,7 @@ impl PlayerDb {
                         kills,
                         deaths,
                         assists,
+                        leader,
                     },
                     None,
                 )
@@ -861,5 +1197,22 @@ mod tests {
         }"#;
         let account: super::PlayerAccount = serde_json::from_str(json).unwrap();
         assert!(account.display_name.is_empty());
+        assert!(account.profile.leader_xp.is_empty());
+        assert_eq!(account.profile.laurels, 0);
+        assert!(!account.profile.intro_completed);
+    }
+
+    #[test]
+    fn public_account_projection_does_not_serialize_secret_hash() {
+        let json = r#"{
+            "id":"0123456789abcdef0123456789abcdef",
+            "profile":{"xp":0,"level":1,"wins":0,"matches_played":0,
+              "players_defeated":0,"empires_defeated":0,"tribes_defeated":0,
+              "preferred_leader":null},
+            "linked_identities":[],"auth_secret_hash":"private","created_at":0,"updated_at":0
+        }"#;
+        let account: super::PlayerAccount = serde_json::from_str(json).unwrap();
+        let public = serde_json::to_value(account.without_auth_secret()).unwrap();
+        assert!(public.get("auth_secret_hash").is_none());
     }
 }

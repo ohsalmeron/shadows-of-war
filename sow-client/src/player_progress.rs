@@ -4,14 +4,6 @@ use sow_core::player::Leader;
 
 pub const STORAGE_KEY: &str = "sow_player_progress";
 
-const XP_WIN: u32 = 100;
-const XP_MATCH: u32 = 20;
-
-const XP_PER_PLAYER: u32 = 15;
-const XP_PER_EMPIRE: u32 = 8;
-const XP_PER_TRIBE: u32 = 2;
-const XP_PER_ASSIST: u32 = 5;
-
 #[derive(Default, Clone, Copy, Debug)]
 pub struct SessionDefeats {
     pub players: u32,
@@ -39,6 +31,10 @@ pub struct PlayerProgress {
     pub deaths: u32,
     #[serde(default)]
     pub assists: u32,
+    #[serde(default)]
+    pub leader_xp: std::collections::BTreeMap<String, u32>,
+    #[serde(default)]
+    pub laurels: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -63,6 +59,10 @@ pub enum DbEvent {
         request_id: u64,
         status: Option<u16>,
     },
+    TutorialCompletionFailed {
+        request_id: u64,
+        status: Option<u16>,
+    },
 }
 
 impl PlayerProgress {
@@ -74,8 +74,43 @@ impl PlayerProgress {
         self.intro_completed = Some(true);
     }
 
+    pub fn apply_reward(
+        &mut self,
+        leader: Leader,
+        reward: sow_data::rewards::MatchReward,
+    ) {
+        self.add_xp(reward.xp);
+        let entry = self
+            .leader_xp
+            .entry(leader.name().to_string())
+            .or_default();
+        *entry = entry.saturating_add(reward.leader_xp);
+        self.laurels = self.laurels.saturating_add(reward.laurels);
+    }
+
+    pub fn complete_tutorial_with_reward(&mut self) -> bool {
+        if self.intro_completed.unwrap_or(false) {
+            return false;
+        }
+        self.complete_intro();
+        self.apply_reward(
+            Leader::Boudica,
+            sow_data::rewards::calculate(sow_data::rewards::RewardInput {
+                tutorial: true,
+                ..Default::default()
+            }),
+        );
+        true
+    }
+
     pub fn has_history(&self) -> bool {
-        self.matches_played > 0 || self.wins > 0 || self.xp > 0 || self.preferred_leader.is_some()
+        self.matches_played > 0
+            || self.wins > 0
+            || self.xp > 0
+            || self.preferred_leader.is_some()
+            || self.intro_completed.unwrap_or(false)
+            || self.laurels > 0
+            || !self.leader_xp.is_empty()
     }
 
     /// Prefer cloud profile when it has history; otherwise keep local/CG portal data.
@@ -113,15 +148,56 @@ impl PlayerProgress {
         self.deaths = self.deaths.saturating_add(deaths);
         self.assists = self.assists.saturating_add(assists);
 
-        let mut xp_gain = XP_MATCH;
-        xp_gain = xp_gain.saturating_add(defeats.players.saturating_mul(XP_PER_PLAYER));
-        xp_gain = xp_gain.saturating_add(defeats.empires.saturating_mul(XP_PER_EMPIRE));
-        xp_gain = xp_gain.saturating_add(defeats.tribes.saturating_mul(XP_PER_TRIBE));
-        xp_gain = xp_gain.saturating_add(assists.saturating_mul(XP_PER_ASSIST));
+        let reward = sow_data::rewards::calculate(sow_data::rewards::RewardInput {
+            won,
+            players_defeated: defeats.players,
+            empires_defeated: defeats.empires,
+            tribes_defeated: defeats.tribes,
+            kills,
+            assists,
+            ..Default::default()
+        });
+        self.apply_reward(
+            self.preferred_leader.unwrap_or(Leader::Caesar),
+            reward,
+        );
+    }
+}
 
-        if won {
-            xp_gain = xp_gain.saturating_add(XP_WIN);
-        }
-        self.add_xp(xp_gain);
+#[cfg(test)]
+mod tests {
+    use super::{PlayerProgress, SessionDefeats};
+    use sow_core::player::Leader;
+
+    #[test]
+    fn tutorial_completion_is_idempotent_and_persists_reward() {
+        let mut progress = PlayerProgress::default();
+        assert!(progress.complete_tutorial_with_reward());
+        assert!(!progress.complete_tutorial_with_reward());
+        assert_eq!(progress.intro_completed, Some(true));
+        assert_eq!(progress.xp, 100);
+        assert_eq!(progress.laurels, 100);
+        assert_eq!(progress.leader_xp.get("Boudica"), Some(&100));
+    }
+
+    #[test]
+    fn match_reward_tracks_the_selected_leader_without_changing_gold() {
+        let mut progress = PlayerProgress {
+            preferred_leader: Some(Leader::Boudica),
+            ..Default::default()
+        };
+        progress.record_match_with_kda(
+            true,
+            SessionDefeats {
+                players: 1,
+                ..Default::default()
+            },
+            2,
+            1,
+            1,
+        );
+        assert_eq!(progress.matches_played, 1);
+        assert_eq!(progress.leader_xp.get("Boudica"), Some(&140));
+        assert_eq!(progress.laurels, 106);
     }
 }

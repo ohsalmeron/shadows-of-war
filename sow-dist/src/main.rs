@@ -494,6 +494,7 @@ fn verify_layout(dir: &Path) -> Result<()> {
         "app.js",
         "styles.css",
         "legal.css",
+        "wou-auth.js",
         "privacy/index.html",
         "terms/index.html",
         "support/index.html",
@@ -501,6 +502,11 @@ fn verify_layout(dir: &Path) -> Result<()> {
         "leaders/index.html",
         "8d227b8f9e6140d39e3381a1829e1db3.txt",
         "sow.svg",
+        "manifest.webmanifest",
+        "icon-192.png",
+        "icon-512.png",
+        "icon-512-maskable.png",
+        ".well-known/assetlinks.json",
     ] {
         if !dir.join(required).is_file() {
             bail!("webroot missing {}", required);
@@ -603,7 +609,12 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
         "app.js",
         "styles.css",
         "legal.css",
+        "wou-auth.js",
         "8d227b8f9e6140d39e3381a1829e1db3.txt",
+        "manifest.webmanifest",
+        "icon-192.png",
+        "icon-512.png",
+        "icon-512-maskable.png",
     ] {
         let src = site.join(name);
         if !src.is_file() {
@@ -611,7 +622,7 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
         }
         fs::copy(&src, out.join(name))?;
     }
-    for path in ["privacy", "terms", "support", "how-to-play", "leaders"] {
+    for path in ["privacy", "terms", "support", "how-to-play", "leaders", ".well-known"] {
         let src = site.join(path);
         if !src.is_dir() {
             bail!("website legal page missing: {}", src.display());
@@ -622,9 +633,9 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
     if media.is_dir() {
         copy_dir(&media, &out.join("assets/media"))?;
     }
-    // Fingerprint site assets (styles/app/legal) with a content hash so edge and
+    // Fingerprint site assets (styles/app/legal/wou-auth) with a content hash so edge and
     // browser caches never serve a stale version after a redeploy.
-    for name in ["styles.css", "app.js", "legal.css"] {
+    for name in ["styles.css", "app.js", "legal.css", "wou-auth.js"] {
         let hash = file_sha256(&out.join(name))?;
         let versioned = format!("{name}?v={}", &hash[..10]);
         let html = out.join("index.html");
@@ -881,6 +892,7 @@ fn main() -> Result<()> {
         rotate_deployment_secrets(&root)?;
     }
     load_dotenv(&root.join("sow-dist/.env"));
+    ensure_generated_secret(&root, "SOW_DB_SECRET")?;
     ensure_generated_secret(&root, "SOW_RELAY_CONTROL_SECRET")?;
 
     let paths = Paths::discover()?;
@@ -923,6 +935,7 @@ mod tests {
             "app.js",
             "styles.css",
             "legal.css",
+            "wou-auth.js",
             "how-to-play/index.html",
             "leaders/index.html",
             "8d227b8f9e6140d39e3381a1829e1db3.txt",

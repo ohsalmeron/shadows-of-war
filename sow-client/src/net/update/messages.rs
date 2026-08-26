@@ -365,6 +365,13 @@ impl SowApp {
                             self.ui.app.main_menu_state.show_join_browser = false;
                             self.ui.app.main_menu_state.in_private_match = ack.is_private;
                             seed_joined_lobby_entry(&mut self.ui.app.main_menu_state, &ack);
+                            crate::analytics::track_with(
+                                "matchmaking_joined",
+                                serde_json::json!({
+                                    "lobby_id": ack.lobby_id,
+                                    "map": ack.map_name,
+                                }),
+                            );
                             self.sync_portal_room(true);
 
                             let map_name = ack.map_name.clone();

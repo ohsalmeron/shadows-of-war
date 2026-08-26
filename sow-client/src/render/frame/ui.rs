@@ -177,6 +177,9 @@ impl SowApp {
                 crate::store_portals::is_lobby_modal_embed(),
             );
             self.ui.app.hud_state.is_tutorial = self.ui.tutorial_active;
+            self.ui.app.main_menu_state.account_level = self.progress.level;
+            self.ui.app.main_menu_state.account_xp = self.progress.xp;
+            self.ui.app.main_menu_state.laurels = self.progress.laurels;
             let ui_action = self.ui.app.draw(ctx, &mut local_cancel_intents);
 
             if self.ui.update_available {

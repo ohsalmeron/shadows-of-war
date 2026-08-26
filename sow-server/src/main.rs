@@ -462,20 +462,21 @@ struct BotPoolSeedResponse {
 /// MENTAL MODEL (organic): the pool is identities only — it never dictates
 /// timing. Entry is a chaotic drip in `bot_fill` (see its module header).
 ///
-/// On failure the pool installs empty and injection simply skips lobbies
-/// (no anonymous fallback). Boot continues; the game must not refuse to
-/// start over a fill subsystem.
-async fn init_bot_pool() {
+/// A lobby server without real Ghost identities is not healthy. Fail startup
+/// instead of installing an empty pool and silently serving human-only lobbies.
+async fn init_bot_pool() -> Result<(), String> {
     let pool_size: usize = env::var("SOW_BOT_POOL_SIZE")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(10_000);
 
+    if pool_size == 0 {
+        return Err("SOW_BOT_POOL_SIZE must be greater than zero".to_string());
+    }
+
     let name_pool = bot_fill::names::BOT_NAMES;
     if name_pool.is_empty() {
-        log::error!("[BOT_POOL] names::BOT_NAMES is empty — cannot seed pool");
-        bot_fill::BotPool::new(Vec::new()).install();
-        return;
+        return Err("names::BOT_NAMES is empty — cannot seed pool".to_string());
     }
 
     let external_ids: Vec<String> = (0..pool_size).map(|i| format!("bot_{:05}", i)).collect();
@@ -485,14 +486,8 @@ async fn init_bot_pool() {
 
     let db_base_url = env::var("SOW_DB_URL")
         .unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
-    let secret = match env::var("SOW_DB_SECRET") {
-        Ok(s) => s,
-        Err(_) => {
-            log::error!("[BOT_POOL] SOW_DB_SECRET missing — cannot seed pool");
-            bot_fill::BotPool::new(Vec::new()).install();
-            return;
-        }
-    };
+    let secret = env::var("SOW_DB_SECRET")
+        .map_err(|_| "SOW_DB_SECRET missing — cannot seed pool".to_string())?;
     let url = format!("{}/internal/bot-pool/seed", db_base_url.trim_end_matches('/'));
     let body = serde_json::json!({ "external_ids": external_ids });
 
@@ -519,7 +514,7 @@ async fn init_bot_pool() {
                             .collect();
                         log::info!("[BOT_POOL] resolved {} identities", entries.len());
                         bot_fill::BotPool::new(entries).install();
-                        return;
+                        return Ok(());
                     }
                     Ok(resp) => log::warn!(
                         "[BOT_POOL] seed returned {} ids, expected {}",
@@ -542,10 +537,7 @@ async fn init_bot_pool() {
         }
     }
 
-    log::error!(
-        "[BOT_POOL] seed failed after 5 attempts — installing empty pool (ghosts will be anonymous)"
-    );
-    bot_fill::BotPool::new(Vec::new()).install();
+    Err(format!("seed failed after 5 attempts: {url}"))
 }
 
 // =============================================================================
@@ -657,7 +649,9 @@ async fn main() {
     // lobby can be promoted. Idempotent — the seed endpoint get-or-creates
     // each account, so a restart reuses the same identities and their
     // accumulated stats.
-    init_bot_pool().await;
+    if let Err(error) = init_bot_pool().await {
+        panic!("[BOT_POOL] startup failed: {error}");
+    }
 
     let mut games: Vec<ServerLobby> = Vec::new();
     let mut next_lobby_id: u64 = 1;
@@ -1431,6 +1425,7 @@ async fn main() {
                                                 let _ = direct_tx.try_send(json);
                                             }
                                             sow_core::protocol::ClientMessage::SubmitStats { .. } => {}
+                                            sow_core::protocol::ClientMessage::SubmitStatsWithLeader { .. } => {}
                                         }
                                         continue;
                                     }

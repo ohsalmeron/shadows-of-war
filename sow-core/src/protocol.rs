@@ -224,6 +224,21 @@ pub enum ClientMessage {
         join: Box<JoinPayload>,
         auth: AuthProof,
     },
+    /// Stats submission carrying the leader used for authoritative mastery
+    /// and reward accounting. Appended for bincode compatibility with older
+    /// clients that still send `SubmitStats`.
+    SubmitStatsWithLeader {
+        kills: u32,
+        deaths: u32,
+        assists: u32,
+        #[serde(default)]
+        players_defeated: u32,
+        #[serde(default)]
+        empires_defeated: u32,
+        #[serde(default)]
+        tribes_defeated: u32,
+        leader: String,
+    },
 }
 
 /// Fields of a `Join`, factored out so `JoinWithAuth` can carry them without

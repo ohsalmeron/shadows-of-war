@@ -7,6 +7,7 @@ mod messages;
 
 impl SowApp {
     pub fn update_net(&mut self, now: Instant) {
+        crate::analytics::flush_if_due(false);
         self.poll_portal_intents();
 
         #[cfg(target_arch = "wasm32")]

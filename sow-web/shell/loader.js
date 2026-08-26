@@ -278,9 +278,45 @@
         loaderText = null;
     }
 
+    function sowAnalyticsEnvelope(name) {
+        let session;
+        try {
+            session = sessionStorage.getItem('sow_analytics_session');
+            if (!session) {
+                session = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
+                sessionStorage.setItem('sow_analytics_session', session);
+            }
+        } catch (_) {
+            session = String(Date.now());
+        }
+        return {
+            v: 1,
+            name: name,
+            ts_ms: Date.now(),
+            session_id: session,
+            portal: window.SOW_PORTAL || 'site',
+            platform: 'web',
+            build: window.SOW_BUILD_TS && window.SOW_BUILD_TS !== '__BUILD_TS__' ? window.SOW_BUILD_TS : undefined,
+            locale: navigator.language || '',
+        };
+    }
+
+    function sowTrack(name) {
+        try {
+            const base = String(window.SOW_DATABASE_URL || '/api').replace(/\/$/, '');
+            fetch(base + '/event', {
+                method: 'POST',
+                keepalive: true,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ events: [sowAnalyticsEnvelope(name)] }),
+            }).catch(() => {});
+        } catch (_) {}
+    }
+
     function finish() {
         if (!root || finishing) return;
         finishing = true;
+        sowTrack('shell_loaded');
         stopProgress();
         root.style.pointerEvents = 'none';
 

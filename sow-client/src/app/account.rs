@@ -418,6 +418,9 @@ impl SowApp {
         display_name: String,
         provider: String,
     ) {
+        let retry_tutorial = provider == "anonymous"
+            && self.progress.intro_completed.unwrap_or(false)
+            && !cloud.intro_completed.unwrap_or(false);
         let portal = self.progress.clone();
         self.progress.merge_boot_profile(cloud);
         self.progress_account_id = Some(account_id);
@@ -440,6 +443,12 @@ impl SowApp {
             self.progress = portal;
         }
         self.apply_progress_preferences();
+        if retry_tutorial {
+            log::info!(
+                "[tutorial] cloud profile is missing completion; retrying one-time reward sync"
+            );
+            self.persist_tutorial_completion();
+        }
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -458,5 +467,88 @@ impl SowApp {
 
     pub(crate) fn save_local_progress(&self) {
         crate::store_portals::save_portal_progress(&self.progress);
+    }
+
+    /// Persist the tutorial completion through the anonymous account proof.
+    /// The server owns the one-time reward; local storage remains the offline
+    /// fallback when the account has not been minted or the request fails.
+    pub(crate) fn persist_tutorial_completion(&mut self) {
+        let Some(account_id) = self.progress_account_id.clone() else {
+            return;
+        };
+        let Some(auth_secret) = crate::anonymous_identity::load_account_secret() else {
+            return;
+        };
+        let request_id = self.next_identity_request_id();
+        self.profile_request_in_flight = true;
+        let url = format!(
+            "{}/profile/anonymous/tutorial-complete",
+            self.asset_config.database_base.trim_end_matches('/')
+        );
+        #[derive(serde::Serialize)]
+        struct TutorialCompleteRequest {
+            account_id: String,
+            auth_secret: String,
+        }
+        let body = match serde_json::to_vec(&TutorialCompleteRequest {
+            account_id,
+            auth_secret,
+        }) {
+            Ok(body) => body,
+            Err(error) => {
+                log::error!("[tutorial] completion serialize failed: {error}");
+                self.profile_request_in_flight = false;
+                return;
+            }
+        };
+        let tx = self.tasks.db_tx.clone();
+        let mut request = ehttp::Request::post(&url, body);
+        request.headers.insert("Content-Type", "application/json");
+        request
+            .headers
+            .insert("X-SOW-Identity-Request", request_id.to_string());
+        ehttp::fetch(request, move |result| match result {
+            Ok(response) if response.ok => {
+                #[derive(serde::Deserialize)]
+                struct DbAccount {
+                    id: String,
+                    #[serde(default)]
+                    display_name: String,
+                    profile: crate::player_progress::PlayerProgress,
+                }
+                match serde_json::from_slice::<DbAccount>(&response.bytes) {
+                    Ok(account) => {
+                        let _ = tx.send(crate::player_progress::DbEvent::ProfileLoaded {
+                            progress: account.profile,
+                            account_id: account.id,
+                            display_name: account.display_name,
+                            provider: "anonymous".to_string(),
+                            request_id,
+                        });
+                    }
+                    Err(error) => {
+                        log::error!("[tutorial] completion response parse failed: {error}");
+                        let _ = tx.send(crate::player_progress::DbEvent::TutorialCompletionFailed {
+                            request_id,
+                            status: Some(response.status),
+                        });
+                    }
+                }
+            }
+            Ok(response) => {
+                log::warn!("[tutorial] completion request failed status={}", response.status);
+                let _ = tx.send(crate::player_progress::DbEvent::TutorialCompletionFailed {
+                    request_id,
+                    status: Some(response.status),
+                });
+            }
+            Err(error) => {
+                log::warn!("[tutorial] completion request failed: {error}");
+                let _ = tx.send(crate::player_progress::DbEvent::TutorialCompletionFailed {
+                    request_id,
+                    status: None,
+                });
+            }
+        });
     }
 }

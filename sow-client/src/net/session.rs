@@ -112,6 +112,14 @@ impl SowApp {
             return None;
         }
         let identity = crate::store_portals::load_identity("Player");
+        if identity.provider == "wou" {
+            let token = identity.auth_token.clone().filter(|t| !t.is_empty())?;
+            return Some(sow_core::protocol::AuthProof {
+                provider: "wou".to_string(),
+                account_id: identity.external_id.clone(),
+                token,
+            });
+        }
         if identity.provider == "crazygames" {
             let token = identity.auth_token.clone().filter(|t| !t.is_empty())?;
             return Some(sow_core::protocol::AuthProof {
@@ -140,6 +148,9 @@ impl SowApp {
     /// Tear down an online match and run the existing ExitGame splash → MainMenu flow.
     pub(crate) fn begin_exit_to_main_menu(&mut self, use_loader: bool) {
         let was_playing = self.ui.app.phase == sow_ui_kit::ClientPhase::Playing;
+        if self.ui.tutorial_active && !self.progress.intro_completed.unwrap_or(false) {
+            crate::analytics::track("tutorial_exit_early");
+        }
         if was_playing {
             crate::store_portals::gameplay_stop();
         }

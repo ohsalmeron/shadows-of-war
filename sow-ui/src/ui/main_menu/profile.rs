@@ -224,6 +224,15 @@ pub fn draw_user_profile_header(
                     *action = Some(crate::UiAction::PortalShowAuthPrompt);
                 }
             }
+
+            ui.label(
+                egui::RichText::new(format!(
+                    "Lv {} · {} XP · ✦{}",
+                    state.account_level, state.account_xp, state.laurels
+                ))
+                .font(egui::FontId::monospace(11.0))
+                .color(sow_ui_kit::theme::palette::text_muted()),
+            );
         });
     });
 }

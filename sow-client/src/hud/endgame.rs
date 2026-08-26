@@ -60,6 +60,23 @@ impl SowApp {
         }
 
         if endgame_active {
+            if self.ui.reward_cache.is_none() {
+                if let Some(snap) = &self.sim.current_snapshot
+                    && let Some(me) = snap.players.iter().find(|p| p.id == my_id)
+                {
+                    self.ui.reward_cache = Some(sow_data::rewards::calculate(
+                        sow_data::rewards::RewardInput {
+                            won: is_victory,
+                            players_defeated: self.progress_session_defeats.players,
+                            empires_defeated: self.progress_session_defeats.empires,
+                            tribes_defeated: self.progress_session_defeats.tribes,
+                            kills: me.kills,
+                            assists: me.assists,
+                            ..Default::default()
+                        },
+                    ));
+                }
+            }
             if self.ui.endgame_cache.is_none() {
                 if is_victory {
                     crate::store_portals::happytime();
@@ -245,6 +262,48 @@ impl SowApp {
                                 );
                             }
                         }
+                    }
+
+                    if let Some(reward) = self.ui.reward_cache {
+                        ui.add_space(space_mid);
+                        ui.group(|ui| {
+                            ui.set_min_width(actual_width - win_margin * 2.0 - 12.0);
+                            ui.vertical_centered(|ui| {
+                                ui.label(
+                                    RichText::new("MATCH REWARDS")
+                                        .color(Color32::GRAY.linear_multiply(alpha))
+                                        .font(FontId::monospace(if is_mobile { 12.0 } else { 14.0 })),
+                                );
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.label(
+                                        RichText::new(format!("+{} XP", reward.xp))
+                                            .color(Color32::WHITE.linear_multiply(alpha))
+                                            .font(FontId::monospace(if is_mobile { 14.0 } else { 17.0 })),
+                                    );
+                                    ui.separator();
+                                    ui.label(
+                                        RichText::new(format!(
+                                            "+{} {} XP",
+                                            reward.leader_xp,
+                                            self.ui.app.main_menu_state.selected_leader.name()
+                                        ))
+                                        .color(Color32::from_rgb(255, 190, 80).linear_multiply(alpha))
+                                        .font(FontId::monospace(if is_mobile { 14.0 } else { 17.0 })),
+                                    );
+                                    ui.separator();
+                                    ui.label(
+                                        RichText::new(format!("+{} Laurels", reward.laurels))
+                                            .color(Color32::from_rgb(220, 180, 90).linear_multiply(alpha))
+                                            .font(FontId::monospace(if is_mobile { 14.0 } else { 17.0 })),
+                                    );
+                                });
+                                ui.label(
+                                    RichText::new(format!("ACCOUNT LEVEL {}", self.progress.level))
+                                        .color(Color32::LIGHT_GRAY.linear_multiply(alpha))
+                                        .font(FontId::monospace(if is_mobile { 11.0 } else { 13.0 })),
+                                );
+                            });
+                        });
                     }
 
                     ui.add_space(space_bot);

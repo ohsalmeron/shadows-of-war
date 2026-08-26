@@ -25,6 +25,7 @@
     <meta property="og:site_name" content="Shadows of War">
     <meta name="theme-color" content="#000000">
     <link rel="canonical" href="https://shadowsofwar.io/play/">
+    <link rel="manifest" href="/manifest.webmanifest">
     <link rel="icon" href="./sow.svg" type="image/svg+xml">
 
     <!-- PORTAL_SDK_SLOT: CrazyGames SDK <script> injected by sow-dist crazygames only. -->

@@ -47,10 +47,18 @@ impl SowApp {
             hide_web_loader();
             self.web_loader_hidden = true;
             crate::store_portals::gameplay_stop();
+            crate::analytics::track_with(
+                "boot_route_decision",
+                serde_json::json!({ "route": "menu" }),
+            );
             self.ui.app.splash_state.done = true;
             self.ui.app.phase = ClientPhase::MainMenu;
         } else {
             log::info!("Portal boot: new player -> intro skirmish");
+            crate::analytics::track_with(
+                "boot_route_decision",
+                serde_json::json!({ "route": "intro" }),
+            );
             self.ui.app.main_menu_state.host_private_pending = false;
             self.start_portal_intro_match();
         }
@@ -114,6 +122,7 @@ impl SowApp {
         self.ui.tutorial_spawn_time = Some(web_time::Instant::now());
         if tutorial {
             log::info!("tutorial: chapter 1 started (map={})", config.map_name);
+            crate::analytics::track("tutorial_start");
         }
 
         let map_id = sow_ui::ui::asset_loader::AssetLoader::map_key(&config.map_name);

@@ -565,6 +565,7 @@ struct MatchPlayerStats {
     players_defeated: u32,
     empires_defeated: u32,
     tribes_defeated: u32,
+    leader: Option<String>,
 }
 
 fn log_player_stats(
@@ -574,19 +575,43 @@ fn log_player_stats(
     stats: MatchPlayerStats,
 ) {
     let key = format!("sow:match:{match_id}:stats:{account_id}");
+    let mut fields = vec![
+        ("kills", stats.kills.to_string()),
+        ("deaths", stats.deaths.to_string()),
+        ("assists", stats.assists.to_string()),
+        ("players_defeated", stats.players_defeated.to_string()),
+        ("empires_defeated", stats.empires_defeated.to_string()),
+        ("tribes_defeated", stats.tribes_defeated.to_string()),
+    ];
+    if let Some(leader) = stats.leader {
+        fields.push(("leader", leader));
+    }
     let _: Result<(), _> = con
-        .hset_multiple(
-            &key,
-            &[
-                ("kills", stats.kills.to_string()),
-                ("deaths", stats.deaths.to_string()),
-                ("assists", stats.assists.to_string()),
-                ("players_defeated", stats.players_defeated.to_string()),
-                ("empires_defeated", stats.empires_defeated.to_string()),
-                ("tribes_defeated", stats.tribes_defeated.to_string()),
-            ],
-        )
+        .hset_multiple(&key, &fields)
         .and_then(|()| con.expire(&key, 3600));
+}
+
+fn record_client_stats(lobby: &LobbyState, player_id: u16, stats: MatchPlayerStats) {
+    let Some(account_id) = lobby
+        .tracker
+        .lock()
+        .unwrap()
+        .player_accounts
+        .get(&player_id)
+        .cloned()
+    else {
+        return;
+    };
+    let guard = redis_shared();
+    let mut guard = guard.lock().unwrap();
+    if let Some(ref mut con) = *guard {
+        let kda = (stats.kills, stats.deaths, stats.assists);
+        log_player_stats(con, lobby.id, &account_id, stats);
+        info!(
+            "Logged stats for player {player_id} (account {account_id}): K/D/A {}/{}/{}",
+            kda.0, kda.1, kda.2
+        );
+    }
 }
 
 enum ReplayCommand {
@@ -2421,17 +2446,19 @@ async fn ws_task(
                                         }
                                     }
                                     ClientMessage::SubmitStats { kills, deaths, assists, players_defeated, empires_defeated, tribes_defeated } => {
-                                        if let (Some(lobby), Some(pid)) = (&my_lobby, &my_player_id) {
-                                            if let Some(acc) = lobby.tracker.lock().unwrap().player_accounts.get(pid).cloned() {
-                                                let guard = redis_shared();
-                                                let mut guard = guard.lock().unwrap();
-                                                if let Some(ref mut con) = *guard {
-                                                    log_player_stats(con, lobby.id, &acc, MatchPlayerStats {
-                                                        kills, deaths, assists, players_defeated, empires_defeated, tribes_defeated,
-                                                    });
-                                                    info!("Logged stats for player {pid} (account {acc}): K/D/A {kills}/{deaths}/{assists}");
-                                                }
-                                            }
+                                        if let (Some(lobby), Some(pid)) = (&my_lobby, my_player_id) {
+                                            record_client_stats(lobby, pid, MatchPlayerStats {
+                                                kills, deaths, assists, players_defeated, empires_defeated, tribes_defeated,
+                                                leader: None,
+                                            });
+                                        }
+                                    }
+                                    ClientMessage::SubmitStatsWithLeader { kills, deaths, assists, players_defeated, empires_defeated, tribes_defeated, leader } => {
+                                        if let (Some(lobby), Some(pid)) = (&my_lobby, my_player_id) {
+                                            record_client_stats(lobby, pid, MatchPlayerStats {
+                                                kills, deaths, assists, players_defeated, empires_defeated, tribes_defeated,
+                                                leader: Some(leader),
+                                            });
                                         }
                                     }
                                     _ => {}

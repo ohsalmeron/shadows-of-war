@@ -22,6 +22,7 @@ struct AppState {
     db: PlayerDb,
     secret_token: String,
     redb_path: String,
+    events: std::sync::Mutex<sow_data::events::EventSink>,
 }
 
 #[derive(Deserialize)]
@@ -40,6 +41,12 @@ struct AnonymousProfileRequest {
 struct AnonymousDisplayNameRequest {
     account_id: String,
     display_name: String,
+}
+
+#[derive(Deserialize)]
+struct TutorialCompleteRequest {
+    account_id: String,
+    auth_secret: String,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -114,6 +121,17 @@ async fn handle_internal_verify(
     }
     let provider = payload.provider.trim();
     let result: Result<String, String> = match provider {
+        "wou" | "wou_id" | "world_of_unreal" => {
+            match resolve_external_id("wou", "", Some(&payload.token)).await {
+                Ok(external_id) => state
+                    .db
+                    .get_or_create("wou".to_string(), external_id)
+                    .await
+                    .map(|account| account.id)
+                    .map_err(|e| e.to_string()),
+                Err(e) => Err(e),
+            }
+        }
         "crazygames" => match resolve_external_id("crazygames", "", Some(&payload.token)).await {
             Ok(external_id) => state
                 .db
@@ -247,10 +265,22 @@ async fn main() {
         Some(Arc::clone(&redb_db_arc)),
     );
 
+    let default_analytics_dir = std::path::Path::new(&redb_path)
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .map(|p| p.join("analytics").to_string_lossy().into_owned())
+        .unwrap_or_else(|| "analytics".to_string());
+
+    let analytics_dir = std::env::var("SOW_ANALYTICS_DIR").unwrap_or(default_analytics_dir);
+    let event_sink = sow_data::events::EventSink::new(&analytics_dir).unwrap_or_else(|error| {
+        panic!("Failed to initialize analytics event sink at {analytics_dir}: {error}");
+    });
+
     let state = Arc::new(AppState {
         db: player_db,
         secret_token,
         redb_path: redb_path.clone(),
+        events: std::sync::Mutex::new(event_sink),
     });
 
     // Configure CORS for web portal compatibility
@@ -267,11 +297,17 @@ async fn main() {
     // Define router
     let app = Router::new()
         .route("/healthz", get(handle_healthz))
+        .route("/event", post(handle_event))
+        .route("/internal/analytics", get(handle_internal_analytics))
         .route("/profile", get(handle_get_profile))
         .route("/profile/anonymous", post(handle_anonymous_profile))
         .route(
             "/profile/anonymous/name",
             post(handle_anonymous_display_name),
+        )
+        .route(
+            "/profile/anonymous/tutorial-complete",
+            post(handle_anonymous_tutorial_complete),
         )
         .route("/match/start", post(handle_match_start))
         .route("/internal/match-finalize", post(handle_match_finalize))
@@ -299,6 +335,145 @@ async fn main() {
 /// performs no profile lookup and emits no authentication warning.
 async fn handle_healthz() -> impl IntoResponse {
     (StatusCode::OK, Json(serde_json::json!({ "ok": true })))
+}
+
+const MAX_EVENT_BATCH: usize = 100;
+
+#[derive(Deserialize)]
+struct EventBatchRequest {
+    events: Vec<sow_data::events::AnalyticsEvent>,
+}
+
+/// Append one validated event line to the daily JSONL sink.
+fn emit_event_line(
+    state: &AppState,
+    name: &str,
+    account_id: Option<&str>,
+    props: serde_json::Value,
+) {
+    let ts_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    let mut event = serde_json::json!({
+        "v": sow_data::events::SCHEMA_VERSION,
+        "name": name,
+        "ts_ms": ts_ms,
+        "session_id": "server",
+        "platform": "server",
+    });
+    if let Some(account_id) = account_id {
+        event["account_id"] = serde_json::Value::String(account_id.to_string());
+    }
+    if !props.is_null() {
+        event["props"] = props;
+    }
+    if let Err(e) = state
+        .events
+        .lock()
+        .map(|mut sink| sink.append_line(&event.to_string()))
+    {
+        warn!("analytics append failed for {name}: {e:?}");
+    }
+}
+
+/// POST /event — public anonymous product-analytics ingestion. Valid events go
+/// to the durable JSONL sink; bot accounts are dropped and never marked active.
+async fn handle_event(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<EventBatchRequest>,
+) -> impl IntoResponse {
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    let mut accepted = 0usize;
+    let mut rejected = 0usize;
+    for event in payload.events.into_iter().take(MAX_EVENT_BATCH) {
+        if let Err(reason) = event.validate(now_ms) {
+            warn!("Dropping analytics event '{}': {reason}", event.name);
+            rejected += 1;
+            continue;
+        }
+        if let Some(account_id) = &event.account_id {
+            match state.db.is_bot_account_checked(account_id).await {
+                Ok(true) => {
+                    rejected += 1;
+                    continue;
+                }
+                Ok(false) => {}
+                Err(error) => {
+                    rejected += 1;
+                    warn!("analytics bot-pool lookup failed: {error}");
+                    continue;
+                }
+            }
+        }
+        let write_result = {
+            let Ok(mut sink) = state.events.lock() else {
+                rejected += 1;
+                continue;
+            };
+            serde_json::to_string(&event)
+                .map_err(|e| e.to_string())
+                .and_then(|line| sink.append_line(&line).map_err(|e| e.to_string()))
+        };
+        match write_result {
+            Ok(()) => {
+                if let Err(e) = state
+                    .db
+                    .record_product_event(&event.name, event.account_id.as_deref())
+                    .await
+                {
+                    warn!("analytics counter write failed for {}: {e}", event.name);
+                }
+                accepted += 1;
+            }
+            Err(e) => {
+                rejected += 1;
+                warn!("analytics write failed: {e}");
+            }
+        }
+    }
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "accepted": accepted, "rejected": rejected })),
+    )
+}
+
+#[derive(Deserialize)]
+struct AnalyticsQuery {
+    days: Option<u32>,
+}
+
+/// GET /internal/analytics — operator-only funnel and retention snapshot.
+async fn handle_internal_analytics(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(query): Query<AnalyticsQuery>,
+) -> impl IntoResponse {
+    if !verify_internal_auth(&headers, &state.secret_token) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+            }),
+        )
+            .into_response();
+    }
+    match state.db.analytics_summary(query.days.unwrap_or(30)).await {
+        Ok(summary) => (StatusCode::OK, Json(summary)).into_response(),
+        Err(error) => {
+            error!("analytics summary failed: {error}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "analytics unavailable".to_string(),
+                }),
+            )
+                .into_response()
+        }
+    }
 }
 
 /// POST /profile/anonymous — load the canonical anonymous account and issue
@@ -347,7 +522,7 @@ async fn handle_anonymous_profile(
             (
                 StatusCode::OK,
                 Json(AnonymousProfileResponse {
-                    account,
+                    account: account.without_auth_secret(),
                     auth_secret: revealed_secret,
                 }),
             )
@@ -394,7 +569,7 @@ async fn handle_anonymous_display_name(
                 account_hint(Some(&account.id)),
                 account.display_name.chars().count()
             );
-            (StatusCode::OK, Json(account)).into_response()
+            (StatusCode::OK, Json(account.without_auth_secret())).into_response()
         }
         Err(error) => {
             let message = error.to_string();
@@ -415,6 +590,52 @@ async fn handle_anonymous_display_name(
     }
 }
 
+/// POST /profile/anonymous/tutorial-complete — authenticate the anonymous
+/// account and grant the onboarding reward exactly once.
+async fn handle_anonymous_tutorial_complete(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(payload): Json<TutorialCompleteRequest>,
+) -> impl IntoResponse {
+    let request_id = identity_request_hint(&headers);
+    let account_id = match state
+        .db
+        .verify_anonymous_secret(&payload.account_id, &payload.auth_secret)
+        .await
+    {
+        Ok(account_id) => account_id,
+        Err(error) => {
+            warn!(
+                "[tutorial] completion rejected id={request_id} account={} error={error}",
+                account_hint(Some(&payload.account_id))
+            );
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse { error }),
+            )
+                .into_response();
+        }
+    };
+
+    match state.db.complete_anonymous_tutorial(&account_id).await {
+        Ok(account) => {
+            info!(
+                "[tutorial] completion accepted id={request_id} account={} completed={}",
+                account_hint(Some(&account.id)),
+                account.profile.intro_completed
+            );
+            (StatusCode::OK, Json(account.without_auth_secret())).into_response()
+        }
+        Err(error) => (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: error.to_string(),
+            }),
+        )
+            .into_response(),
+    }
+}
+
 fn platform_auth_token(headers: &HeaderMap) -> Option<String> {
     headers
         .get("x-platform-auth")
@@ -429,6 +650,57 @@ async fn resolve_external_id(
     external_id: &str,
     auth_token: Option<&str>,
 ) -> Result<String, String> {
+    if provider == "wou" || provider == "wou_id" || provider == "world_of_unreal" {
+        let Some(token) = auth_token else {
+            return Err("WOU-ID requests require X-Platform-Auth token".into());
+        };
+        let wou_url = std::env::var("WOU_ID_URL").unwrap_or_else(|_| "http://127.0.0.1:25570".into());
+        let client = if let Ok(resolve_ip) = std::env::var("WOU_ID_RESOLVE_IP") {
+            let host = reqwest::Url::parse(&wou_url)
+                .ok()
+                .and_then(|url| url.host_str().map(str::to_owned))
+                .ok_or_else(|| "WOU_ID_URL has no valid hostname".to_string())?;
+            let port = reqwest::Url::parse(&wou_url)
+                .ok()
+                .and_then(|url| url.port_or_known_default())
+                .unwrap_or(443);
+            let address = resolve_ip
+                .parse()
+                .map_err(|_| "WOU_ID_RESOLVE_IP is not a valid IP address".to_string())?;
+            reqwest::Client::builder()
+                .resolve(&host, std::net::SocketAddr::new(address, port))
+                .build()
+                .map_err(|error| format!("WOU-ID client build failed: {error}"))?
+        } else {
+            reqwest::Client::new()
+        };
+        // WOU-ID exposes the authenticated account through this existing
+        // read-only route. It validates the bearer with WOU-ID's own JWT
+        // middleware and returns the canonical account id without sharing the
+        // signing secret with Shadows of War.
+        let res = client
+            .get(format!("{}/api/v1/inventory/me", wou_url.trim_end_matches('/')))
+            .header("Authorization", format!("Bearer {token}"))
+            .timeout(std::time::Duration::from_secs(3))
+            .send()
+            .await
+            .map_err(|e| format!("WOU-ID service unreachable: {e}"))?;
+
+        if !res.status().is_success() {
+            return Err(format!("WOU-ID token rejected: HTTP {}", res.status()));
+        }
+
+        let resp: serde_json::Value = res
+            .json()
+            .await
+            .map_err(|e| format!("Invalid WOU-ID JSON response: {e}"))?;
+        let user_id = resp
+            .get("account_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "WOU-ID response missing account_id".to_string())?;
+
+        return Ok(user_id.to_string());
+    }
     if provider == "crazygames" {
         let Some(token) = auth_token else {
             return Err("CrazyGames requests require X-Platform-Auth token".into());
@@ -502,7 +774,7 @@ async fn handle_get_profile(
                 account_hint(Some(&account.id)),
                 account.display_name.chars().count()
             );
-            (StatusCode::OK, Json(account)).into_response()
+            (StatusCode::OK, Json(account.without_auth_secret())).into_response()
         }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -536,7 +808,23 @@ async fn handle_match_start(
         .register_match_start(&payload.match_id, &payload.player_ids)
         .await
     {
-        Ok(()) => (StatusCode::OK, Json(serde_json::json!({ "status": "ok" }))).into_response(),
+        Ok(()) => {
+            let humans = state.db.count_human_players(&payload.player_ids).await;
+            emit_event_line(
+                &state,
+                "match_started",
+                None,
+                serde_json::json!({
+                    "match_id": payload.match_id,
+                    "players": payload.player_ids.len(),
+                    "humans": humans,
+                }),
+            );
+            if let Err(e) = state.db.record_product_event("match_started", None).await {
+                warn!("match_started analytics counter failed: {e}");
+            }
+            (StatusCode::OK, Json(serde_json::json!({ "status": "ok" }))).into_response()
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
@@ -672,12 +960,58 @@ async fn handle_match_finalize(
         }
     }
 
+    // Capture the roster/exit order before finalize deletes the Valkey keys,
+    // so the analytics sink can record an aggregate match_ended event.
+    let (participants, exits) = match state.db.match_participants(&payload.match_id).await {
+        Ok(value) => value,
+        Err(error) => {
+            error!(
+                "match {} participant snapshot failed before finalize: {error}",
+                payload.match_id
+            );
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ErrorResponse {
+                    error: "match participant state unavailable".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+
     match state.db.finalize_match(&payload.match_id).await {
-        Ok(()) => (
-            StatusCode::OK,
-            Json(serde_json::json!({ "status": "finalized" })),
-        )
-            .into_response(),
+        Ok(()) => {
+            if !participants.is_empty() {
+                let humans = state.db.count_human_players(&participants).await;
+                let winner = participants
+                    .iter()
+                    .find(|p| !exits.contains(p))
+                    .cloned()
+                    .or_else(|| exits.last().cloned());
+                emit_event_line(
+                    &state,
+                    "match_ended",
+                    None,
+                    serde_json::json!({
+                        "match_id": payload.match_id,
+                        "players": participants.len(),
+                        "humans": humans,
+                        "winner_account_id": winner,
+                    }),
+                );
+                if let Err(e) = state.db.record_product_event("match_ended", None).await {
+                    warn!("match_ended analytics counter failed: {e}");
+                }
+                if let Err(e) = state.db.record_match_activation(&participants).await {
+                    warn!("match activation analytics failed: {e}");
+                }
+            }
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({ "status": "finalized" })),
+            )
+                .into_response()
+        }
         Err(e) => {
             error!("Failed to finalize match {}: {}", payload.match_id, e);
             (
