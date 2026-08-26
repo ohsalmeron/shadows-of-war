@@ -388,6 +388,9 @@ fn build_index(
     fs::write(&index, &html)?;
     let loader =
         fs::read_to_string(paths.shell.join("loader.js"))?.replace("</script>", "<\\/script>");
+    let menu_css = fs::read_to_string(paths.shell.join("main_menu.css"))?;
+    let menu_js = fs::read_to_string(paths.shell.join("main_menu.js"))?
+        .replace("</script>", "<\\/script>");
     let mut fh = fs::read_to_string(&index)?;
     let marker = "/* __INLINE_LOADER_JS__ */";
     if fh.contains(marker) {
@@ -407,6 +410,16 @@ fn build_index(
     } else {
         bail!("index.html: no loader injection point");
     }
+    let menu_css_marker = "/* __INLINE_MAIN_MENU_CSS__ */";
+    if !fh.contains(menu_css_marker) {
+        bail!("index.html: no main menu CSS injection point");
+    }
+    fh = fh.replacen(menu_css_marker, &menu_css, 1);
+    let menu_js_marker = "/* __INLINE_MAIN_MENU_JS__ */";
+    if !fh.contains(menu_js_marker) {
+        bail!("index.html: no main menu JS injection point");
+    }
+    fh = fh.replacen(menu_js_marker, &menu_js, 1);
     fs::write(&index, fh)?;
     Ok(())
 }
@@ -948,6 +961,33 @@ mod tests {
                 "Required site source file missing: {required}"
             );
         }
+        for required in ["index.html.template", "main_menu.css", "main_menu.js"] {
+            assert!(
+                root.join("sow-web/shell").join(required).is_file(),
+                "Required game shell source file missing: {required}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_build_index_inlines_web_menu_shell() -> Result<()> {
+        let paths = Paths::discover()?;
+        let out = tempfile::tempdir()?;
+        build_index(
+            &paths,
+            out.path(),
+            "test",
+            "sow_client_test.js",
+            "sow_client_test_bg.wasm",
+            "test",
+            false,
+        )?;
+        let html = fs::read_to_string(out.path().join("play/index.html"))?;
+        assert!(!html.contains("__INLINE_MAIN_MENU_CSS__"));
+        assert!(!html.contains("__INLINE_MAIN_MENU_JS__"));
+        assert!(html.contains("#sow-menu"));
+        assert!(html.contains("SOW_menu_command"));
         Ok(())
     }
 

@@ -481,6 +481,8 @@ pub struct SowApp {
     pub confirmed_display_name: Option<String>,
     /// A Join request held until the canonical account ID is available.
     pub join_waiting_for_identity: bool,
+    /// A queued join with no target/config enters the server matchmaking pool.
+    pub join_matchmaking: bool,
     pub progress_match_recorded: bool,
     pub progress_stats_submitted: bool,
     pub progress_session_defeats: crate::player_progress::SessionDefeats,

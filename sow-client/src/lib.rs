@@ -195,6 +195,8 @@ pub mod ui_scene;
 mod viewport;
 #[cfg(target_arch = "wasm32")]
 mod web_canvas;
+#[cfg(target_arch = "wasm32")]
+mod web_menu;
 
 pub(crate) fn player_sound_type(value: sow_core::player::PlayerType) -> sow_audio::PlayerSoundType {
     match value {

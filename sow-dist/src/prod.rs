@@ -1617,14 +1617,20 @@ until sudo sockstat -4l | grep -q '127.0.0.1:25564'; do
     if [ "$j" -ge 180 ]; then fail "server websocket port timeout"; fi
     sleep 1
 done
+"#,
+    );
+    if plan.server {
+        checks.push_str(
+            r#"
 bot_line=$(sudo tail -500 /var/log/sow/server.log | grep '\[BOT_POOL\].*installed with' | tail -1 || true)
 echo "  $bot_line"
 if ! printf '%s\n' "$bot_line" | grep -Eq 'installed with [1-9][0-9]* identities'; then
     fail "Ghost bot pool was not installed with identities"
 fi"#,
-    );
+        );
+    }
     if plan.web || plan.ops {
-        checks.push_str("; sudo nginx -t");
+        checks.push_str("\nsudo nginx -t");
     }
     run("ssh", &[&config.control_host, &checks], None).context("control-host healthcheck failed")
 }

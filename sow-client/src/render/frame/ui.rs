@@ -180,6 +180,16 @@ impl SowApp {
             self.ui.app.main_menu_state.account_level = self.progress.level;
             self.ui.app.main_menu_state.account_xp = self.progress.xp;
             self.ui.app.main_menu_state.laurels = self.progress.laurels;
+            // The web/WebView main menu is rendered by the DOM shell. Keep egui for the
+            // native menu and for the in-match HUD, but do not spend a second frame painting
+            // the old menu underneath the web overlay.
+            #[cfg(target_arch = "wasm32")]
+            let ui_action = if self.ui.app.phase == ClientPhase::MainMenu {
+                None
+            } else {
+                self.ui.app.draw(ctx, &mut local_cancel_intents)
+            };
+            #[cfg(not(target_arch = "wasm32"))]
             let ui_action = self.ui.app.draw(ctx, &mut local_cancel_intents);
 
             if self.ui.update_available {

@@ -363,6 +363,7 @@ impl SowApp {
             profile_last_applied_request: 0,
             confirmed_display_name: Some(initial_display_name),
             join_waiting_for_identity: false,
+            join_matchmaking: false,
             progress_match_recorded: false,
             progress_stats_submitted: false,
             progress_session_defeats: crate::player_progress::SessionDefeats::default(),

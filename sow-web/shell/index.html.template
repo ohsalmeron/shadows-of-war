@@ -165,6 +165,9 @@
             }
         }
     </style>
+    <style id="sow-menu-style">
+        /* __INLINE_MAIN_MENU_CSS__ */
+    </style>
 </head>
 <body>
     <div id="web-loader" aria-live="polite" aria-busy="true"></div>
@@ -175,6 +178,7 @@
         <p>Shadows of War is a match-based browser MMORTS played on world maps. Join online matchmaking, command legendary civilizations, forge alliances, betray rivals, expand territory, and build your war economy in real time. Play now at shadowsofwar.io.</p>
     </div>
     <canvas id="blade" oncontextmenu="return false;" tabindex="0"></canvas>
+    <div id="sow-menu" hidden aria-live="polite"></div>
     <div id="version">v__VERSION__</div>
 
     <script type="text/javascript">
@@ -237,6 +241,7 @@
     </script>
     <script src="./sdk/store_portals.js"></script>
     <script>/* __INLINE_LOADER_JS__ */</script>
+    <script>/* __INLINE_MAIN_MENU_JS__ */</script>
     <script type="module">
         async function run() {
             var isPortal = window.SOW_RUNTIME && window.SOW_RUNTIME.portal_embed === true
@@ -258,8 +263,15 @@
             }
 
             try {
-                const { default: init } = await import('./__JS_FILE__');
-                await init({ module_or_path: './__WASM_FILE__' });
+                const wasm = await import('./__JS_FILE__');
+                await wasm.default({ module_or_path: './__WASM_FILE__' });
+                if (typeof wasm.sow_menu_command === "function") {
+                    window.SOW_menu_command = wasm.sow_menu_command;
+                    window.SOW_MENU_READY = true;
+                    if (typeof window.SOW_flush_menu_commands === "function") {
+                        window.SOW_flush_menu_commands();
+                    }
+                }
             } catch (e) {
                 if (e.message !== "Using exceptions for control flow, don't mind me. This isn't actually an error!") {
                     throw e;

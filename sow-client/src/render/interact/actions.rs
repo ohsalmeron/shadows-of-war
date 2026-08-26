@@ -257,6 +257,8 @@ impl SowApp {
         config: Option<Box<sow_core::game_config::GameConfig>>,
         password: Option<String>,
     ) {
+        let matchmaking_join = lobby_id.is_none() && !is_private && config.is_none();
+        self.join_matchmaking = matchmaking_join;
         if let Some(cfg) = config {
             self.ui.app.main_menu_state.custom_game_config = cfg;
         }
@@ -269,7 +271,8 @@ impl SowApp {
 
         if let Some(c) = self.net.client.as_ref() {
             if identity_ready {
-                let config_opt = Some(self.ui.app.main_menu_state.custom_game_config.clone());
+                let config_opt = (!self.join_matchmaking)
+                    .then(|| self.ui.app.main_menu_state.custom_game_config.clone());
                 let join_msg = self.make_join_message(lobby_id, is_private, config_opt, password);
                 if let Ok(json) = bincode::serialize(&join_msg) {
                     c.send(json);
@@ -294,7 +297,7 @@ impl SowApp {
         }
 
         if lobby_id.is_none() {
-            self.ui.app.main_menu_state.is_lobby_host = true;
+            self.ui.app.main_menu_state.is_lobby_host = !self.join_matchmaking;
         }
     }
 }
