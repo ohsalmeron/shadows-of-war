@@ -18,7 +18,11 @@ impl SowApp {
         } else {
             self.ui.app.hud_state.spawn_timer_secs = None;
         }
-        if self.ui.app.phase == sow_ui_kit::ClientPhase::Playing {
+        let is_playing_or_loading = self.ui.app.phase == sow_ui_kit::ClientPhase::Playing
+            || (self.ui.app.phase == sow_ui_kit::ClientPhase::Splash
+                && self.ui.app.splash_state.job == sow_ui::ui::loading_screen::SplashJob::EnterGame);
+
+        if is_playing_or_loading {
             if self.net.client.is_some() {
                 // Multiplayer: lockstep execution dictated by server
                 let mut ticks_processed = 0;

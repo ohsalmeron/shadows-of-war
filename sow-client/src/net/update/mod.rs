@@ -49,13 +49,26 @@ impl SowApp {
                         self.net.relay_connect_start = None;
                         self.net.relay_retry_count = 0;
                         self.net.load_telemetry.mark_relay_connected();
-                    }
-
-                    if self.ui.app.phase == sow_ui_kit::ClientPhase::Playing {
                         if let (Some(lid), Some(pid)) =
                             (self.sim.my_lobby_id, self.sim.my_player_id)
                         {
-                            log::info!("Sent Ready to Relay server on reconnect/playing!");
+                            let msg = if self.ui.app.phase == sow_ui_kit::ClientPhase::Playing {
+                                log::info!("Sent Reconnect to Relay server on reconnect/playing!");
+                                self.make_reconnect_message(lid, pid)
+                            } else {
+                                log::info!("Sent Ready/ReconnectWithTicket to Relay server before loader release!");
+                                self.make_reconnect_message(lid, pid)
+                            };
+                            if let Ok(data) = bincode::serialize(&msg) {
+                                client.send(data);
+                                self.net.load_telemetry.mark_ready_sent();
+                            }
+                        }
+                    } else if self.ui.app.phase == sow_ui_kit::ClientPhase::Playing {
+                        if let (Some(lid), Some(pid)) =
+                            (self.sim.my_lobby_id, self.sim.my_player_id)
+                        {
+                            log::info!("Sent Ready to Master server on reconnect/playing!");
                             client.send(
                                 bincode::serialize(&self.make_reconnect_message(lid, pid)).unwrap(),
                             );

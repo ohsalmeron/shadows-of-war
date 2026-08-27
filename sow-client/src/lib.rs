@@ -1,3 +1,4 @@
+#![recursion_limit = "256"]
 #![warn(dead_code, unused_variables, unused_imports)]
 extern crate sow_ui as sow_ui_kit;
 use sow_net::client::SowClient;

@@ -20,6 +20,8 @@ CRATES: dict[str, set[Path]] = {
     "sow-render": set(),
     "sow-core": {
         ROOT / "sow-core" / "src" / "intent" / "nation" / "tests.rs",
+        # Local-only deterministic AI tier contracts (#[cfg(test)], not shipped).
+        ROOT / "sow-core" / "src" / "intent" / "nation" / "bot_lab.rs",
     },
     "sow-data": {
         ROOT / "sow-data" / "src" / "colors" / "premium_colors.rs",

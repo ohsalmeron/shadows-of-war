@@ -17,30 +17,76 @@ fn parse_css_px(s: &str) -> f32 {
     s.parse().unwrap_or(0.0)
 }
 
+#[cfg(target_arch = "wasm32")]
+#[derive(Clone, Copy)]
+struct BrowserViewport {
+    width: f64,
+    height: f64,
+    device_pixel_ratio: f64,
+}
+
+#[cfg(target_arch = "wasm32")]
+thread_local! {
+    // Window measurements cross the wasm/JS boundary. They only change on a viewport event,
+    // never as part of a render frame, so keep one cached sample for the hot path.
+    static VIEWPORT_CACHE: std::cell::Cell<Option<BrowserViewport>> = const { std::cell::Cell::new(None) };
+}
+
+#[cfg(target_arch = "wasm32")]
+fn read_browser_viewport() -> BrowserViewport {
+    let Some(window) = web_sys::window() else {
+        return BrowserViewport {
+            width: 800.0,
+            height: 600.0,
+            device_pixel_ratio: 1.0,
+        };
+    };
+    let (width, height) = window
+        .visual_viewport()
+        .map(|vv| (vv.width(), vv.height()))
+        .filter(|(width, height)| *width > 0.0 && *height > 0.0)
+        .unwrap_or_else(|| {
+            let width = window
+                .inner_width()
+                .ok()
+                .and_then(|value| value.as_f64())
+                .unwrap_or(800.0);
+            let height = window
+                .inner_height()
+                .ok()
+                .and_then(|value| value.as_f64())
+                .unwrap_or(600.0);
+            (width, height)
+        });
+    BrowserViewport {
+        width,
+        height,
+        device_pixel_ratio: window.device_pixel_ratio(),
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn browser_viewport() -> BrowserViewport {
+    VIEWPORT_CACHE.with(|cache| {
+        if let Some(viewport) = cache.get() {
+            return viewport;
+        }
+        let viewport = read_browser_viewport();
+        cache.set(Some(viewport));
+        viewport
+    })
+}
+
+#[cfg(target_arch = "wasm32")]
+fn invalidate_viewport_cache() {
+    VIEWPORT_CACHE.with(|cache| cache.set(None));
+}
+
 /// Logical viewport size preferring the visible region (`visualViewport`).
 #[cfg(target_arch = "wasm32")]
 pub fn visible_logical_size() -> (f64, f64) {
-    let Some(window) = web_sys::window() else {
-        return (800.0, 600.0);
-    };
-    if let Some(vv) = window.visual_viewport() {
-        let w = vv.width();
-        let h = vv.height();
-        if w > 0.0 && h > 0.0 {
-            return (w, h);
-        }
-    }
-    let w = window
-        .inner_width()
-        .ok()
-        .and_then(|v| v.as_f64())
-        .unwrap_or(800.0);
-    let h = window
-        .inner_height()
-        .ok()
-        .and_then(|v| v.as_f64())
-        .unwrap_or(600.0);
-    (w, h)
+    let viewport = browser_viewport();
+    (viewport.width, viewport.height)
 }
 
 /// Logical viewport size from the browser window (not `#blade` client box).
@@ -62,11 +108,16 @@ pub fn visible_logical_size() -> (f64, f64) {
 /// Physical viewport size from the browser window (logical × devicePixelRatio).
 #[cfg(target_arch = "wasm32")]
 pub fn physical_viewport_size() -> (u32, u32) {
-    let (w, h) = canvas_logical_size();
-    let dpr = web_sys::window()
-        .map(|window| window.device_pixel_ratio())
-        .unwrap_or(1.0);
-    ((w * dpr).round() as u32, (h * dpr).round() as u32)
+    let viewport = browser_viewport();
+    (
+        (viewport.width * viewport.device_pixel_ratio).round() as u32,
+        (viewport.height * viewport.device_pixel_ratio).round() as u32,
+    )
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn device_pixel_ratio() -> f64 {
+    browser_viewport().device_pixel_ratio
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -166,19 +217,21 @@ pub fn install_viewport_listeners() {
         return;
     };
 
-    let Some(vv) = window.visual_viewport() else {
-        return;
-    };
-
     let bump = Closure::<dyn FnMut()>::new(|| {
+        invalidate_viewport_cache();
         if let Some(window) = web_sys::window() {
             if let Ok(ev) = web_sys::Event::new("resize") {
                 let _ = window.dispatch_event(&ev);
             }
         }
     });
-    let _ = vv.add_event_listener_with_callback("resize", bump.as_ref().unchecked_ref());
-    let _ = vv.add_event_listener_with_callback("scroll", bump.as_ref().unchecked_ref());
+    let callback = bump.as_ref().unchecked_ref();
+    let _ = window.add_event_listener_with_callback("resize", callback);
+    let _ = window.add_event_listener_with_callback("orientationchange", callback);
+    if let Some(vv) = window.visual_viewport() {
+        let _ = vv.add_event_listener_with_callback("resize", callback);
+        let _ = vv.add_event_listener_with_callback("scroll", callback);
+    }
     bump.forget();
 }
 

@@ -223,13 +223,13 @@ fn run_wasm_opt(path: &Path, cache: &Path) -> Result<()> {
         require_file(&br, "brotli")?;
         return Ok(());
     }
-    println!("==> wasm-opt -Oz ({})...", path.display());
+    println!("==> wasm-opt -O3 ({})...", path.display());
     let parent = path.parent().unwrap();
     let tmp = tempfile::NamedTempFile::new_in(parent)?;
     run(
         "wasm-opt",
         &[
-            "-Oz",
+            "-O3",
             "--enable-bulk-memory",
             "--enable-nontrapping-float-to-int",
             "--vacuum",

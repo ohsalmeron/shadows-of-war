@@ -482,7 +482,7 @@ pub(crate) fn render(
                         [disc_rect.center().x * sf, disc_rect.center().y * sf],
                         disc_rect.height() * 0.5 * sf,
                         [1.0; 4],
-                        ([0.0, 0.0, 0.0, 1.0], 0.0, 0.0),
+                        ([0.0, 0.0, 0.0, 0.9], 1.5 * sf, 1.5 * sf),
                     )
                 });
                 if !disc_gpu

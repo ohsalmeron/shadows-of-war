@@ -378,6 +378,22 @@ impl TextRenderer {
         true
     }
 
+    /// Push an emoji with standard tactical outline (90% black alpha, 1.5px thickness, 1.5px shadow).
+    pub fn push_emoji_tactical(
+        &mut self,
+        emoji: &str,
+        screen_pos: [f32; 2],
+        half_size: f32,
+    ) -> bool {
+        self.push_emoji(
+            emoji,
+            screen_pos,
+            half_size,
+            [1.0, 1.0, 1.0, 1.0],
+            ([0.0, 0.0, 0.0, 0.9], 1.5, 1.5),
+        )
+    }
+
     /// Push a filled, anti-aliased disc. `center`/`radius` are physical pixels.
     pub fn push_disc(&mut self, center: [f32; 2], radius: f32, color: [f32; 4]) {
         self.push_inst(TextInstanceGpu {

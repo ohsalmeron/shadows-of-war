@@ -182,6 +182,7 @@
     </div>
     <canvas id="blade" oncontextmenu="return false;" tabindex="0"></canvas>
     <div id="sow-menu" hidden aria-live="polite"></div>
+    <div id="sow-hud" hidden aria-live="polite"></div>
     <div id="version">v__VERSION__</div>
 
     <script type="text/javascript">

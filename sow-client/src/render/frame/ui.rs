@@ -165,13 +165,19 @@ impl SowApp {
 
             if self.ui.app.phase == ClientPhase::Playing {
                 self.handle_map_interactions(ctx);
-                self.render_endgame_ui(ctx);
-                self.render_leaderboard(ctx);
-                self.render_player_hover_panel(ctx);
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    self.render_endgame_ui(ctx);
+                    self.render_leaderboard(ctx);
+                    self.render_player_hover_panel(ctx);
+                }
             }
 
-            self.render_attacks_panel(ctx, &mut local_cancel_intents);
-            self.render_placement_cancel_button(ctx);
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                self.render_attacks_panel(ctx, &mut local_cancel_intents);
+                self.render_placement_cancel_button(ctx);
+            }
             sow_ui_kit::theme::publish_lobby_modal_embed(
                 ctx,
                 crate::store_portals::is_lobby_modal_embed(),
@@ -180,18 +186,6 @@ impl SowApp {
             self.ui.app.main_menu_state.account_level = self.progress.level;
             self.ui.app.main_menu_state.account_xp = self.progress.xp;
             self.ui.app.main_menu_state.laurels = self.progress.laurels;
-            // The web/WebView main menu is rendered by the DOM shell. Keep egui for the
-            // native menu and for the in-match HUD, but do not spend a second frame painting
-            // the old menu underneath the web overlay.
-            #[cfg(target_arch = "wasm32")]
-            let ui_action = if self.ui.app.phase == ClientPhase::MainMenu {
-                // The DOM shell owns pre-game presentation. Gameplay requests its own avatar
-                // assets once the match HUD is active; the menu must not preload them.
-                None
-            } else {
-                self.ui.app.draw(ctx, &mut local_cancel_intents)
-            };
-            #[cfg(not(target_arch = "wasm32"))]
             let ui_action = self.ui.app.draw(ctx, &mut local_cancel_intents);
 
             if self.ui.update_available {

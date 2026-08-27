@@ -23,6 +23,8 @@ impl SowApp {
             &self.ui.app.main_menu_state,
             &self.ui.app,
             &self.progress,
+            self.ui.hud_combat_sync_tick,
+            self.ui.show_leaderboard,
         );
     }
 }

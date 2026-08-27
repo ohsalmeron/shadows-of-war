@@ -145,13 +145,22 @@ impl ClientApp {
                 None
                 }
             }
-            ClientPhase::Playing => hud::draw(
-                ui,
-                &mut self.hud_state,
-                cancel_intents,
-                self.settings_state.language,
-                &mut self.asset_loader,
-            ),
+            ClientPhase::Playing => {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    None
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    hud::draw(
+                        ui,
+                        &mut self.hud_state,
+                        cancel_intents,
+                        self.settings_state.language,
+                        &mut self.asset_loader,
+                    )
+                }
+            }
         };
 
         if let Some(ref toggle) = action {

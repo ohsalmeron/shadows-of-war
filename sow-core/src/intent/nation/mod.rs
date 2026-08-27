@@ -188,3 +188,7 @@ impl SowEngine {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "bot_lab.rs"]
+mod bot_lab;

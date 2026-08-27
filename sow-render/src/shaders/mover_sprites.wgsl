@@ -81,3 +81,4 @@ fn fs_main_srgb(in: SpriteVertexOutput) -> @location(0) vec4<f32> {
     let c = tex * in.color;
     return vec4<f32>(pow(c.rgb, vec3<f32>(1.0 / 2.2)), c.a);
 }
+

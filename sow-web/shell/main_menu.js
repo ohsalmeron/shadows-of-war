@@ -623,6 +623,257 @@
         if (state && settingsOpen) render();
     });
 
+    // ─────────────────────────────────────────────────────────
+    // HUD CONTROLLER (DOM Overlay for In-Game RTS Matches)
+    // ─────────────────────────────────────────────────────────
+    var hudRoot = document.getElementById("sow-hud");
+    var leaderboardOpen = false;
+    var surrenderModalOpen = false;
+    var hudInitialized = false;
+    var hudRefs = null;
+    var leaderboardRows = Object.create(null);
+
+    function ensureHudDom() {
+        if (!hudRoot || hudInitialized) return;
+        hudInitialized = true;
+        hudRoot.innerHTML = ''
+            + '<header class="sow-hud__topbar">'
+            + '  <div class="sow-hud__status-left">'
+            + '    <div class="sow-hud__resource sow-hud__gold" title="Gold Treasury"><span class="sow-hud__icon">🪙</span> <b data-role="gold">0</b></div>'
+            + '    <div class="sow-hud__resource sow-hud__troops" title="Troop Pool"><span class="sow-hud__icon">🌾</span> <b data-role="troops">0</b></div>'
+            + '    <div class="sow-hud__resource sow-hud__prod" title="Production"><span class="sow-hud__icon">⚙️</span> <b data-role="prod">+0/s</b></div>'
+            + '  </div>'
+            + '  <div class="sow-hud__status-right">'
+            + '    <button class="sow-hud__btn sow-hud__btn-ghost" type="button" data-command="toggle_leaderboard" title="Toggle Conquest Rankings">🏆 RANKINGS</button>'
+            + '    <button class="sow-hud__btn sow-hud__btn-danger" type="button" data-command="prompt_surrender" title="Surrender Match">🏳️</button>'
+            + '  </div>'
+            + '</header>'
+            + '<aside class="sow-hud__leaderboard hidden" id="sow-hud-leaderboard">'
+            + '  <div class="sow-hud__panel-header">'
+            + '    <h3>CONQUEST RANKINGS</h3>'
+            + '    <button class="sow-hud__close-btn" type="button" data-command="toggle_leaderboard">✕</button>'
+            + '  </div>'
+            + '  <div class="sow-hud__leaderboard-rows" id="sow-hud-lb-rows"></div>'
+            + '</aside>'
+            + '<footer class="sow-hud__dock">'
+            + '  <div class="sow-hud__dock-inner">'
+            + '    <div class="sow-hud__attack-slider-group">'
+            + '      <label id="sow-hud-ratio-label">ATTACK FORCE: 50%</label>'
+            + '      <div class="sow-hud__ratio-chips" id="sow-hud-chips">'
+            + '        <button type="button" class="sow-hud__chip" data-command="set_ratio" data-ratio="0.2">20%</button>'
+            + '        <button type="button" class="sow-hud__chip active" data-command="set_ratio" data-ratio="0.5">50%</button>'
+            + '        <button type="button" class="sow-hud__chip" data-command="set_ratio" data-ratio="0.8">80%</button>'
+            + '        <button type="button" class="sow-hud__chip" data-command="set_ratio" data-ratio="1.0">100%</button>'
+            + '      </div>'
+            + '    </div>'
+            + '    <button class="sow-hud__spawn-btn" type="button" data-command="spawn_troops">'
+            + '      <span>DEPLOY REINFORCEMENTS</span>'
+            + '      <small id="sow-hud-spawn-timer">READY</small>'
+            + '    </button>'
+            + '    <div class="sow-hud__build-group">'
+            + '      <button type="button" class="sow-hud__build-btn" data-command="build_structure" data-kind="City" title="City (🏛️)">🏛️<small>City</small></button>'
+            + '      <button type="button" class="sow-hud__build-btn" data-command="build_structure" data-kind="Factory" title="Factory (🏭)">🏭<small>Factory</small></button>'
+            + '      <button type="button" class="sow-hud__build-btn" data-command="build_structure" data-kind="Port" title="Port (⚓)">⚓<small>Port</small></button>'
+            + '      <button type="button" class="sow-hud__build-btn" data-command="build_structure" data-kind="Bunker" title="Bunker (🛡️)">🛡️<small>Bunker</small></button>'
+            + '    </div>'
+            + '  </div>'
+            + '</footer>'
+            + '<div class="sow-hud__modal-backdrop hidden" id="sow-hud-surrender-modal">'
+            + '  <div class="sow-hud__modal-card">'
+            + '    <h3 style="margin:0 0 10px;font-size:20px;color:var(--sow-red);">Surrender Match?</h3>'
+            + '    <p style="color:var(--sow-muted);font-size:14px;line-height:1.5;">Are you sure you want to capitulate and concede your territories to the enemy?</p>'
+            + '    <div style="display:flex;justify-content:center;gap:12px;margin-top:20px;">'
+            + '      <button class="sow-hud__btn sow-hud__btn-ghost" type="button" data-command="close_surrender_modal">CANCEL</button>'
+            + '      <button class="sow-hud__btn sow-hud__btn-danger" type="button" data-command="confirm_surrender">SURRENDER</button>'
+            + '    </div>'
+            + '  </div>'
+            + '</div>'
+            + '<div class="sow-hud__endgame-backdrop hidden" id="sow-hud-endgame-modal">'
+            + '  <div class="sow-hud__endgame-card">'
+            + '    <div class="sow-hud__endgame-banner" id="sow-hud-endgame-banner">VICTORY</div>'
+            + '    <h2 style="margin:0 0 12px;font-size:24px;" id="sow-hud-endgame-title">The World is Yours</h2>'
+            + '    <p style="color:var(--sow-muted);font-size:14px;margin-bottom:24px;" id="sow-hud-endgame-desc">Your conquest is complete.</p>'
+            + '    <button class="sow-hud__btn" type="button" data-command="return_to_menu" style="background:var(--sow-gold);color:#0d0f13;font-weight:800;padding:12px 28px;">RETURN TO COMMAND</button>'
+            + '  </div>'
+            + '</div>';
+
+        hudRefs = {
+            gold: hudRoot.querySelector('[data-role="gold"]'),
+            troops: hudRoot.querySelector('[data-role="troops"]'),
+            prod: hudRoot.querySelector('[data-role="prod"]'),
+            spawnTimer: document.getElementById("sow-hud-spawn-timer"),
+            ratioLabel: document.getElementById("sow-hud-ratio-label"),
+            chips: Array.prototype.slice.call(hudRoot.querySelectorAll(".sow-hud__chip")),
+            leaderboard: document.getElementById("sow-hud-leaderboard"),
+            rows: document.getElementById("sow-hud-lb-rows"),
+            surrender: document.getElementById("sow-hud-surrender-modal"),
+            endgame: document.getElementById("sow-hud-endgame-modal"),
+            endgameBanner: document.getElementById("sow-hud-endgame-banner"),
+            endgameTitle: document.getElementById("sow-hud-endgame-title"),
+            endgameDesc: document.getElementById("sow-hud-endgame-desc")
+        };
+    }
+
+    function updateLeaderboard(players) {
+        if (!hudRefs || !hudRefs.rows) return;
+        var nextRows = Object.create(null);
+        var fragment = document.createDocumentFragment();
+        (players || []).forEach(function (player) {
+            var key = String(player.id);
+            var row = leaderboardRows[key];
+            if (!row) {
+                var card = document.createElement("div");
+                var left = document.createElement("div");
+                var status = document.createElement("span");
+                var name = document.createElement("b");
+                var right = document.createElement("div");
+                var territory = document.createElement("span");
+                var troops = document.createElement("span");
+                card.className = "sow-hud__player-card";
+                left.style.cssText = "display:flex;align-items:center;gap:6px;";
+                right.style.cssText = "display:flex;gap:10px;font-weight:700;";
+                territory.style.color = "var(--sow-gold)";
+                troops.style.color = "#86efac";
+                left.appendChild(status);
+                left.appendChild(name);
+                right.appendChild(territory);
+                right.appendChild(troops);
+                card.appendChild(left);
+                card.appendChild(right);
+                row = { card: card, status: status, name: name, territory: territory, troops: troops, key: "" };
+            }
+
+            var rowKey = [player.name, player.troops, player.tile_count, player.is_alive, player.is_me].join("|");
+            if (row.key !== rowKey) {
+                row.key = rowKey;
+                row.card.classList.toggle("is-me", !!player.is_me);
+                row.card.classList.toggle("is-dead", !player.is_alive);
+                row.status.textContent = player.is_alive ? "👑" : "💀";
+                row.name.textContent = player.name || "Player";
+                row.territory.textContent = Math.round((player.territory_pct || 0) * 100) + "%";
+                row.troops.textContent = (player.troops > 1000 ? (player.troops / 1000).toFixed(1) + "k" : player.troops) + " ⚔";
+            }
+            fragment.appendChild(row.card);
+            nextRows[key] = row;
+        });
+        hudRefs.rows.replaceChildren(fragment);
+        leaderboardRows = nextRows;
+    }
+
+    function renderHud() {
+        if (!hudRoot) return;
+        if (!state || state.phase !== "Playing" || !state.hud) {
+            hudRoot.hidden = true;
+            leaderboardOpen = false;
+            leaderboardRows = Object.create(null);
+            if (hudRefs && hudRefs.rows) hudRefs.rows.replaceChildren();
+            return;
+        }
+        ensureHudDom();
+        hudRoot.hidden = false;
+
+        var hud = state.hud;
+        var gold = Math.floor(hud.gold || 0);
+        var troops = Math.floor(hud.troops || 0);
+        var prod = Math.floor(hud.troop_rate || 0);
+        var currentRatio = hud.attack_ratio || 0.5;
+        var spawnSecs = hud.spawn_timer_secs;
+
+        if (hudRefs.gold && hudRefs.gold.dataset.val !== String(gold)) {
+            hudRefs.gold.textContent = gold.toLocaleString();
+            hudRefs.gold.dataset.val = String(gold);
+        }
+
+        if (hudRefs.troops && hudRefs.troops.dataset.val !== String(troops)) {
+            hudRefs.troops.textContent = troops.toLocaleString();
+            hudRefs.troops.dataset.val = String(troops);
+        }
+
+        if (hudRefs.prod && hudRefs.prod.dataset.val !== String(prod)) {
+            hudRefs.prod.textContent = '+' + prod + '/s';
+            hudRefs.prod.dataset.val = String(prod);
+        }
+
+        if (hudRefs.spawnTimer) {
+            var spawnText = (spawnSecs != null && spawnSecs > 0 ? spawnSecs.toFixed(1) + 's' : 'READY');
+            if (hudRefs.spawnTimer.textContent !== spawnText) {
+                hudRefs.spawnTimer.textContent = spawnText;
+            }
+        }
+
+        if (hudRefs.ratioLabel) {
+            var ratioText = 'ATTACK FORCE: ' + Math.round(currentRatio * 100) + '%';
+            if (hudRefs.ratioLabel.textContent !== ratioText) {
+                hudRefs.ratioLabel.textContent = ratioText;
+            }
+        }
+
+        if (hudRefs.chips) {
+            for (var i = 0; i < hudRefs.chips.length; i++) {
+                var chipRatio = parseFloat(hudRefs.chips[i].dataset.ratio || "0");
+                var isActive = Math.abs(currentRatio - chipRatio) < 0.05;
+                if (hudRefs.chips[i].classList.contains("active") !== isActive) {
+                    hudRefs.chips[i].classList.toggle("active", isActive);
+                }
+            }
+        }
+
+        if (hudRefs.leaderboard) {
+            hudRefs.leaderboard.classList.toggle("hidden", !leaderboardOpen);
+        }
+
+        if (leaderboardOpen) {
+            updateLeaderboard(hud.leaderboard);
+        }
+
+        if (hudRefs.surrender) {
+            hudRefs.surrender.classList.toggle("hidden", !surrenderModalOpen);
+        }
+
+        var isOver = Boolean(hud.match_over);
+        var isWinner = Boolean(hud.is_winner);
+        if (hudRefs.endgame) {
+            hudRefs.endgame.classList.toggle("hidden", !isOver);
+            if (isOver) {
+                if (hudRefs.endgameBanner) hudRefs.endgameBanner.textContent = isWinner ? 'VICTORY' : 'DEFEAT';
+                if (hudRefs.endgameTitle) hudRefs.endgameTitle.textContent = isWinner ? 'The World is Yours' : 'Your Empire Has Fallen';
+                if (hudRefs.endgameDesc) hudRefs.endgameDesc.textContent = isWinner ? 'Your conquest is complete. All realms have bowed to your authority.' : 'Your armies have been vanquished in glorious battle.';
+            }
+        }
+    }
+
+    if (hudRoot) {
+        hudRoot.addEventListener("click", function (event) {
+            var btn = event.target.closest("[data-command]");
+            if (!btn) return;
+            var cmd = btn.dataset.command;
+            if (cmd === "toggle_leaderboard") {
+                leaderboardOpen = !leaderboardOpen;
+                renderHud();
+            } else if (cmd === "prompt_surrender") {
+                surrenderModalOpen = true;
+                renderHud();
+            } else if (cmd === "close_surrender_modal") {
+                surrenderModalOpen = false;
+                renderHud();
+            } else if (cmd === "confirm_surrender") {
+                surrenderModalOpen = false;
+                send("surrender");
+                renderHud();
+            } else if (cmd === "set_ratio") {
+                var ratio = parseFloat(btn.dataset.ratio || "0.5");
+                send("set_attack_ratio", { ratio: ratio });
+            } else if (cmd === "spawn_troops") {
+                send("spawn_troops");
+            } else if (cmd === "build_structure") {
+                var kind = btn.dataset.kind || "City";
+                send("build_structure", { kind: kind });
+            } else if (cmd === "return_to_menu") {
+                send("return_to_menu");
+            }
+        });
+    }
+
     function poll() {
         var raw = window.SOW_MENU_STATE;
         if (typeof raw !== "string" || raw === lastRaw) {
@@ -651,8 +902,10 @@
             root.hidden = state.phase !== "MainMenu";
             updateDynamic();
         }
+        renderHud();
     }
 
     root.hidden = true;
+    if (hudRoot) hudRoot.hidden = true;
     window.setInterval(poll, 80);
 })();

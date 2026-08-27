@@ -21,8 +21,9 @@ impl SowEngine {
         let (attack_cost, alliance_cost) = costs;
         // ── Attack logic (both Bots and Nations) ────────────────────
         if slot.do_attack {
-            let current_points = self.state.player(bot_id).unwrap().iq_points;
-            if current_points >= attack_cost {
+            // War still spends iq_points (clamped at zero below); growth and
+            // defense never freeze for lack of budget.
+            {
                 let tick = self.current_tick_u32();
                 let betray_cd = self.alliance_betray_cooldown_until.get(&bot_id).copied();
                 let bordering_count = neighbor_players.len();
@@ -362,8 +363,15 @@ impl SowEngine {
                         (troops - reserve).max(0.0)
                     };
                     if p_send >= self.state.config.attack_cost_neutral {
-                        if let Some(p_me) = self.state.player_mut(bot_id) {
-                            p_me.iq_points -= attack_cost;
+                        // Neutral expansion is GROWTH, not war: it must stay
+                        // free of the iq budget, or a high-cadence bot drains
+                        // its points on contested frontiers and permanently
+                        // freezes mid-game (bankruptcy = zero actions, troops
+                        // piling at cap while free land sits next door).
+                        if !is_neutral {
+                            if let Some(p_me) = self.state.player_mut(bot_id) {
+                                p_me.iq_points = (p_me.iq_points - attack_cost).max(0.0);
+                            }
                         }
                         decisions.push(BotDecision {
                             bot_id,
