@@ -36,7 +36,7 @@
         const base = window.SOW_ASSETS_URL;
         if (base && typeof base === 'string') {
             const root = base.replace(/\/$/, '');
-            return [root + '/cdn/ui/' + file];
+            return [root + '/shell/loader/' + file];
         }
         // Strict endpoints: a missing SOW_ASSETS_URL is a packaging bug —
         // fail loudly instead of guessing a CDN URL (guessing once loaded
@@ -96,6 +96,7 @@
     let loaderText = null;
     let finishing = false;
     let rafId = 0;
+    let reportedProgress = null;
 
     function isMobile() {
         return window.innerWidth < MOBILE_BREAKPOINT;
@@ -205,12 +206,14 @@
             if (!barFill || finishing) return;
             const t = Math.min(1, (now - t0) / durationMs);
             const eased = 1 - Math.pow(1 - t, 2);
-            barFill.style.width = (eased * 88).toFixed(1) + '%';
+            const progress = reportedProgress == null ? eased * 88 : reportedProgress * 100;
+            barFill.style.width = Math.min(100, progress).toFixed(1) + '%';
             rafId = requestAnimationFrame(tick);
         }
 
         barFill.style.transition = 'none';
         barFill.style.width = '0%';
+        reportedProgress = null;
         rafId = requestAnimationFrame(tick);
     }
 
@@ -260,7 +263,8 @@
         startProgress();
     }
 
-    function teardown() {
+    function teardown(expectedRoot) {
+        if (expectedRoot && root !== expectedRoot) return;
         stopProgress();
         window.removeEventListener('resize', layout);
         window.removeEventListener('orientationchange', layout);
@@ -315,6 +319,7 @@
 
     function finish() {
         if (!root || finishing) return;
+        const closingRoot = root;
         finishing = true;
         sowTrack('shell_loaded');
         stopProgress();
@@ -327,10 +332,35 @@
 
         root.style.transition = `opacity ${FADEOUT_MS}ms ease-out`;
         setTimeout(() => {
-            if (!root) return;
+            if (root !== closingRoot) return;
             root.style.opacity = '0';
-            setTimeout(teardown, FADEOUT_MS + 30);
+            setTimeout(() => teardown(closingRoot), FADEOUT_MS + 30);
         }, 160);
+    }
+
+    function sync(state) {
+        if (!state) return;
+        const active = state.phase !== 'MainMenu' && state.phase !== 'Playing';
+        if (!active) {
+            finish();
+            return;
+        }
+
+        if (!root) {
+            finishing = false;
+            buildDom();
+        }
+        if (finishing) finishing = false;
+        const progress = Number(state.loader_progress);
+        if (Number.isFinite(progress)) {
+            reportedProgress = Math.max(0, Math.min(1, progress));
+            if (barFill) barFill.style.width = (reportedProgress * 100).toFixed(1) + '%';
+        }
+        if (loaderText) {
+            const status = typeof state.loader_status === 'string' ? state.loader_status.trim() : '';
+            loaderText.textContent = status || 'Loading...';
+        }
+        if (root) root.setAttribute('aria-busy', 'true');
     }
 
     function initWebLoader() {
@@ -339,6 +369,7 @@
 
     window.hideWebLoader = finish;
     window.SOW_initWebLoader = initWebLoader;
+    window.SOW_syncWebLoader = sync;
 
     // Game shell (play subdomain / portal): #web-loader in index.html auto-starts.
     if (document.getElementById('web-loader')) {

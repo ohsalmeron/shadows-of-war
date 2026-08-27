@@ -275,10 +275,10 @@ pub(in crate::ui::hud) fn draw_alliance_inbox(
                                                             ui.spacing_mut().item_spacing.y = 0.0;
                                                             crate::widgets::outlined_emoji_label(ui, &name, egui::FontId::proportional(12.5), pc);
                                                             let prompt = match (req.gold > 0.0, req.troops > 0.0) {
-                                                                (true, true) => format!("asks for 🪙{} & 🛡️{}", crate::utils::format_number(req.gold), crate::utils::format_number(req.troops)),
-                                                                (true, false) => format!("asks for 🪙{}", crate::utils::format_number(req.gold)),
-                                                                (false, true) => format!("asks for 🛡️{}", crate::utils::format_number(req.troops)),
-                                                                _ => "asks for resources".to_string(),
+                                                                (true, true) => format!("requests {} Gold, {} Troops", crate::utils::format_number(req.gold), crate::utils::format_number(req.troops)),
+                                                                (true, false) => format!("requests {} Gold", crate::utils::format_number(req.gold)),
+                                                                (false, true) => format!("requests {} Troops", crate::utils::format_number(req.troops)),
+                                                                _ => "requests resources".to_string(),
                                                             };
                                                             crate::widgets::outlined_emoji_label(
                                                                 ui,

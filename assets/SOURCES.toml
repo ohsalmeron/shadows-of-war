@@ -1,48 +1,23 @@
-# Asset provenance tracker for Shadows of War.
-# Layout: assets/static/ (compile-time embed: fonts, icons, one offline map),
-#         assets/maps/ (online map library → VPS /maps/ API),
-#         assets/cdn/ (prod HTTP art only).
-# source: placeholder | original | ai_generated | google_fonts | svg_repo
+# Asset provenance and ownership for Shadows of War.
+#
+# This is the source tree. Delivery paths are chosen by sow-dist; there is no
+# `cdn/` or `static/` source taxonomy and no mirrored map copy.
 
-[hud_icons]
-path = "assets/static/ui/hud/"
-source = "placeholder"
-license = "AGPL-3.0-or-later"
+[shell_loader]
+path = "assets/shell/loader/"
+source = "ai_generated_and_placeholder"
+license = "Review per original tool terms; placeholder art is AGPL-3.0-or-later"
+files = ["sow-splash-desktop.webp", "sow-splash-mobile.webp", "loader_empty.webp", "loader_full.webp"]
+notes = "Web shell only. The WASM client does not fetch or embed these files."
 
-[splash]
-path = "assets/static/ui/"
-source = "ai_generated"
-tool = "Gemini / Meta AI / Midjourney (mixed, historical)"
-license = "Per tool Terms of Service — verify redistribution rights"
-status = "pending_tos_review"
-files = ["sow-splash-desktop.webp", "sow-splash-mobile.webp"]
-notes = "Published to assets/cdn/ui/ on CDN sync (resized via copy_static_ui_webp)."
-
-[loaders]
-path = "assets/static/ui/"
-source = "placeholder"
-license = "AGPL-3.0-or-later"
-files = ["loader_empty.webp", "loader_full.webp"]
-status = "themed_placeholder"
-notes = "Served from assets/cdn/ui/ on shadowsofwar.io (not bundled in portal zip)."
-
-[avatars]
-path = "assets/cdn/avatars/"
-source = "ai_generated"
-tool = "Gemini / Meta AI / Midjourney (mixed, historical)"
-license = "CC-BY-SA-4.0"
-license_doc = "docs/legal/LICENSE-ASSETS"
-ai_dossier = "docs/leaders/README.md (prompts and roster; provide to Poki/CrazyGames on request)"
-notes = "Streamed from CDN; canonical tree assets/cdn/avatars/. Not bundled in portal wasm."
-
-[leader_portraits]
-path = "assets/cdn/leaders/"
+[shell_leaders]
+path = "assets/shell/leaders/"
 source = "ai_generated"
 tool = "Gemini / Meta AI / Midjourney (mixed, historical)"
 license = "CC-BY-SA-4.0"
 license_doc = "docs/legal/LICENSE-ASSETS"
 ai_dossier = "docs/leaders/README.md"
-notes = "Streamed from CDN; not bundled in portal upload."
+notes = "Web landing and JavaScript main menu only. Never part of the gameplay asset bundle."
 restored = [
   "alexander",
   "caesar",
@@ -60,27 +35,65 @@ themed_placeholder = [
   "lady_six_sky",
 ]
 
+[shell_brand]
+path = "assets/shell/brand/"
+source = "original"
+license = "AGPL-3.0-or-later"
+files = ["sow.svg", "tower.svg", "sow-long.svg", "app-icon.png"]
 
-[fonts]
-path = "assets/static/fonts/"
+[site_media]
+path = "assets/site/media/"
+source = "original_and_ai_generated"
+notes = "Marketing website media. It is not loaded by the gameplay WASM client."
+
+[site_icons]
+path = "assets/site/icons/"
+source = "original"
+license = "AGPL-3.0-or-later"
+files = ["icon-192.png", "icon-512.png", "icon-512-maskable.png"]
+
+[gameplay_avatars]
+path = "assets/gameplay/avatars/"
+source = "ai_generated"
+tool = "Gemini / Meta AI / Midjourney (mixed, historical)"
+license = "CC-BY-SA-4.0"
+license_doc = "docs/legal/LICENSE-ASSETS"
+ai_dossier = "docs/leaders/README.md"
+notes = "Runtime gameplay HUD/nameplates/leaderboard assets. Streamed when gameplay needs them."
+
+[gameplay_ui]
+path = "assets/gameplay/ui/"
+source = "placeholder_and_original"
+license = "AGPL-3.0-or-later"
+notes = "In-match HUD/audio/UI assets only."
+
+[gameplay_fonts]
+path = "assets/gameplay/fonts/"
 source = "google_fonts"
 license = "SIL Open Font License 1.1"
-files = ["WorkSans-Black.ttf"]
+files = ["WorkSans-Black.ttf", "WorkSans-Regular.ttf", "msdf-atlas.png", "msdf-atlas.json"]
+notes = "Compile-time gameplay renderer/UI assets."
 
-[emoji_atlas]
-path = "assets/static/emoji/"
+[gameplay_emoji]
+path = "assets/gameplay/emoji/"
 source = "twemoji"
 license = "CC-BY-4.0"
 upstream = "https://github.com/twitter/twemoji"
 pin = "14.0.2"
 files = ["atlas.webp"]
-notes = "Curated glyphs packed by sow-tools pack-emoji-atlas from Twemoji 72x72 PNGs (downscaled to 64px cells). Rebuild: cargo run -p sow-tools --bin sow-tools -- pack-emoji-atlas"
+notes = "Curated glyphs packed by sow-tools pack-emoji-atlas."
 
-[maps_offline]
-path = "assets/static/maps/world/"
-source = "image"
-notes = "Single offline-bundled map (WASM include_bytes). Online library: assets/maps/."
-
-[maps_online]
+[maps]
 path = "assets/maps/"
-notes = "Map editor + sow-tools output; rsync to VPS SOW_MAPS_ROOT. Only world/ tracked in git."
+source = "image_and_osm"
+notes = "Single canonical map library for the online service and the WASM world-map embed. No static mirror."
+
+[campaign]
+path = "assets/campaign/"
+source = "original"
+notes = "Compile-time campaign data and native editor override."
+
+[editor]
+path = "assets/editor/"
+source = "original"
+notes = "Authoring sources for developer tools; never shipped as public web assets."

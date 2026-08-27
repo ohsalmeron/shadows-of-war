@@ -5,7 +5,7 @@ Thank you for your interest in contributing!
 ## Getting started
 
 1. Fork the repository and clone your fork.
-2. Ensure `assets/static/` is complete (including `assets/static/fonts/` — required for compile-time UI embed).
+2. Ensure `assets/gameplay/` is complete (fonts, emoji, HUD assets, and avatars are required by the gameplay client).
 3. Build the workspace: `cargo build --workspace`
 4. Run tests: `cargo test --workspace`
 5. Format and lint before submitting:
@@ -25,7 +25,7 @@ local desktop run.
 ## Pull requests
 
 - Keep changes focused — one logical change per PR when possible.
-- Update `assets/SOURCES.toml`, `assets/maps/SOURCES.toml`, and `assets/static/maps/SOURCES.toml` if you add or replace assets.
+- Update `assets/SOURCES.toml` and `assets/maps/SOURCES.toml` if you add or replace assets.
 - New shipped art (portraits, avatars): default to **CC BY-SA 4.0** per `docs/legal/LICENSE-ASSETS`; verify AI tool ToS before setting `license = "CC-BY-SA-4.0"`.
 - Document OSM-derived maps with `source = "osm"` and attribution in SOURCES.toml.
 - Do not commit secrets, `sow-dist/deploy/keystores/`, `.env` files, or `OpenFrontIO/proprietary/` assets.

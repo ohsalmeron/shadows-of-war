@@ -129,8 +129,8 @@
     image: c.dataset.image
   }));
 
-  const asset = (leader, mobile = false) => `/assets/cdn/leaders/${leader.image}_${mobile ? 'mobile' : 'desktop'}.webp`;
-  const avatar = leader => `/assets/cdn/avatars/${leader.image}.webp`;
+  const asset = (leader, mobile = false) => `/assets/shell/leaders/${leader.image}_${mobile ? 'mobile' : 'desktop'}.webp`;
+  const avatar = leader => `/assets/gameplay/avatars/${leader.image}.webp`;
 
   function setTheme(theme) {
     document.documentElement.dataset.theme = theme;
@@ -302,18 +302,22 @@
       authMsg.classList.remove('hidden');
     }
 
+    const modalHeaderTitle = $('#wou-modal-header-title');
+
     function updateAuthUi() {
       const isAuth = window.wouAuth.isAuthenticated();
       const user = window.wouAuth.getUser();
 
       if (isAuth && user) {
-        if (label) label.textContent = user.clan_tag ? `[${user.clan_tag}] ${user.display_name}` : user.display_name;
+        if (modalHeaderTitle) modalHeaderTitle.textContent = 'Account Profile';
+        if (label) label.textContent = user.clan_tag ? `[${user.clan_tag}] ${user.display_name}` : (user.display_name || user.username || 'Player');
         if (loggedView) loggedView.classList.remove('hidden');
         if (unloggedView) unloggedView.classList.add('hidden');
-        if (userName) userName.textContent = user.display_name || 'Commander';
+        if (userName) userName.textContent = user.display_name || user.username || 'Player';
         if (userClan) userClan.textContent = user.clan_tag ? `Clan: [${user.clan_tag}]` : 'No Clan';
         if (userId) userId.textContent = `ID: ${user.id}`;
       } else {
+        if (modalHeaderTitle) modalHeaderTitle.textContent = 'Sign In';
         if (label) label.textContent = 'Sign in';
         if (loggedView) loggedView.classList.add('hidden');
         if (unloggedView) unloggedView.classList.remove('hidden');
@@ -351,6 +355,16 @@
     $('#wou-login-discord')?.addEventListener('click', () => {
       audio.playConfirm();
       window.wouAuth.loginWithOAuth('discord');
+    });
+
+    $('#wou-login-twitter')?.addEventListener('click', () => {
+      audio.playConfirm();
+      window.wouAuth.loginWithOAuth('twitter');
+    });
+
+    $('#wou-login-meta')?.addEventListener('click', () => {
+      audio.playConfirm();
+      window.wouAuth.loginWithOAuth('meta');
     });
 
     $('#wou-login-eth')?.addEventListener('click', async () => {

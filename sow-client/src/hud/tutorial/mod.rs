@@ -264,8 +264,8 @@ impl SowApp {
                     id: &format!("tutorial_completion_{}_{}", self.sim.config.seed, idx),
                     visual: None,
                     name: None,
-                    title: "🏆 Quest Complete".to_string(),
-                    body: format!("{title} — onward, Iceni!"),
+                    title: "Objective Complete".to_string(),
+                    body: format!("{title} completed"),
                     buttons: Vec::new(),
                     click_anywhere: true,
                     auto_dismiss: Some(QUEST_COMPLETE_SECS),
@@ -326,7 +326,7 @@ impl SowApp {
 
             let buttons = if is_last_step {
                 vec![
-                    DialogButton::new("Continue", ThemeButtonStyle::Secondary),
+                    DialogButton::new("Continue to War Room", ThemeButtonStyle::Secondary),
                     DialogButton::new("Stay and fight", ThemeButtonStyle::Primary),
                 ]
             } else {

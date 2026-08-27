@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/cdn/ui/sow-splash-desktop.webp" alt="Shadows of War — world map territory conquest" width="100%" />
+  <img src="assets/shell/loader/sow-splash-desktop.webp" alt="Shadows of War — world map territory conquest" width="100%" />
 </p>
 
 <p align="center">
@@ -27,9 +27,9 @@
 
 | World map | Battle | Expansion | Leaders |
 |---|---|---|---|
-| ![World](sow-web/site/assets/media/session-world.webp) | ![Battle](sow-web/site/assets/media/session-battle.webp) | ![Expansion](sow-web/site/assets/media/session-expansion.webp) | ![Leaders](sow-web/site/assets/media/session-leader.webp) |
+| ![World](assets/site/media/session-world.webp) | ![Battle](assets/site/media/session-battle.webp) | ![Expansion](assets/site/media/session-expansion.webp) | ![Leaders](assets/site/media/session-leader.webp) |
 
-Gameplay capture: [`sow-web/site/assets/media/shadows-of-war-gameplay.mp4`](sow-web/site/assets/media/shadows-of-war-gameplay.mp4) · Trailer: [`sow-web/site/assets/media/shadows-of-war-trailer.mp4`](sow-web/site/assets/media/shadows-of-war-trailer.mp4) · More media in [`sow-web/site/assets/media/`](sow-web/site/assets/media/)
+Gameplay capture: [`assets/site/media/shadows-of-war-gameplay.mp4`](assets/site/media/shadows-of-war-gameplay.mp4) · Trailer: [`assets/site/media/shadows-of-war-trailer.mp4`](assets/site/media/shadows-of-war-trailer.mp4) · More media in [`assets/site/media/`](assets/site/media/)
 
 ---
 
@@ -90,7 +90,7 @@ Custom harmonic synthesizer — layered sine harmonics, key derived from match s
 | `sow-client` | Thin native/WASM entry (`main`, cdylib). |
 | `sow-render` | `blade` WGSL GPU pipeline. |
 | `sow-ui` | Menus, HUD, `ClientApp`. |
-| `sow-web/site` | Marketing site — landing, `/how-to-play/`, legal, `assets/media/`. |
+| `sow-web/site` | Marketing site — landing, `/how-to-play/`, and legal pages. Marketing binaries live in `assets/site/media/`. |
 | `sow-web/shell` | WASM game shell (`/play/`). |
 | `sow-tools` | Map generation from OSM, asset packing, `check.sh`. |
 | `sow-dist` | Build/deploy pipeline — the `./sow` CLI. |

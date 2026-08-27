@@ -159,20 +159,16 @@ impl SowApp {
                     .unwrap_or_else(|| format!("Player {}", victim_id))
             };
 
-            let kind_str = match alert.kind {
-                sow_core::game::NukeKind::AtomBomb => "Tactical Nuke",
-            };
-
             let (message, color) = if victim_id == my_id && my_id != 0 {
                 // You got nuked
                 (
-                    format!("{} launched {} on YOUR territory!", attacker_name, kind_str),
+                    format!("Incoming nuke from {}", attacker_name),
                     egui::Color32::from_rgb(239, 68, 68),
                 )
             } else if alert.owner_id == my_id {
                 // You nuked someone
                 (
-                    format!("Your {} detonated on {}", kind_str, victim_name),
+                    format!("Nuke detonated on {}", victim_name),
                     egui::Color32::from_rgb(74, 222, 128),
                 )
             } else if my_id != 0
@@ -186,16 +182,13 @@ impl SowApp {
             {
                 // Ally got nuked
                 (
-                    format!(
-                        "{} launched {} on ally {}!",
-                        attacker_name, kind_str, victim_name
-                    ),
+                    format!("{} nuked ally {}", attacker_name, victim_name),
                     egui::Color32::from_rgb(251, 191, 36),
                 )
             } else {
                 // Enemy vs enemy / neutral
                 (
-                    format!("{} launched {} on {}", attacker_name, kind_str, victim_name),
+                    format!("{} nuked {}", attacker_name, victim_name),
                     egui::Color32::from_rgb(180, 180, 200),
                 )
             };

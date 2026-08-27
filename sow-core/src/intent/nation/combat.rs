@@ -122,8 +122,12 @@ impl SowEngine {
 
                 // Every Nation shares the same mid-tier capability set. The
                 // action phase below remains seed/id-jittered, but the ID no
-                // longer decides which Nation gets fleet behavior.
+                // longer decides which Nation gets fleet behavior. Ghosts
+                // (is_ai_controlled humans) get the same naval breakout so a
+                // teammate fully enclosed by allies keeps advancing instead
+                // of idling when its border has no enemy contact.
                 let is_mfo = slot.tier == AiTier::Nation;
+                let can_fleet = is_mfo || slot.tier == AiTier::Ghost;
                 let has_port =
                     crate::building::cost::player_has_completed_port(&self.buildings, bot_id);
                 let mut revenge_choice = None;
@@ -146,8 +150,13 @@ impl SowEngine {
                 }
 
                 let mut launched_fleet = false;
-                if is_mfo
-                    && has_port
+                // The engine's fleet rule needs no port — the AI self-restricts to
+                // ports. An enclosed ghost (allies/teammates on every border tile,
+                // no neutral left) has no land move at all, so it may launch
+                // portless: idle "comfortable" ghosts must never happen.
+                let enclosed = !has_neutral && targets.is_empty();
+                if can_fleet
+                    && (has_port || (slot.tier == AiTier::Ghost && enclosed))
                     && troops >= max_troops * 0.20
                     && (self.state.tick + bot_id as u64).is_multiple_of(24)
                 {
@@ -231,6 +240,14 @@ impl SowEngine {
                     }
                 }
 
+                // Target precedence:
+                //   1. Defend the biggest inbound attack.
+                //   2. Nations: revenge / weakest bordering player.
+                //   3. Attack-armed tiers with a player on their border keep
+                //      pressing it — leftover neutral pockets must never stall
+                //      a war, but they must also never block expansion when no
+                //      player is reachable (that regression froze whole lobbies).
+                //   4. Everyone: expand into neutral land.
                 let (target_owner, is_neutral) = if let Some(attacker_id) = defender_target {
                     (attacker_id, false)
                 } else if is_mfo && !targets.is_empty() {
@@ -250,14 +267,10 @@ impl SowEngine {
                         best_target
                     };
                     (chosen_target, false)
-                } else if has_neutral {
-                    (0, true)
-                } else if targets.is_empty() {
-                    if slot.tier == AiTier::Nation {
-                        self.maybe_launch_nuke(bot_id, decisions, bot_iq, &targets);
-                    }
-                    return;
-                } else {
+                } else if slot.profile.attacks_players
+                    && !targets.is_empty()
+                    && troops >= max_troops * trigger_ratio
+                {
                     let target_owner;
                     if bot_iq >= 130 {
                         let mut best_target = targets[0];
@@ -310,6 +323,17 @@ impl SowEngine {
                     }
 
                     (target_owner, false)
+                } else if has_neutral {
+                    (0, true)
+                } else if targets.is_empty() {
+                    if slot.tier == AiTier::Nation {
+                        self.maybe_launch_nuke(bot_id, decisions, bot_iq, &targets);
+                    }
+                    return;
+                } else {
+                    // Below trigger, enemy neighbors only, no neutral left:
+                    // bank this tick and keep accumulating for the war push.
+                    return;
                 };
 
                 let is_defending = defender_target.is_some();

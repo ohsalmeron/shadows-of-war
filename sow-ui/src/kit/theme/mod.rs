@@ -243,7 +243,7 @@ pub fn font_regular(size: f32) -> FontId {
 }
 
 pub fn apply_theme(ctx: &Context) {
-    // PressStart2P only — do not pull in egui bundled default/emoji font blobs.
+    // Work Sans Black ("Default") + Work Sans Regular only — do not pull in egui bundled default/emoji font blobs.
     let mut fonts = egui::FontDefinitions {
         font_data: Default::default(),
         families: Default::default(),

@@ -224,6 +224,30 @@ impl SowApp {
         if self.ui.app.phase == sow_ui_kit::ClientPhase::Splash {
             match self.ui.app.splash_state.job {
                 sow_ui::ui::loading_screen::SplashJob::Boot => {
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        // loader.js owns the boot presentation. Rust only publishes the phase
+                        // and waits for identity/bootstrap work before exposing the menu.
+                        splash_show_loading(&mut self.ui.app.splash_state);
+                        splash_show_loading_progress(&mut self.ui.app.splash_state, 0.95);
+                        if self.should_portal_auto_intro() {
+                            if !self.boot_route_waiting {
+                                self.boot_route_waiting = true;
+                                self.boot_ready_since = Some(web_time::Instant::now());
+                            }
+                            let timed_out = self.boot_ready_since.is_some_and(|t| {
+                                t.elapsed() > web_time::Duration::from_millis(1500)
+                            });
+                            if self.boot_db_settled || timed_out {
+                                self.finish_boot_route();
+                            }
+                        } else {
+                            self.finish_boot_to_main_menu();
+                        }
+                    }
+
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
                     let leader = self.ui.app.main_menu_state.selected_leader;
                     // Portrait art is keyed by orientation (`width < height`), the
                     // same test the backdrop uses to pick + decode the texture.
@@ -260,35 +284,15 @@ impl SowApp {
                     let boot_ready = ui_ready && hero_ready;
 
                     if boot_ready {
-                        #[cfg(target_arch = "wasm32")]
-                        {
-                            if self.should_portal_auto_intro() {
-                                if !self.boot_route_waiting {
-                                    self.boot_route_waiting = true;
-                                    self.boot_ready_since = Some(web_time::Instant::now());
-                                }
-                                splash_show_loading_progress(&mut self.ui.app.splash_state, 0.95);
-                                let timed_out = self.boot_ready_since.is_some_and(|t| {
-                                    t.elapsed() > web_time::Duration::from_millis(1500)
-                                });
-                                if self.boot_db_settled || timed_out {
-                                    self.finish_boot_route();
-                                }
-                            } else {
-                                self.finish_boot_to_main_menu();
-                            }
-                        }
-                        #[cfg(not(target_arch = "wasm32"))]
-                        {
-                            // Native has no cross-session login/persistence yet (only CrazyGames on
-                            // web does), so there's no trustworthy "has this player done the tutorial?"
-                            // record. Until native logins exist, the intro is ALWAYS enabled: every
-                            // boot starts the scripted tutorial. (`start_portal_intro_match` flips the
-                            // splash job, so it fires once per launch; exit-to-menu still works.) When
-                            // native logins land, gate this on `self.progress.is_first_game()` like web.
-                            log::info!("native boot: intro tutorial (always enabled on native)");
-                            self.start_portal_intro_match();
-                        }
+                        // Native has no cross-session login/persistence yet (only CrazyGames on
+                        // web does), so there's no trustworthy "has this player done the tutorial?"
+                        // record. Until native logins exist, the intro is ALWAYS enabled: every
+                        // boot starts the scripted tutorial. (`start_portal_intro_match` flips the
+                        // splash job, so it fires once per launch; exit-to-menu still works.) When
+                        // native logins land, gate this on `self.progress.is_first_game()` like web.
+                        log::info!("native boot: intro tutorial (always enabled on native)");
+                        self.start_portal_intro_match();
+                    }
                     }
                 }
                 sow_ui::ui::loading_screen::SplashJob::ExitGame => {
@@ -299,6 +303,8 @@ impl SowApp {
                         self.ui.app.splash_state.gpu_load_step = 1;
                         self.ui.app.splash_state.frames_drawn = 0;
                     } else if step == 1 {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
                         let leader = self.ui.app.main_menu_state.selected_leader;
                         let mobile = sow_ui_kit::theme::portrait_layout(&self.ui.egui_ctx);
                         self.ui
@@ -313,6 +319,7 @@ impl SowApp {
                             .app
                             .asset_loader
                             .set_leader_portrait_focus(leader, mobile);
+                        }
 
                         let p = self.ui.app.splash_state.progress;
                         if p < 0.99 {
@@ -323,7 +330,17 @@ impl SowApp {
                             );
                         }
 
-                        let hero_ready = self.ui.app.asset_loader.boot_leader_ready(leader, mobile);
+                        #[cfg(target_arch = "wasm32")]
+                        let hero_ready = true;
+                        #[cfg(not(target_arch = "wasm32"))]
+                        let hero_ready = self
+                            .ui
+                            .app
+                            .asset_loader
+                            .boot_leader_ready(
+                                self.ui.app.main_menu_state.selected_leader,
+                                sow_ui_kit::theme::portrait_layout(&self.ui.egui_ctx),
+                            );
                         if self.net.client.is_some() && hero_ready {
                             log::info!(
                                 "Exit game splash: connected, hero image ready, transitioning to main menu"

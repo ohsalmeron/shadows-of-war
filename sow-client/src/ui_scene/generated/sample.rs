@@ -3,7 +3,7 @@
 //! Hand-written for M0 to lock the *shape* the UI Scene Editor's exporter will emit: an absolute
 //! root `Area`, a themed `Frame`, and children styled via `sow_ui_kit::theme` tokens — so the
 //! authored UI inherits the real look and renders 1:1. The future exporter produces this same
-//! form from `assets/ui/sample.json`.
+//! form from `assets/editor/ui/sample.json`.
 
 use egui::{Id, RichText, pos2};
 use sow_ui_kit::theme;

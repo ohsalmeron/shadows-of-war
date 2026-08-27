@@ -68,7 +68,7 @@ impl FontAtlasTexture {
     }
 
     pub fn new(context: &gpu::Context) -> Self {
-        let png_bytes = include_bytes!("../../../assets/static/fonts/msdf-atlas.png");
+        let png_bytes = include_bytes!("../../../assets/gameplay/fonts/msdf-atlas.png");
         // ponytail: font atlas contains signed distance values (linear data), emoji atlas contains sRGB colors
         Self::from_bytes(
             context,

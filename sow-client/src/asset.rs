@@ -4,9 +4,12 @@ use sow_ui_kit::ClientPhase;
 
 impl SowApp {
     pub fn update_assets(&mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
         self.poll_thumbnail_fetches();
         self.poll_leader_portrait_fetches();
         self.poll_boot_ui_fetches();
+        }
         self.poll_avatar_fetches();
         self.poll_portal_avatar_fetch();
         self.poll_database_events();
@@ -214,6 +217,7 @@ impl SowApp {
             }
         }
 
+        #[cfg(not(target_arch = "wasm32"))]
         if self.ui.app.phase == ClientPhase::MainMenu || self.ui.app.phase == ClientPhase::Splash {
             // Same orientation test as the backdrop's set_leader_portrait_focus
             // (`width < height`); compact_viewport would compute a different key
@@ -231,6 +235,7 @@ impl SowApp {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn poll_thumbnail_fetches(&mut self) {
         let pending = self.ui.app.asset_loader.drain_thumbnail_fetch_pending();
         for map_name in pending {
@@ -238,6 +243,7 @@ impl SowApp {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn start_thumbnail_fetch(&mut self, map_name: String) {
         let url = self.asset_config.map_url(&map_name, "thumbnail.webp");
         let tx = self.tasks.map_tx.clone();
@@ -269,6 +275,7 @@ impl SowApp {
         );
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn fetch_leader_portrait(
         url: String,
         tx: crossbeam_channel::Sender<MapDownloadEvent>,
@@ -298,6 +305,7 @@ impl SowApp {
         });
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn fetch_boot_ui(
         url: String,
         tx: crossbeam_channel::Sender<MapDownloadEvent>,
@@ -323,6 +331,7 @@ impl SowApp {
         });
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn poll_boot_ui_fetches(&mut self) {
         use sow_ui::ui::asset_loader::MAX_BOOT_UI_FETCHES_IN_FLIGHT;
 
@@ -424,6 +433,7 @@ impl SowApp {
         });
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn poll_leader_portrait_fetches(&mut self) {
         use sow_ui::ui::asset_loader::{
             AssetLoader, LeaderPortraitKey, MAX_LEADER_FETCHES_IN_FLIGHT,

@@ -5,8 +5,11 @@
 //! Commands cross this boundary as small JSON messages; the existing UiAction and network
 //! paths execute them unchanged.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
+// std::time::Instant panics on wasm32-unknown-unknown ("time not implemented
+// on this platform"); web_time::Instant wraps Performance.now() there instead.
+use web_time::Instant;
 
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
@@ -21,8 +24,15 @@ enum WebMenuCommand {
     JoinLobby {
         lobby_id: u64,
     },
+    JoinWithPassword {
+        lobby_id: u64,
+        password: String,
+    },
     JoinCode {
         code: String,
+    },
+    StartSinglePlayer {
+        config: serde_json::Value,
     },
     CreateGame {
         config: serde_json::Value,
@@ -44,6 +54,18 @@ enum WebMenuCommand {
     StartPrivate {
         lobby_id: u64,
     },
+    KickPlayer {
+        lobby_id: u64,
+        target_player_id: u16,
+    },
+    BanPlayer {
+        lobby_id: u64,
+        target_player_id: u16,
+    },
+    MovePlayerTeam {
+        lobby_id: u64,
+        target_player_id: u16,
+    },
     SignIn,
     SetMute {
         value: bool,
@@ -58,6 +80,27 @@ enum WebMenuCommand {
 
 thread_local! {
     static COMMANDS: RefCell<VecDeque<WebMenuCommand>> = RefCell::new(VecDeque::new());
+    /// Last payload handed to JS. publish_state runs every frame; without this
+    /// guard each frame allocates a fresh JSON string plus a JS-side copy.
+    static LAST_PUBLISHED: RefCell<String> = RefCell::new(String::new());
+    /// The shell polls SOW_MENU_STATE at 80ms; publishing faster than that is
+    /// invisible work, so attempts are throttled to match the consumer.
+    static LAST_PUBLISH_ATTEMPT: Cell<Option<Instant>> = const { Cell::new(None) };
+}
+
+/// Minimum gap between state-publish attempts, matching the JS poll cadence.
+const PUBLISH_MIN_INTERVAL_MS: u128 = 75;
+
+fn publish_due() -> bool {
+    let now = Instant::now();
+    let due = LAST_PUBLISH_ATTEMPT.with(|attempt| match attempt.get() {
+        Some(last) => now.duration_since(last).as_millis() >= PUBLISH_MIN_INTERVAL_MS,
+        None => true,
+    });
+    if due {
+        LAST_PUBLISH_ATTEMPT.with(|attempt| attempt.set(Some(now)));
+    }
+    due
 }
 
 /// Called by the vanilla shell after the WASM module has initialized.
@@ -78,15 +121,36 @@ impl SowApp {
         for command in take_commands() {
             match command {
                 WebMenuCommand::QuickMatch => {
+                    crate::analytics::track("menu_quick_match");
                     self.request_join(None, false, None, None);
                 }
                 WebMenuCommand::JoinLobby { lobby_id } => {
+                    crate::analytics::track_with(
+                        "menu_join_attempt",
+                        serde_json::json!({ "source": "browser", "lobby_id": lobby_id }),
+                    );
                     self.process_ui_actions(
                         &self.ui.egui_ctx.clone(),
                         Some(UiAction::JoinLobby(lobby_id)),
                     );
                 }
+                WebMenuCommand::JoinWithPassword {
+                    lobby_id,
+                    password,
+                } => {
+                    crate::analytics::track_with(
+                        "menu_password_join_attempt",
+                        serde_json::json!({ "lobby_id": lobby_id }),
+                    );
+                    self.ui.app.main_menu_state.join_password_input = password;
+                    self.ui.app.main_menu_state.join_password_for_lobby = Some(lobby_id);
+                    self.process_ui_actions(
+                        &self.ui.egui_ctx.clone(),
+                        Some(UiAction::JoinWithPassword(lobby_id)),
+                    );
+                }
                 WebMenuCommand::JoinCode { code } => {
+                    crate::analytics::track("menu_code_join_attempt");
                     self.ui.app.main_menu_state.join_lobby_code = code;
                     self.process_ui_actions(
                         &self.ui.egui_ctx.clone(),
@@ -97,21 +161,38 @@ impl SowApp {
                     config,
                     is_private,
                     password,
-                } => match serde_json::from_value::<sow_core::game_config::GameConfig>(config) {
-                    Ok(config) => self.process_ui_actions(
-                        &self.ui.egui_ctx.clone(),
-                        Some(UiAction::CreateGame {
-                            config: Box::new(config),
-                            is_private,
-                            password,
-                        }),
-                    ),
-                    Err(error) => {
-                        log::warn!("[WEB MENU] invalid create-game config: {error}");
-                        self.ui.app.main_menu_state.error_message =
-                            Some("Invalid game configuration".to_string());
+                } => {
+                    crate::analytics::track("menu_custom_create");
+                    match serde_json::from_value::<sow_core::game_config::GameConfig>(config) {
+                        Ok(config) => self.process_ui_actions(
+                            &self.ui.egui_ctx.clone(),
+                            Some(UiAction::CreateGame {
+                                config: Box::new(config),
+                                is_private,
+                                password,
+                            }),
+                        ),
+                        Err(error) => {
+                            log::warn!("[WEB MENU] invalid create-game config: {error}");
+                            self.ui.app.main_menu_state.error_message =
+                                Some("Invalid game configuration".to_string());
+                        }
                     }
-                },
+                }
+                WebMenuCommand::StartSinglePlayer { config } => {
+                    crate::analytics::track("menu_single_player_start");
+                    match serde_json::from_value::<sow_core::game_config::GameConfig>(config) {
+                        Ok(config) => self.process_ui_actions(
+                            &self.ui.egui_ctx.clone(),
+                            Some(UiAction::StartSinglePlayer(Box::new(config))),
+                        ),
+                        Err(error) => {
+                            log::warn!("[WEB MENU] invalid single-player config: {error}");
+                            self.ui.app.main_menu_state.error_message =
+                                Some("Invalid game configuration".to_string());
+                        }
+                    }
+                }
                 WebMenuCommand::SetLeader { leader_id } => {
                     let value = serde_json::Value::String(leader_id);
                     match serde_json::from_value::<sow_core::player::Leader>(value) {
@@ -161,6 +242,42 @@ impl SowApp {
                         Some(UiAction::StartPrivateLobby(lobby_id)),
                     );
                 }
+                WebMenuCommand::KickPlayer {
+                    lobby_id,
+                    target_player_id,
+                } => {
+                    self.process_ui_actions(
+                        &self.ui.egui_ctx.clone(),
+                        Some(UiAction::KickPlayer {
+                            lobby_id,
+                            target_player_id,
+                        }),
+                    );
+                }
+                WebMenuCommand::BanPlayer {
+                    lobby_id,
+                    target_player_id,
+                } => {
+                    self.process_ui_actions(
+                        &self.ui.egui_ctx.clone(),
+                        Some(UiAction::BanPlayer {
+                            lobby_id,
+                            target_player_id,
+                        }),
+                    );
+                }
+                WebMenuCommand::MovePlayerTeam {
+                    lobby_id,
+                    target_player_id,
+                } => {
+                    self.process_ui_actions(
+                        &self.ui.egui_ctx.clone(),
+                        Some(UiAction::MovePlayerTeam {
+                            lobby_id,
+                            target_player_id,
+                        }),
+                    );
+                }
                 WebMenuCommand::SignIn => {
                     crate::store_portals::show_auth_prompt();
                 }
@@ -183,6 +300,14 @@ fn phase_name(phase: sow_ui::ClientPhase) -> &'static str {
         sow_ui::ClientPhase::Splash => "Splash",
         sow_ui::ClientPhase::MainMenu => "MainMenu",
         sow_ui::ClientPhase::Playing => "Playing",
+    }
+}
+
+fn splash_job_name(job: &sow_ui::ui::loading_screen::SplashJob) -> &'static str {
+    match job {
+        sow_ui::ui::loading_screen::SplashJob::Boot => "Boot",
+        sow_ui::ui::loading_screen::SplashJob::EnterGame => "EnterGame",
+        sow_ui::ui::loading_screen::SplashJob::ExitGame => "ExitGame",
     }
 }
 
@@ -210,6 +335,9 @@ pub(crate) fn publish_state(
     app: &sow_ui::ClientApp,
     progress: &crate::player_progress::PlayerProgress,
 ) {
+    if !publish_due() {
+        return;
+    }
     let leaders: Vec<serde_json::Value> = sow_core::player::Leader::ALL
         .into_iter()
         .map(|leader| {
@@ -243,10 +371,17 @@ pub(crate) fn publish_state(
 
     let payload = serde_json::json!({
         "phase": phase_name(app.phase),
+        "loader_job": splash_job_name(&app.splash_state.job),
+        "loader_progress": app.splash_state.progress.clamp(0.0, 1.0),
+        "loader_status": app
+            .splash_state
+            .status_override
+            .as_deref()
+            .unwrap_or(app.splash_state.status_text.as_str()),
+        "loader_done": app.splash_state.done,
         "connected": state.is_connected,
         "connecting": state.is_connecting,
         "waiting": state.is_waiting,
-        "wait_timer_secs": state.wait_timer_secs,
         "player_name": state.player_name,
         "name_locked": state.name_locked,
         "selected_leader": leader_id(state.selected_leader),
@@ -258,6 +393,7 @@ pub(crate) fn publish_state(
         "joined_lobby_id": state.joined_lobby_id,
         "pending_lobby_id": state.pending_join_lobby_id,
         "is_lobby_host": state.is_lobby_host,
+        "my_player_id": state.my_player_id,
         "downloading_map": state.is_downloading_map,
         "map_download_progress": state.map_download_progress,
         "lobbies": state.lobbies,
@@ -270,6 +406,7 @@ pub(crate) fn publish_state(
         "map_catalog": map_catalog,
         "custom_game_config": &*state.custom_game_config,
         "custom_game_is_private": state.custom_game_is_private,
+        "custom_game_is_sp": state.custom_game_is_sp,
         "settings": {
             "mute_all": app.settings_state.mute_all,
             "music_volume": app.settings_state.music_volume,
@@ -281,6 +418,12 @@ pub(crate) fn publish_state(
         log::warn!("[WEB MENU] failed to serialize state");
         return;
     };
+
+    let unchanged = LAST_PUBLISHED.with(|last| last.borrow().as_str() == serialized.as_str());
+    if unchanged {
+        return;
+    }
+    LAST_PUBLISHED.with(|last| *last.borrow_mut() = serialized.clone());
 
     let Some(window) = web_sys::window() else {
         return;

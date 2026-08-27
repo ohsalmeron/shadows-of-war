@@ -140,28 +140,28 @@ impl AssetLoader {
                 "ui_loader_empty",
                 include_bytes!(concat!(
                     env!("CARGO_MANIFEST_DIR"),
-                    "/../assets/cdn/ui/loader_empty.webp"
+                    "/../assets/shell/loader/loader_empty.webp"
                 )),
             ));
             self.ui_loader_full = Some(load_image(
                 "ui_loader_full",
                 include_bytes!(concat!(
                     env!("CARGO_MANIFEST_DIR"),
-                    "/../assets/cdn/ui/loader_full.webp"
+                    "/../assets/shell/loader/loader_full.webp"
                 )),
             ));
             self.splash_desktop = Some(load_image(
                 "sow_splash_desktop",
                 include_bytes!(concat!(
                     env!("CARGO_MANIFEST_DIR"),
-                    "/../assets/cdn/ui/sow-splash-desktop.webp"
+                    "/../assets/shell/loader/sow-splash-desktop.webp"
                 )),
             ));
             self.splash_mobile = Some(load_image(
                 "sow_splash_mobile",
                 include_bytes!(concat!(
                     env!("CARGO_MANIFEST_DIR"),
-                    "/../assets/cdn/ui/sow-splash-mobile.webp"
+                    "/../assets/shell/loader/sow-splash-mobile.webp"
                 )),
             ));
         }
@@ -171,15 +171,10 @@ impl AssetLoader {
             fn read_ui_webp(filename: &str) -> Vec<u8> {
                 use std::path::Path;
                 let base = Path::new(env!("CARGO_MANIFEST_DIR"));
-                let static_p = base.join("../assets/static/ui").join(filename);
-                let cdn_p = base.join("../assets/cdn/ui").join(filename);
-                std::fs::read(&static_p)
-                    .or_else(|_| std::fs::read(&cdn_p))
-                    .unwrap_or_else(|e| {
-                        panic!(
-                            "missing UI asset {filename} in assets/static/ui or assets/cdn/ui: {e}"
-                        )
-                    })
+                let path = base.join("../assets/shell/loader").join(filename);
+                std::fs::read(&path).unwrap_or_else(|e| {
+                    panic!("missing UI asset {filename} in assets/shell/loader: {e}")
+                })
             }
 
             let load_image = |name: &str, bytes: &[u8]| decode_and_upload_webp(ctx, name, bytes);
@@ -201,7 +196,7 @@ impl AssetLoader {
         #[cfg(not(target_arch = "wasm32"))]
         {
             use std::path::Path;
-            let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/cdn/leaders");
+            let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/shell/leaders");
             for mobile in [false, true] {
                 let key = LeaderPortraitKey { leader, mobile };
                 if self.leader_portrait_loaded(key) {

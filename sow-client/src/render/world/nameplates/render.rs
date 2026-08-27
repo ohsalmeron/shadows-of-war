@@ -140,6 +140,14 @@ pub(crate) fn render(
     let my_id = sim.my_player_id.unwrap_or(0);
     let my_player = snap.players.iter().find(|p| p.id == my_id);
 
+    // World-rank badges (crown/medals): id -> 1-based leaderboard position
+    let rank_of: std::collections::HashMap<u16, usize> = ui
+        .leaderboard_rankings
+        .iter()
+        .enumerate()
+        .map(|(i, r)| (r.id, i + 1))
+        .collect();
+
     let dev = sow_ui_kit::theme::dev_config::DevConfig::get();
     let show_bot_avatars = dev.vfx_bot_avatars;
     let show_names = dev.vfx_nameplate_names;
@@ -322,7 +330,16 @@ pub(crate) fn render(
             draw_side_status_badge(
                 painter,
                 &SideBadgeOpts {
-                    pos: egui::pos2(left_x, avatar_cy),
+                    // The self star owns the central left slot; the request badge
+                    // yields one slot down when both apply.
+                    pos: egui::pos2(
+                        left_x,
+                        if is_me {
+                            avatar_cy + badge_size + 2.0
+                        } else {
+                            avatar_cy
+                        },
+                    ),
                     size: badge_size,
                     player_id: player.id,
                     is_me,
@@ -384,6 +401,53 @@ pub(crate) fn render(
                 player.active_emoji.as_ref(),
             );
 
+            // Leaderboard rank badge (crown/medals): centered over the avatar
+            // axis, sitting flush on its top edge — zero margin, never overlapping.
+            if let Some(&rank_1based) = rank_of.get(&player.id) {
+                if rank_1based <= 3 {
+                    let (icon, tint) = match rank_1based {
+                        1 => ("👑", egui::Color32::from_rgb(250, 204, 21)),
+                        2 => ("🥈", egui::Color32::from_rgb(203, 213, 225)),
+                        _ => ("🥉", egui::Color32::from_rgb(217, 119, 6)),
+                    };
+                    let rank_rect = egui::Rect::from_center_size(
+                        egui::pos2(center.x, avatar_cy - avatar_size / 2.0 - badge_size / 2.0),
+                        egui::vec2(badge_size, badge_size),
+                    );
+                    if !sow_ui_kit::widgets::try_paint_emoji(painter, icon, rank_rect, tint) {
+                        painter.text(
+                            rank_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            icon,
+                            egui::FontId::proportional(badge_size * 0.7),
+                            tint,
+                        );
+                    }
+                }
+            }
+
+            // Self star: left-side lane, vertically centered with the avatar.
+            if is_me {
+                let star_rect = egui::Rect::from_center_size(
+                    egui::pos2(left_x, avatar_cy),
+                    egui::vec2(badge_size, badge_size),
+                );
+                if !sow_ui_kit::widgets::try_paint_emoji(
+                    painter,
+                    "⭐",
+                    star_rect,
+                    egui::Color32::WHITE,
+                ) {
+                    painter.text(
+                        star_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "⭐",
+                        egui::FontId::proportional(badge_size * 0.7),
+                        egui::Color32::WHITE,
+                    );
+                }
+            }
+
             // --- Avatar (centered on top) ---
             if avatar_size > 0.0 {
                 let avatar_r = metrics.avatar_radius;
@@ -399,42 +463,6 @@ pub(crate) fn render(
                             player_color: player.color,
                             leader: player.leader,
                         },
-                    );
-                }
-            }
-
-            // Star corner badge (top-right of avatar)
-            if is_me && avatar_size > 0.0 {
-                let star_sz = (avatar_size * 0.35).round().max(3.0);
-                let star_cx = center.x + avatar_size / 2.0 * 0.6;
-                let star_cy = avatar_cy - avatar_size / 2.0 * 0.6;
-                let star_rect = egui::Rect::from_center_size(
-                    egui::pos2(star_cx, star_cy),
-                    egui::vec2(star_sz, star_sz),
-                );
-                let star_gpu = gfx.text_renderer.as_mut().is_some_and(|tr| {
-                    tr.push_emoji(
-                        "⭐",
-                        [star_rect.center().x * sf, star_rect.center().y * sf],
-                        star_rect.height() * 0.5 * sf,
-                        [1.0; 4],
-                        ([0.0, 0.0, 0.0, 1.0], 0.0, 0.0),
-                    )
-                });
-                if !star_gpu
-                    && !sow_ui_kit::widgets::try_paint_emoji(
-                        painter,
-                        "⭐",
-                        star_rect,
-                        egui::Color32::WHITE,
-                    )
-                {
-                    painter.text(
-                        star_rect.center(),
-                        egui::Align2::CENTER_CENTER,
-                        "⭐",
-                        egui::FontId::proportional(star_sz * 0.7),
-                        egui::Color32::WHITE,
                     );
                 }
             }

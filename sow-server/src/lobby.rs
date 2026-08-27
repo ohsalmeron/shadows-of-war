@@ -279,6 +279,20 @@ pub fn primary_lobby_id(games: &[ServerLobby], game_mode: &str) -> Option<u64> {
     Some(joinable_lobbies[0])
 }
 
+/// Returns the active server-spawned queue lobby regardless of its rotating mode.
+/// Quick Match must follow the queue rotation instead of forcing every player into FFA.
+fn primary_matchmaking_lobby_id(games: &[ServerLobby]) -> Option<u64> {
+    games
+        .iter()
+        .filter(|g| {
+            g.joinable()
+                && g.kind == LobbyKind::Matchmaking
+                && g.players.len() < g.config.max_players as usize
+        })
+        .min_by_key(|g| g.id)
+        .map(|g| g.id)
+}
+
 fn resolve_join_target(requested: Option<u64>, games: &[ServerLobby]) -> Option<u64> {
     if let Some(id) = requested {
         if games
@@ -289,7 +303,7 @@ fn resolve_join_target(requested: Option<u64>, games: &[ServerLobby]) -> Option<
         }
         return None;
     }
-    primary_lobby_id(games, "FFA")
+    primary_matchmaking_lobby_id(games)
 }
 
 pub struct JoinPlayerOpts {
@@ -1126,12 +1140,160 @@ pub fn build_lobby_broadcast(games: &[ServerLobby]) -> Vec<LobbyInfo> {
 
 #[cfg(test)]
 mod name_tests {
-    use super::normalize_player_name;
+    use super::{
+        build_lobby_broadcast, join_player, normalize_player_name, resolve_join_target,
+        kick_player, set_player_team, JoinPlayerOpts, LobbyKind, LobbyPhase, PlayerConnection,
+        ServerLobby,
+    };
+    use sow_core::player::{Civilization, Leader};
+    use sow_core::game_config::GameConfig;
+    use sow_core::protocol::Team;
+
+    fn queue_lobby(id: u64, kind: LobbyKind, mode: &str) -> ServerLobby {
+        ServerLobby {
+            id,
+            kind,
+            is_private: false,
+            phase: LobbyPhase::Waiting,
+            countdown_secs: 0.0,
+            active_empty_secs: 0.0,
+            players: Vec::new(),
+            ready_players: std::collections::HashSet::new(),
+            seed: 0,
+            config: GameConfig {
+                game_mode: mode.to_string(),
+                max_players: 8,
+                ..Default::default()
+            },
+            game_mode: mode.to_string(),
+            relay_port: None,
+            host_player_id: None,
+            password: None,
+            host_name: String::new(),
+            banned: std::collections::HashSet::new(),
+            bot_fill_target: None,
+            pending_bots: Vec::new(),
+        }
+    }
 
     #[test]
     fn names_are_bounded_and_control_free() {
         assert_eq!(normalize_player_name("  A\nB  "), "AB");
         assert_eq!(normalize_player_name("0123456789abcdefghi"), "0123456789abcdef");
         assert!(normalize_player_name("\n\t").starts_with("ANON"));
+    }
+
+    #[test]
+    fn quick_match_follows_rotating_matchmaking_mode() {
+        let games = vec![queue_lobby(10, LobbyKind::Matchmaking, "Teams")];
+        assert_eq!(resolve_join_target(None, &games), Some(10));
+    }
+
+    #[test]
+    fn quick_match_does_not_select_custom_lobbies() {
+        let games = vec![queue_lobby(10, LobbyKind::Custom, "FFA")];
+        assert_eq!(resolve_join_target(None, &games), None);
+    }
+
+    #[test]
+    fn public_passworded_custom_lobbies_are_broadcast_without_the_secret() {
+        let mut public = queue_lobby(10, LobbyKind::Custom, "FFA");
+        public.password = Some("hidden".to_string());
+        let mut private = queue_lobby(11, LobbyKind::Custom, "Teams");
+        private.is_private = true;
+        private.password = Some("also-hidden".to_string());
+
+        let infos = build_lobby_broadcast(&[public, private]);
+        assert_eq!(infos.len(), 1);
+        assert_eq!(infos[0].id, 10);
+        assert!(infos[0].has_password);
+    }
+
+    #[test]
+    fn custom_lobby_password_is_checked_before_joining() {
+        let mut lobby = queue_lobby(10, LobbyKind::Custom, "FFA");
+        lobby.password = Some("correct".to_string());
+        let mut games = vec![lobby];
+        let (client_tx, _client_rx) = tokio::sync::mpsc::channel(1);
+
+        let result = join_player(
+            &mut games,
+            &mut 20,
+            JoinPlayerOpts {
+                name: "Commander".to_string(),
+                clan_tag: String::new(),
+                civilization: sow_core::player::Civilization::Rome,
+                leader: sow_core::player::Leader::Caesar,
+                client_tx,
+                target_lobby_id: Some(10),
+                host_private: false,
+                database_account_id: None,
+                host_config: None,
+                password: Some("wrong".to_string()),
+                ip: "127.0.0.1".to_string(),
+                session_id: Some(1),
+            },
+        );
+
+        assert_eq!(result.unwrap_err(), "Wrong password");
+        assert!(games[0].players.is_empty());
+    }
+
+    fn lobby_player(
+        player_id: u16,
+        tx: tokio::sync::mpsc::Sender<Vec<u8>>,
+        team: Option<Team>,
+    ) -> PlayerConnection {
+        PlayerConnection {
+            name: format!("Player{player_id}"),
+            clan_tag: String::new(),
+            player_id,
+            tx,
+            download_progress: 0,
+            civilization: Civilization::Rome,
+            leader: Leader::Caesar,
+            database_account_id: None,
+            team,
+            ip: "127.0.0.1".to_string(),
+            session_id: Some(player_id as u64),
+            is_internal_bot: false,
+        }
+    }
+
+    #[test]
+    fn custom_lobby_moderation_is_host_only() {
+        let (host_tx, _host_rx) = tokio::sync::mpsc::channel(2);
+        let (target_tx, mut target_rx) = tokio::sync::mpsc::channel(2);
+        let mut lobby = queue_lobby(10, LobbyKind::Custom, "FFA");
+        lobby.host_player_id = Some(1);
+        lobby.players = vec![
+            lobby_player(1, host_tx, None),
+            lobby_player(2, target_tx, None),
+        ];
+        let mut games = vec![lobby];
+
+        kick_player(&mut games, 10, 2, 1, false);
+        assert_eq!(games[0].players.len(), 2);
+
+        kick_player(&mut games, 10, 1, 2, true);
+        assert_eq!(games[0].players.len(), 1);
+        assert!(target_rx.try_recv().is_ok());
+        assert!(games[0].banned.contains("name:Player2"));
+    }
+
+    #[test]
+    fn teams_host_can_toggle_a_player_team() {
+        let (host_tx, _host_rx) = tokio::sync::mpsc::channel(2);
+        let (target_tx, _target_rx) = tokio::sync::mpsc::channel(2);
+        let mut lobby = queue_lobby(10, LobbyKind::Custom, "Teams");
+        lobby.host_player_id = Some(1);
+        lobby.players = vec![
+            lobby_player(1, host_tx, Some(Team::Red)),
+            lobby_player(2, target_tx, Some(Team::Red)),
+        ];
+        let mut games = vec![lobby];
+
+        set_player_team(&mut games, 10, 1, 2);
+        assert_eq!(games[0].players[1].team, Some(Team::Blue));
     }
 }

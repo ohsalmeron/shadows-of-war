@@ -53,20 +53,20 @@ impl SowApp {
                                     .unwrap_or("Ally");
                                 let msg = match (tx.gold > 0.0, tx.troops > 0.0) {
                                     (true, true) => format!(
-                                        "🎁 {} sent 🪙{} & ⚔️{}!",
-                                        sender_name,
+                                        "+{} Gold, +{} Troops from {}",
                                         sow_ui_kit::utils::format_number(tx.gold),
-                                        sow_ui_kit::utils::format_number(tx.troops)
+                                        sow_ui_kit::utils::format_number(tx.troops),
+                                        sender_name
                                     ),
                                     (true, false) => format!(
-                                        "🪙 {} sent +{} Gold!",
-                                        sender_name,
-                                        sow_ui_kit::utils::format_number(tx.gold)
+                                        "+{} Gold from {}",
+                                        sow_ui_kit::utils::format_number(tx.gold),
+                                        sender_name
                                     ),
                                     (false, true) => format!(
-                                        "⚔️ {} sent +{} Troops!",
-                                        sender_name,
-                                        sow_ui_kit::utils::format_number(tx.troops)
+                                        "+{} Troops from {}",
+                                        sow_ui_kit::utils::format_number(tx.troops),
+                                        sender_name
                                     ),
                                     _ => continue,
                                 };
@@ -88,7 +88,7 @@ impl SowApp {
                                 if tx.gold > 0.0 {
                                     self.ui.floating_notices.push(crate::app::FloatingNotice {
                                         text: format!(
-                                            "🪙 +{}",
+                                            "+{} Gold",
                                             sow_ui_kit::utils::format_number(tx.gold)
                                         ),
                                         world_x: wx,
@@ -101,7 +101,7 @@ impl SowApp {
                                 if tx.troops > 0.0 {
                                     self.ui.floating_notices.push(crate::app::FloatingNotice {
                                         text: format!(
-                                            "⚔️ +{}",
+                                            "+{} Troops",
                                             sow_ui_kit::utils::format_number(tx.troops)
                                         ),
                                         world_x: wx,
@@ -120,18 +120,18 @@ impl SowApp {
                                     .unwrap_or("Ally");
                                 let msg = match (tx.gold > 0.0, tx.troops > 0.0) {
                                     (true, true) => format!(
-                                        "Sent 🪙{} & ⚔️{} to {}",
+                                        "Transferred {} Gold, {} Troops to {}",
                                         sow_ui_kit::utils::format_number(tx.gold),
                                         sow_ui_kit::utils::format_number(tx.troops),
                                         receiver_name
                                     ),
                                     (true, false) => format!(
-                                        "Sent 🪙{} Gold to {}",
+                                        "Transferred {} Gold to {}",
                                         sow_ui_kit::utils::format_number(tx.gold),
                                         receiver_name
                                     ),
                                     (false, true) => format!(
-                                        "Sent ⚔️{} Troops to {}",
+                                        "Transferred {} Troops to {}",
                                         sow_ui_kit::utils::format_number(tx.troops),
                                         receiver_name
                                     ),
@@ -152,7 +152,7 @@ impl SowApp {
                                     .map(|p| p.name.as_str())
                                     .unwrap_or("Ally");
                                 let msg =
-                                    format!("❌ {} rejected your request for help!", rejector_name);
+                                    format!("{} declined resource request", rejector_name);
                                 self.ui
                                     .app
                                     .hud_state
@@ -229,20 +229,20 @@ impl SowApp {
                                 .unwrap_or("Ally");
                             let msg = match (tx.gold > 0.0, tx.troops > 0.0) {
                                 (true, true) => format!(
-                                    "🎁 {} sent 🪙{} & ⚔️{}!",
-                                    sender_name,
+                                    "+{} Gold, +{} Troops from {}",
                                     sow_ui_kit::utils::format_number(tx.gold),
-                                    sow_ui_kit::utils::format_number(tx.troops)
+                                    sow_ui_kit::utils::format_number(tx.troops),
+                                    sender_name
                                 ),
                                 (true, false) => format!(
-                                    "🪙 {} sent +{} Gold!",
-                                    sender_name,
-                                    sow_ui_kit::utils::format_number(tx.gold)
+                                    "+{} Gold from {}",
+                                    sow_ui_kit::utils::format_number(tx.gold),
+                                    sender_name
                                 ),
                                 (false, true) => format!(
-                                    "⚔️ {} sent +{} Troops!",
-                                    sender_name,
-                                    sow_ui_kit::utils::format_number(tx.troops)
+                                    "+{} Troops from {}",
+                                    sow_ui_kit::utils::format_number(tx.troops),
+                                    sender_name
                                 ),
                                 _ => continue,
                             };
@@ -264,7 +264,7 @@ impl SowApp {
                             if tx.gold > 0.0 {
                                 self.ui.floating_notices.push(crate::app::FloatingNotice {
                                     text: format!(
-                                        "🪙 +{}",
+                                        "+{} Gold",
                                         sow_ui_kit::utils::format_number(tx.gold)
                                     ),
                                     world_x: wx,
@@ -277,7 +277,7 @@ impl SowApp {
                             if tx.troops > 0.0 {
                                 self.ui.floating_notices.push(crate::app::FloatingNotice {
                                     text: format!(
-                                        "⚔️ +{}",
+                                        "+{} Troops",
                                         sow_ui_kit::utils::format_number(tx.troops)
                                     ),
                                     world_x: wx,
@@ -296,18 +296,18 @@ impl SowApp {
                                 .unwrap_or("Ally");
                             let msg = match (tx.gold > 0.0, tx.troops > 0.0) {
                                 (true, true) => format!(
-                                    "Sent 🪙{} & ⚔️{} to {}",
+                                    "Transferred {} Gold, {} Troops to {}",
                                     sow_ui_kit::utils::format_number(tx.gold),
                                     sow_ui_kit::utils::format_number(tx.troops),
                                     receiver_name
                                 ),
                                 (true, false) => format!(
-                                    "Sent 🪙{} Gold to {}",
+                                    "Transferred {} Gold to {}",
                                     sow_ui_kit::utils::format_number(tx.gold),
                                     receiver_name
                                 ),
                                 (false, true) => format!(
-                                    "Sent ⚔️{} Troops to {}",
+                                    "Transferred {} Troops to {}",
                                     sow_ui_kit::utils::format_number(tx.troops),
                                     receiver_name
                                 ),
@@ -328,7 +328,7 @@ impl SowApp {
                                 .map(|p| p.name.as_str())
                                 .unwrap_or("Ally");
                             let msg =
-                                format!("❌ {} rejected your request for help!", rejector_name);
+                                format!("{} declined resource request", rejector_name);
                             self.ui
                                 .app
                                 .hud_state

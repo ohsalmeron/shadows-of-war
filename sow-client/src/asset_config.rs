@@ -47,10 +47,11 @@ impl AssetConfig {
         )
     }
 
-    /// Leader portraits on prod CDN (`/assets/cdn/leaders/`).
+    /// Leader portraits served by the web shell (`/assets/shell/leaders/`).
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn leader_portrait_url(&self, filename: &str) -> String {
         let base = self.assets_base.trim_end_matches('/');
-        let path = format!("{base}/cdn/leaders/{filename}");
+        let path = format!("{base}/shell/leaders/{filename}");
         if self.cache_bust.is_empty() {
             path
         } else {
@@ -58,10 +59,10 @@ impl AssetConfig {
         }
     }
 
-    /// Leader rail / HUD avatars on prod CDN (`/assets/cdn/avatars/`).
+    /// Gameplay avatars (`/assets/gameplay/avatars/`).
     pub fn avatar_url(&self, filename: &str) -> String {
         let base = self.assets_base.trim_end_matches('/');
-        let path = format!("{base}/cdn/avatars/{filename}");
+        let path = format!("{base}/gameplay/avatars/{filename}");
         if self.cache_bust.is_empty() {
             path
         } else {
@@ -69,10 +70,11 @@ impl AssetConfig {
         }
     }
 
-    /// Boot loader/splash webp on prod CDN (`/assets/cdn/ui/`).
+    /// Legacy native egui loader art (`/assets/shell/loader/`).
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn boot_ui_asset_url(&self, filename: &str) -> String {
         let base = self.assets_base.trim_end_matches('/');
-        let path = format!("{base}/cdn/ui/{filename}");
+        let path = format!("{base}/shell/loader/{filename}");
         if self.cache_bust.is_empty() {
             path
         } else {

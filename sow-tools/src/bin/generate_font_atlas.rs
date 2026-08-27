@@ -1,7 +1,7 @@
 //! Generate a single-channel SDF font atlas from a .ttf file.
 //!
 //! Usage: cargo run --bin generate-font-atlas -- <ttf_path> <out_png> <out_json>
-//! Example: cargo run --bin generate-font-atlas -- assets/static/fonts/WorkSans-Black.ttf assets/static/fonts/msdf-atlas.png assets/static/fonts/msdf-atlas.json
+//! Example: cargo run --bin generate-font-atlas -- assets/gameplay/fonts/WorkSans-Black.ttf assets/gameplay/fonts/msdf-atlas.png assets/gameplay/fonts/msdf-atlas.json
 
 use ab_glyph::{Font, FontRef, PxScale, ScaleFont};
 

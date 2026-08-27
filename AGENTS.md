@@ -57,7 +57,16 @@ hostnames, paths and compatibility behavior are not production instructions.
 The relay is deliberately not restarted by this pipeline until a real drain
 contract exists. A relay change must not silently destroy active games.
 There is no production backfill subcommand. `./sow p` is the only production
-deployment path; `./sow` without a subcommand runs the native client.
+deployment path; `./sow l` / `./sow local` is a local-only web/WASM preview;
+`./sow` without a subcommand runs the native client.
+
+## Mandatory validation gate
+
+- Every requested code, UI, backend, or pipeline change in this repository must be validated with `./sow p` from the repository root. The pipeline is the acceptance test and the only evidence that supports a final “done” claim.
+- `./sow l` / `./sow local` is for visual/client iteration only; it is not validation and does not replace `./sow p`.
+- The user has granted standing authorization for `./sow p` after requested changes. Do not ask for a second deploy confirmation, and do not substitute manual infrastructure commands.
+- Do not run `cargo check`, `cargo build`, `cargo test`, JavaScript syntax checks, or similar local substitutes as routine validation. Use them only to diagnose a specific failed `./sow p` step, then rerun `./sow p`; they never replace the pipeline. The internal build performed by `./sow l` is a preview operation, not a validation claim.
+- If `./sow p` fails or cannot complete its health/public verification, stop at the failure, report the exact output, and leave the task unclaimed rather than declaring victory.
 
 ## Read-only debugging
 

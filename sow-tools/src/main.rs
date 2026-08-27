@@ -55,10 +55,6 @@ struct StampGeoArgs {
     #[arg(long, default_value = "assets/maps")]
     maps_root: PathBuf,
 
-    /// WASM-embedded static maps root (stamped copies mirrored here)
-    #[arg(long, default_value = "assets/static/maps")]
-    static_root: PathBuf,
-
     /// Stamp a single map key instead of all folders
     #[arg(long)]
     map: Option<String>,
@@ -86,7 +82,7 @@ struct StampGeoArgs {
 
 #[derive(Parser, Debug)]
 struct PackEmojiAtlasArgs {
-    #[arg(long, default_value = "assets/static/emoji/atlas.webp")]
+    #[arg(long, default_value = "assets/gameplay/emoji/atlas.webp")]
     out_atlas: PathBuf,
     #[arg(long, default_value = "sow-data/src/emoji/manifest.rs")]
     out_manifest: PathBuf,
@@ -188,7 +184,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Some(Commands::ImageMap(args)) => run_image_map(args),
         Some(Commands::StampGeo(args)) => stamp_geo::run(stamp_geo::StampGeoArgs {
             maps_root: args.maps_root,
-            static_root: args.static_root,
             map: args.map,
             bbox: args.bbox,
             calibrate: args.calibrate,

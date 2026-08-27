@@ -125,8 +125,10 @@ impl Default for DevConfig {
             vfx_border_breathe: true,
             vfx_energy_flow: true,
             vfx_heartbeat: true,
-            vfx_war_fog: true,
-            fog_of_war: true,
+            // war_fog = per-pixel animated threat pulses/radar ripples over the
+            // whole map — the expensive "difuminar" pass; opt-in via devtools.
+            vfx_war_fog: false,
+            fog_of_war: false,
             vfx_fallout: true,
             vfx_ambient_grade: true,
             vfx_holo_grid: true,

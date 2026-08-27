@@ -219,7 +219,8 @@ impl AssetLoader {
             unique_maps.insert(l.map_name.clone());
         }
 
-        // Thumbnails: queue missing ones; sow-client drains via poll_thumbnail_fetches.
+        // The DOM menu owns map thumbnails on web. Native egui still uses this cache.
+        #[cfg(not(target_arch = "wasm32"))]
         for map_name in &unique_maps {
             self.request_thumbnail(map_name);
         }
@@ -274,7 +275,7 @@ impl AssetLoader {
             fn read_avatar_webp(filename: &str) -> Option<Vec<u8>> {
                 use std::path::Path;
                 let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("../assets/cdn/avatars")
+                    .join("../assets/gameplay/avatars")
                     .join(filename);
                 std::fs::read(&path).ok()
             }
@@ -292,7 +293,7 @@ impl AssetLoader {
                 }
                 let Some((key, bytes)) = load_key(key) else {
                     log::warn!(
-                        "missing avatar {} in assets/cdn/avatars/",
+                        "missing avatar {} in assets/gameplay/avatars/",
                         Self::avatar_filename(key)
                     );
                     continue;
@@ -326,7 +327,7 @@ mod tests {
 
     #[test]
     fn leader_portrait_assets_present() {
-        let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/cdn/leaders");
+        let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/shell/leaders");
         for leader in Leader::ALL {
             for mobile in [false, true] {
                 let filename =

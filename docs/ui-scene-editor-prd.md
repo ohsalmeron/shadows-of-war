@@ -78,7 +78,7 @@ After the MVP you can, **without writing Rust**:
    - Text: content, size, color (palette), and a "glow" toggle → `paint_premium_glow_text`.
 6. **See an approximate live preview** in the browser (CSS/canvas) as you edit — instant.
 7. **Reparent / reorder / rename / delete** nodes via a **hierarchy** tree.
-8. **Save** → writes `assets/ui/<scene>.json` (the source of truth) via `/__save`.
+8. **Save** → writes `assets/editor/ui/<scene>.json` (the source of truth) via `/__save`.
 9. **Export → Compile → Run**: generates `sow-client/src/ui_scene/generated/<scene>.rs`, then
    `./sow` builds & launches the client in **scene-preview mode** showing the screen **1:1**.
 10. **Round-trip**: reopen the scene later from its JSON and keep editing.
@@ -102,7 +102,7 @@ version — with no Rust typed by hand.
 | F6 | Absolute placement | Drag to (x,y) → `egui::Area::fixed_pos`. |
 | F7 | Flow placement | Nesting in Row/Column → `ui.horizontal/vertical`. |
 | F8 | Theme-token styling | Palette/radius/stroke pickers map to `theme::*`. |
-| F9 | Scene JSON save/load | `assets/ui/<scene>.json` via existing `/__save`. |
+| F9 | Scene JSON save/load | `assets/editor/ui/<scene>.json` via existing `/__save`. |
 | F10 | Rust codegen | Emit `ui_scene/generated/<scene>.rs` calling theme + egui. |
 | F11 | Scene-preview mode | Dev-gated client mode renders a chosen generated scene. |
 | F12 | `./sow ui` command | Serve tool + save endpoint + "export & run". |
@@ -131,13 +131,13 @@ version — with no Rust typed by hand.
 └───────────────────────────────────────────────────────────┘
             │ JSON (source of truth)        │ triggers codegen+build
             ▼                               ▼
-   assets/ui/<scene>.json        sow-client/src/ui_scene/generated/<scene>.rs
+   assets/editor/ui/<scene>.json        sow-client/src/ui_scene/generated/<scene>.rs
                                             │  (calls theme::* + egui, real code)
                                             ▼
                           REAL CLIENT (scene-preview mode) → 1:1 result
 ```
 
-- **Source of truth = `assets/ui/<scene>.json`.** The `.rs` is a *generated artifact*
+- **Source of truth = `assets/editor/ui/<scene>.json`.** The `.rs` is a *generated artifact*
   (regenerate, never hand-edit) — same discipline as `boudica.json` → no second hand-written
   source to drift ([boudica.rs](../sow-client/src/campaign/boudica.rs)).
 - **The generator** is small and lives in `sow-dist` (Rust) or in the JS tool; recommended in
@@ -172,7 +172,7 @@ fn. The inspector and the generator both read this manifest → no divergence.
 Each scene generates one module:
 
 ```rust
-// GENERATED from assets/ui/pause_menu.json — do not edit by hand.
+// GENERATED from assets/editor/ui/pause_menu.json — do not edit by hand.
 use sow_ui_kit::theme;
 pub fn render(ctx: &egui::Context) {
     egui::Area::new("pause_menu.panel".into())
@@ -203,7 +203,7 @@ pub fn render(ctx: &egui::Context) {
 - *Exit:* `./sow` can show a generated-style scene in preview mode.
 
 **M1 — Codegen for one component (Panel + Text).**
-- Generator (in `sow-dist`) reads `assets/ui/<scene>.json` + manifest → emits `<scene>.rs`.
+- Generator (in `sow-dist`) reads `assets/editor/ui/<scene>.json` + manifest → emits `<scene>.rs`.
 - `/__export` route in [serve.rs](../sow-dist/src/serve.rs): generate → `cargo run` (reuse the
   existing `/__launch` build path).
 - *Exit:* a hand-authored JSON → Export → 1:1 panel+text in the client.
@@ -226,7 +226,7 @@ pub fn render(ctx: &egui::Context) {
 **New:**
 - `tools/ui-editor/` — the JS tool (index.html + logic.html), clone of campaign-editor.
 - `sow-client/src/ui_scene/mod.rs` + `generated/{mod.rs,<scene>.rs}` — registry + generated code.
-- `assets/ui/<scene>.json` — scene sources.
+- `assets/editor/ui/<scene>.json` — scene sources.
 - `tools/ui-editor/manifest.json` — component fields + codegen templates.
 
 **Touched (minimal):**
@@ -245,7 +245,7 @@ and tutorial-isolation discipline.)
 
 1. `./sow ui` → browser opens the editor.
 2. Drag/edit/style — **instant**, approximate preview, no compile.
-3. **Save** often → `assets/ui/<scene>.json`.
+3. **Save** often → `assets/editor/ui/<scene>.json`.
 4. When happy → **Export & Run** → generates `.rs`, compiles, launches → **1:1 truth**.
 5. Tweak more in browser; Export again only when you want another 1:1 check.
 

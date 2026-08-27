@@ -15,10 +15,10 @@ macro_rules! repo_asset_bytes {
     ($path:expr) => {
         include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../assets/static/",
+            "/../assets/",
             $path
         ))
     };
 }
 
-pub static EMOJI_ATLAS_BYTES: &[u8] = repo_asset_bytes!("emoji/atlas.webp");
+pub static EMOJI_ATLAS_BYTES: &[u8] = repo_asset_bytes!("gameplay/emoji/atlas.webp");

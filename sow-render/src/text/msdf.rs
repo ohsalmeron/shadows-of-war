@@ -67,7 +67,7 @@ pub struct FontAtlas {
 
 impl FontAtlas {
     pub fn load_static() -> Self {
-        let json_str = include_str!("../../../assets/static/fonts/msdf-atlas.json");
+        let json_str = include_str!("../../../assets/gameplay/fonts/msdf-atlas.json");
         let atlas: MsdfAtlas =
             serde_json::from_str(json_str).expect("Failed to parse MSDF atlas JSON");
         let mut char_map = HashMap::new();

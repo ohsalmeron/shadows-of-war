@@ -51,62 +51,66 @@ pub(super) struct Step {
 // ponytail: inline EN strings = fastest script-iteration loop; move to sow-i18n once the
 // script settles. Each entry is one objective; the tutorial NEVER ends — just append more
 // objectives here as we build them out.
+// Guide: 9 trials — start with expansion (tap to claim), learn combat (drag to attack),
+// unite the east, then burn Rome's cities and ambush a legion. Final modal releases to
+// the main menu with 100 Laurels; Stay keeps you fighting for honor.
 pub(super) const CHAPTER_1: &[Step] = &[
     Step {
         title: "Rise of the Iceni",
-        body: "I am Boudica. Rome thinks us weak — tap the wild land beyond our border and seize it.",
-        hint: "Tap wild land to seize it — tiles taken",
+        body: "Welcome to the campaign. Start by tapping unclaimed land beyond your border to capture territory. Each tile generates troops and gold.",
+        hint: "Tap unclaimed land to expand territory",
         advance: Trigger::TilesGained(256),
     },
     Step {
         title: "Grow the Warband",
-        body: "Keep pushing outward — every tile feeds troops and gold into the revolt.",
-        hint: "Every tile mints troops & gold — tiles held",
+        body: "Territory scales your economy. Continue expanding outward to increase troop generation and gold income.",
+        hint: "Expand to reach 1,024 tiles held",
         advance: Trigger::TilesGained(1024),
     },
     Step {
-        title: "First Blood",
-        body: "The Romans built outposts and farms on our land. Drag your warriors into them and blood your spears.",
-        hint: "Charge a Roman outpost — foes crushed",
+        title: "First Contact",
+        body: "Enemy outposts control adjacent territory. Learn combat: select your forces and drag into enemy borders to attack.",
+        hint: "Drag to attack an outpost — defeat 1 enemy",
         advance: Trigger::TribesEaten(1),
     },
     Step {
         title: "Unite the East",
-        body: "Veterans, outposts, and kneeling nobles. Unite the east under one banner: devour all four.",
-        hint: "Devour four neighbours — foes crushed",
+        body: "Neutralize surrounding regional outposts to secure the eastern front under your banner.",
+        hint: "Defeat 4 regional outposts",
         advance: Trigger::TribesEaten(4),
     },
     Step {
-        title: "The First Fire",
-        body: "Camulodunum stands to our south. Burn it.",
-        hint: "Raze Camulodunum, to the south",
+        title: "Siege of Camulodunum",
+        body: "Siege mechanics: surround Camulodunum and cut off reinforcements to capture the settlement.",
+        hint: "Capture Camulodunum to the south",
         advance: Trigger::DefeatedPlayer("Camulodunum"),
     },
     Step {
-        title: "The Second Fire",
-        body: "Londinium, the heart of their trade. Burn it.",
-        hint: "Burn Londinium, their trade heart",
+        title: "Advance on Londinium",
+        body: "Londinium controls central trade. Capture the settlement to secure the river crossing.",
+        hint: "Capture Londinium",
         advance: Trigger::DefeatedPlayer("Londinium"),
     },
     Step {
-        title: "The Third Fire",
-        body: "Verulamium along Watling Street. Leave nothing but ash.",
-        hint: "Leave Verulamium in ash",
+        title: "Capture Verulamium",
+        body: "Verulamium on Watling Street. Capture the settlement to cut imperial supply lines.",
+        hint: "Capture Verulamium",
         advance: Trigger::DefeatedPlayer("Verulamium"),
     },
     Step {
         title: "Ambush the Ninth",
-        body: "Legio IX Hispana marches from the north. Cut them down.",
-        hint: "Cut down the marching Ninth",
+        body: "Legio IX Hispana is advancing from the north. Intercept and defeat their forces.",
+        hint: "Intercept Legio IX Hispana",
         advance: Trigger::DefeatedPlayer("Legio IX Hispana"),
     },
     // Terminal step: reaching it pops the Final Battle modal (Continue / Stay and fight) in `mod.rs`.
     // Its trigger never gates progression (it's last), but targeting Paulinus keeps the objective row
-    // honest if the player stays and actually beats him.
+    // honest if the player stays and actually beats him. Continue releases to the main menu with
+    // 100 Laurels earned; Stay keeps you on the map for honor.
     Step {
         title: "The Final Battle",
-        body: "Congratulations, tutorial complete! Suetonius Paulinus returns from Wales with the XIV and XX Legions. This is where the history books say we fall. Will you stay and fight?",
-        hint: "Stand and break Paulinus",
+        body: "Tutorial complete. You have mastered expansion, combat, and siege. Suetonius Paulinus approaches with the main imperial force. Continue to return to the main menu (100 Laurels earned) or Stay to finish the engagement.",
+        hint: "Continue to menu or defeat Paulinus",
         advance: Trigger::DefeatedPlayer("Legio XIV Gemina"),
     },
 ];

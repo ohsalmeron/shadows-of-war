@@ -1,13 +1,13 @@
 //! Generated UI scenes — **build artifacts**, not hand-authored source.
 //!
 //! Each `<scene>.rs` here is emitted by the UI Scene Editor's exporter from
-//! `assets/ui/<scene>.json`. Treat these files as generated: regenerate via `./sow ui` → Export,
+//! `assets/editor/ui/<scene>.json`. Treat these files as generated: regenerate via `./sow ui` → Export,
 //! don't hand-edit (your edits are overwritten on the next export). The JSON is the only source
 //! of truth — exactly the discipline `campaign/boudica.rs` follows for the roster.
 //!
 //! `sample.rs` is the one exception: a committed hand-written exemplar that proves the call site
 //! and the codegen *shape* the exporter must match. THIS FILE is also regenerated — its
-//! `mod`/`match`/`names()` are derived from `assets/ui/*.json` on every export, so adding a scene
+//! `mod`/`match`/`names()` are derived from `assets/editor/ui/*.json` on every export, so adding a scene
 //! never requires a hand edit here.
 
 mod demo;

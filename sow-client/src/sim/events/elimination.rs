@@ -83,7 +83,7 @@ impl SowApp {
         // Spawn floating notice for killer and assist contributors
         if conqueror_id == my_id && my_id != 0 {
             let bounty_text = format!(
-                "🪙 +{}",
+                "+{} Gold",
                 sow_ui_kit::utils::format_number(gold_bounty as f64)
             );
             self.ui.floating_notices.push(crate::app::FloatingNotice {
@@ -98,7 +98,7 @@ impl SowApp {
         for (assist_id, assist_gold) in assists {
             if *assist_id == my_id && my_id != 0 {
                 let bounty_text = format!(
-                    "🪙 +{} assist",
+                    "+{} Gold (Assist)",
                     sow_ui_kit::utils::format_number(*assist_gold as f64)
                 );
                 self.ui.floating_notices.push(crate::app::FloatingNotice {

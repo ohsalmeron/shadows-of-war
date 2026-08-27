@@ -95,7 +95,7 @@
       <label style="display:flex;align-items:center;gap:6px;margin-top:8px;text-transform:none;letter-spacing:0">
         <input type="checkbox" id="launchChk"> Run client after export (compiles — the only compile step)
       </label>
-      <div class="hint">Save writes <code>assets/ui/&lt;name&gt;.json</code>. Export generates real Rust and (optionally) launches the client — the 1:1 truth.</div>
+      <div class="hint">Save writes <code>assets/editor/ui/&lt;name&gt;.json</code>. Export generates real Rust and (optionally) launches the client — the 1:1 truth.</div>
     </div>
   </div>
 </div>
@@ -293,7 +293,7 @@ document.getElementById("loadBtn").onclick = async () => {
   const name = document.getElementById("sceneName").value.trim();
   if (!name) { toast("Enter a scene name first"); return; }
   try {
-    const res = await fetch(`/assets/ui/${name}.json`, { cache:"no-store" });
+    const res = await fetch(`/assets/editor/ui/${name}.json`, { cache:"no-store" });
     if (!res.ok) throw new Error(res.status);
     const j = await res.json();
     scene = normalize(j); sel = "panel"; renderAll(); toast("Loaded " + name);
@@ -314,7 +314,7 @@ async function saveScene() {
   try {
     const res = await fetch(`/__save?file=${name}.json`, { method:"POST", body: serialize() });
     if (!res.ok) throw new Error(await res.text());
-    toast("Saved → assets/ui/" + name + ".json");
+    toast("Saved → assets/editor/ui/" + name + ".json");
     return true;
   } catch (e) { toast("Save failed (run via `./sow ui`): " + e.message); return false; }
 }

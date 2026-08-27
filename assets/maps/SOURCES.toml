@@ -6,4 +6,4 @@
 [world]
 source = "image"
 attribution = "Derived from a world-map heightmap image (OpenFront MapGenerator asset)."
-notes = "Generated via `sow-tools image-map`. Copy map.bin.br + thumbnail.webp to assets/static/maps/world/ after edits to refresh the offline WASM bundle."
+notes = "Generated via `sow-tools image-map`. This is the single canonical map source: the online map service serves it and the WASM client embeds world/map.bin.br directly from this tree."

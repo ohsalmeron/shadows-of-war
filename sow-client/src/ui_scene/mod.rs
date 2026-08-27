@@ -1,7 +1,7 @@
 //! UI Scene Editor runtime — the **client side** of the web authoring loop.
 //!
 //! The web tool (`tools/ui-editor`, served by `./sow ui`) lets you lay out a screen visually,
-//! saves it as `assets/ui/<scene>.json` (the single source of truth), and on Export *generates*
+//! saves it as `assets/editor/ui/<scene>.json` (the single source of truth), and on Export *generates*
 //! Rust into [`generated`] that calls our real theme components. This module is what the running
 //! client uses to **render those generated scenes 1:1** — the browser is the fast sketchpad, the
 //! compiled client is the truth.

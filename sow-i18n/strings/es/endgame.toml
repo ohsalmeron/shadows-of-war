@@ -11,17 +11,17 @@ team_defeat_subtitle = "Tu equipo ha caído."
 team_winner_emerged = "El equipo {} emergió victorioso."
 
 victory_flavors = [
-    "El mundo es tuyo. ¿Y ahora qué?",
-    "Una clase magistral absoluta de dominación.",
-    "Los bots se inclinan ante su nuevo líder.",
-    "La historia recordará tu impecable campaña.",
-    "Una victoria total. ¡Los aplastaste a todos!"
+    "Supremacía territorial total establecida.",
+    "Mapa unificado bajo tu mando.",
+    "Fronteras hostiles disueltas. Sector asegurado.",
+    "Campaña impecable ingresada a los archivos.",
+    "Victoria decisiva. Listo para el siguiente teatro."
 ]
 
 defeat_flavors = [
-    "¡Auch! ¡Hora de aplastarlos de vuelta!",
-    "Tu imperio se desmoronó como papel mojado.",
-    "Cero territorios restantes. Una clase magistral sobre cómo ser aplastado.",
-    "Un contratiempo táctico menor. Una retirada temporal.",
-    "Los hámsters se quedaron sin energía. Cúlpales a ellos."
+    "Falla logística. Los refuerzos nunca llegaron.",
+    "Territorio perdido. Retirada estratégica a la mesa de diseño.",
+    "Línea de frente superada. Posiciones finales archivadas.",
+    "Reagruparse, rearmarse y reclamar el mapa.",
+    "Campaña concluida. Desplegando al siguiente teatro de guerra."
 ]

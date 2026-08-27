@@ -13,6 +13,10 @@
       console.warn('[sow-web] WebGL not supported on tactical grid canvas');
       return null;
     }
+    if (!gl.getExtension('OES_standard_derivatives')) {
+      console.warn('[sow-web] Standard derivatives are not supported on tactical grid canvas');
+      return null;
+    }
 
     const vsSource = `
       attribute vec2 aPos;
@@ -24,6 +28,7 @@
     `;
 
     const fsSource = `
+      #extension GL_OES_standard_derivatives : enable
       precision highp float;
       varying vec2 vUv;
       uniform float uTime;

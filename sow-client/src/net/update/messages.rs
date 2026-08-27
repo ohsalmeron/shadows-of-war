@@ -338,6 +338,10 @@ impl SowApp {
                             self.ui.app.main_menu_state.is_waiting = false;
                             self.ui.app.main_menu_state.pending_join_lobby_id = None;
                             self.ui.app.main_menu_state.joined_lobby_id = None;
+                            self.ui.app.main_menu_state.is_lobby_host = false;
+                            self.ui.app.main_menu_state.my_player_id = None;
+                            self.ui.app.main_menu_state.in_private_match = false;
+                            self.ui.app.main_menu_state.error_message = Some(fail.reason.clone());
                             if fail.reason == "BANNED" {
                                 // Banned from that lobby — show the banned notice instead of
                                 // the raw connection-error modal.

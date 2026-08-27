@@ -210,7 +210,10 @@ fn preflight(paths: &Paths, config: &Config) -> Result<()> {
     if dirty_files.is_empty() {
         println!("  worktree clean");
     } else {
-        println!("  WARNING: production release includes uncommitted files:");
+        println!(
+            "  worktree dirty ({} files — included in release):",
+            dirty_files.len()
+        );
         for file in &dirty_files {
             println!("    {file}");
         }
@@ -762,9 +765,10 @@ fn build_web(paths: &Paths, version: &str) -> Result<()> {
         &[
             &paths.wasm_input,
             &paths.shell,
-            &paths.assets_cdn,
+            &paths.assets_shell,
+            &paths.assets_gameplay,
+            &paths.assets_site,
             &paths.assets_maps,
-            &paths.assets_static,
             &paths.root.join("sow-i18n/src"),
             &paths.root.join("sow-i18n/strings"),
             &paths.root.join("sow-web/site"),
@@ -1232,8 +1236,12 @@ fn assemble_release(
     let components = [
         ("web", component_hash(&work.join("web"))?),
         ("maps", component_hash(&work.join("maps"))?),
-        ("server", component_hash(&work.join("bin/sow-server"))?),
-        ("database", component_hash(&work.join("bin/sow-database"))?),
+        // Server/database rows must be raw content hashes (like the relay bin):
+        // component_hash() folds the absolute work path into its fingerprint and
+        // can drift from the actual bytes, which silently skips the jail restart
+        // that ships new AI or protocol code to players.
+        ("server", file_sha256(&work.join("bin/sow-server"))?),
+        ("database", file_sha256(&work.join("bin/sow-database"))?),
         ("ops", component_hash(&work.join("ops"))?),
         ("relay", component_hash(&work.join("relay"))?),
     ];

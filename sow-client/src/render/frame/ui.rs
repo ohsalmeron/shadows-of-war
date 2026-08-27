@@ -185,6 +185,8 @@ impl SowApp {
             // the old menu underneath the web overlay.
             #[cfg(target_arch = "wasm32")]
             let ui_action = if self.ui.app.phase == ClientPhase::MainMenu {
+                // The DOM shell owns pre-game presentation. Gameplay requests its own avatar
+                // assets once the match HUD is active; the menu must not preload them.
                 None
             } else {
                 self.ui.app.draw(ctx, &mut local_cancel_intents)

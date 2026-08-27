@@ -13,7 +13,6 @@ use std::path::{Path, PathBuf};
 
 pub struct StampGeoArgs {
     pub maps_root: PathBuf,
-    pub static_root: PathBuf,
     pub map: Option<String>,
     pub bbox: Option<String>,
     pub calibrate: bool,
@@ -169,7 +168,6 @@ pub fn run(args: StampGeoArgs) -> Result<(), Box<dyn Error>> {
             map.geo_bounds = Some(bounds);
             if write {
                 write_map(&dir, &map)?;
-                mirror_static(&args.static_root, key, &map)?;
                 stamped += 1;
             }
         }
@@ -362,22 +360,6 @@ fn write_map(dir: &Path, map: &MapFile) -> Result<(), Box<dyn Error>> {
     let encoded = map_file::encode(map);
     fs::write(dir.join("map.bin"), &encoded)?;
     fs::write(dir.join("map.bin.br"), brotli_compress(&encoded)?)?;
-    Ok(())
-}
-
-/// Keep the WASM-embedded static copy in lockstep with the server copy, else
-/// offline naming diverges from online.
-fn mirror_static(static_root: &Path, key: &str, map: &MapFile) -> Result<(), Box<dyn Error>> {
-    let dir = static_root.join(key);
-    if !dir.is_dir() {
-        return Ok(());
-    }
-    let encoded = map_file::encode(map);
-    if dir.join("map.bin").exists() {
-        fs::write(dir.join("map.bin"), &encoded)?;
-    }
-    fs::write(dir.join("map.bin.br"), brotli_compress(&encoded)?)?;
-    println!("  mirrored to {}", dir.display());
     Ok(())
 }
 

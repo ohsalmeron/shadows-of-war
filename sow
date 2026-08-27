@@ -13,11 +13,13 @@ USAGE:
 
 COMMANDS:
   (no args) / native   Run native desktop game client directly
+  l, local              Build WASM + webroot and serve it locally on port 4173
   p, prod              Run full production build & deploy pipeline (WASM + FreeBSD + Azure)
   help, -h, --help     Show this help message
 
 EXAMPLES:
   ./sow                # Launch desktop game client
+  ./sow l              # Build and serve the local web client (Ctrl-C to stop)
   ./sow p              # Full production build and deploy to IONOS & Azure
   ./sow p -v           # Production deploy with version bump
 EOF
@@ -38,6 +40,16 @@ case "${CMD}" in
     export SOW_DATABASE_URL="${SOW_DATABASE_URL:-https://shadowsofwar.io/api}"
     shift 2>/dev/null || true
     exec cargo run --bin client -- "$@"
+    ;;
+  l|local)
+    if [[ -f "${ROOT}/sow-dist/.env" ]]; then
+      set -a; source "${ROOT}/sow-dist/.env"; set +a
+    fi
+    export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-${ROOT}/target}"
+    mkdir -p "${CARGO_TARGET_DIR}"
+    BIN="${CARGO_TARGET_DIR}/debug/sow"
+    cargo build -p sow-dist
+    exec "${BIN}" "$@"
     ;;
   p|prod|play)
     if [[ -f "${ROOT}/sow-dist/.env" ]]; then

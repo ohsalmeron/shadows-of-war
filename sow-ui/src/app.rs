@@ -99,10 +99,15 @@ impl ClientApp {
 
         let mut action = match self.phase {
             ClientPhase::MainMenu => {
-                self.asset_loader.ensure_avatars_loaded(ui.ctx());
                 #[cfg(target_arch = "wasm32")]
-                self.asset_loader
-                    .request_avatar_priority(self.main_menu_state.selected_leader);
+                {
+                    // The browser shell owns all pre-game presentation. Rust only keeps the
+                    // authoritative state and command bridge alive until gameplay begins.
+                    None
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                self.asset_loader.ensure_avatars_loaded(ui.ctx());
                 self.asset_loader.ensure_ui_assets_loaded(ui.ctx());
                 main_menu::draw(
                     ui,
@@ -111,8 +116,23 @@ impl ClientApp {
                     self.settings_state.language,
                     self.settings_state.reduced_motion,
                 )
+                }
             }
             ClientPhase::Splash => {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    // Splash art and progress are rendered by loader.js. Keep a frame counter
+                    // for the GPU hand-off state machine without invoking egui splash assets.
+                    self.splash_state.frames_drawn = self.splash_state.frames_drawn.saturating_add(1);
+                    if self.splash_state.done {
+                        if let Some(target_phase) = self.splash_state.target_phase.take() {
+                            self.phase = target_phase;
+                        }
+                    }
+                    None
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
                 self.asset_loader.ensure_ui_assets_loaded(ui.ctx());
                 if let Some(new_phase) = loading_screen::draw(
                     ui,
@@ -123,6 +143,7 @@ impl ClientApp {
                     self.phase = new_phase;
                 }
                 None
+                }
             }
             ClientPhase::Playing => hud::draw(
                 ui,

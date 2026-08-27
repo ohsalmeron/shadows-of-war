@@ -11,10 +11,10 @@ use blade_graphics as gpu;
 pub fn emoji_uv_opt(emoji: &str) -> Option<[f32; 4]> {
     sow_data::emoji::lookup(emoji).map(|r| {
         [
-            r.x as f32 / 832.0,
-            r.y as f32 / 768.0,
-            (r.x + r.w) as f32 / 832.0,
-            (r.y + r.h) as f32 / 768.0,
+            r.x as f32 / sow_data::emoji::ATLAS_WIDTH as f32,
+            r.y as f32 / sow_data::emoji::ATLAS_HEIGHT as f32,
+            (r.x + r.w) as f32 / sow_data::emoji::ATLAS_WIDTH as f32,
+            (r.y + r.h) as f32 / sow_data::emoji::ATLAS_HEIGHT as f32,
         ]
     })
 }

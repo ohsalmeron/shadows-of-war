@@ -56,9 +56,10 @@ fn shell_quote(s: &str) -> String {
 struct Paths {
     root: PathBuf,
     shell: PathBuf,
-    assets_cdn: PathBuf,
+    assets_shell: PathBuf,
+    assets_gameplay: PathBuf,
+    assets_site: PathBuf,
     assets_maps: PathBuf,
-    assets_static: PathBuf,
     dist_web: PathBuf,
     dist_cg: PathBuf,
     wasm_input: PathBuf,
@@ -78,9 +79,10 @@ impl Paths {
             wasm_input: t.join("wasm32-unknown-unknown/wasm-release/sow_client.wasm"),
             wasm_cache: s.join("wasm-opt-cache"),
             shell: root.join("sow-web/shell"),
-            assets_cdn: root.join("assets/cdn"),
+            assets_shell: root.join("assets/shell"),
+            assets_gameplay: root.join("assets/gameplay"),
+            assets_site: root.join("assets/site"),
             assets_maps: root.join("assets/maps"),
-            assets_static: root.join("assets/static"),
             dist_web: root.join("dist/web"),
             dist_cg: root.join("dist/crazygames"),
             root,
@@ -103,14 +105,16 @@ fn file_sha256(path: &Path) -> Result<String> {
 }
 
 fn copy_dir(src: &Path, dst: &Path) -> Result<()> {
-    fs::create_dir_all(dst)?;
-    for e in fs::read_dir(src)? {
+    fs::create_dir_all(dst).with_context(|| format!("create directory {}", dst.display()))?;
+    for e in fs::read_dir(src).with_context(|| format!("read directory {}", src.display()))? {
         let e = e?;
         let to = dst.join(e.file_name());
         if e.path().is_dir() {
             copy_dir(&e.path(), &to)?;
         } else {
-            fs::copy(e.path(), to)?;
+            fs::copy(e.path(), &to).with_context(|| {
+                format!("copy {} to {}", e.path().display(), to.display())
+            })?;
         }
     }
     Ok(())
@@ -317,9 +321,9 @@ fn build_index(
                 // Portal iframe: relative paths resolve against the game CDN,
                 // but the whitelist bundle ships no assets — point straight at
                 // the production CDN (served with ACAO for cross-origin reads).
-                "https://shadowsofwar.io/assets/cdn/ui/"
+                "https://shadowsofwar.io/assets/shell/loader/"
             } else {
-                "/assets/cdn/ui/"
+                "/assets/shell/loader/"
             },
         )
         .replace(
@@ -437,7 +441,22 @@ fn copy_shell(paths: &Paths, out: &Path) -> Result<()> {
             }
         }
     }
-    fs::copy(paths.shell.join("sow.svg"), out.join("sow.svg"))?;
+    fs::copy(
+        paths.assets_shell.join("brand/sow.svg"),
+        out.join("sow.svg"),
+    )?;
+    if paths.assets_shell.join("brand/sow-long.svg").is_file() {
+        fs::copy(
+            paths.assets_shell.join("brand/sow-long.svg"),
+            out.join("sow-long.svg"),
+        )?;
+    }
+    if paths.assets_shell.join("brand/tower.svg").is_file() {
+        fs::copy(
+            paths.assets_shell.join("brand/tower.svg"),
+            out.join("tower.svg"),
+        )?;
+    }
     fs::copy(paths.shell.join("loader.js"), out.join("loader.js"))?;
     copy_dir(&paths.shell.join("sdk"), &out.join("sdk"))?;
     Ok(())
@@ -508,6 +527,7 @@ fn verify_layout(dir: &Path) -> Result<()> {
         "styles.css",
         "legal.css",
         "wou-auth.js",
+        "grid-bg.js",
         "privacy/index.html",
         "terms/index.html",
         "support/index.html",
@@ -592,11 +612,16 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
     let js = format!("sow_client_{ts}.js");
     let wasm = format!("sow_client_{ts}_bg.wasm");
 
-    let cdn = out.join("assets/cdn");
-    fs::create_dir_all(&cdn)?;
-    if paths.assets_cdn.is_dir() {
-        copy_dir(&paths.assets_cdn, &cdn)?;
-    }
+    let assets = out.join("assets");
+    copy_dir(&paths.assets_shell, &assets.join("shell"))?;
+    copy_dir(
+        &paths.assets_gameplay.join("avatars"),
+        &assets.join("gameplay/avatars"),
+    )?;
+    copy_dir(
+        &paths.assets_site.join("media"),
+        &assets.join("site/media"),
+    )?;
     let maps = out.join("maps");
     fs::create_dir_all(&maps)?;
     if paths.assets_maps.is_dir() {
@@ -623,17 +648,18 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
         "styles.css",
         "legal.css",
         "wou-auth.js",
+        "grid-bg.js",
         "8d227b8f9e6140d39e3381a1829e1db3.txt",
         "manifest.webmanifest",
-        "icon-192.png",
-        "icon-512.png",
-        "icon-512-maskable.png",
     ] {
         let src = site.join(name);
         if !src.is_file() {
             bail!("website source missing: {}", src.display());
         }
         fs::copy(&src, out.join(name))?;
+    }
+    for name in ["icon-192.png", "icon-512.png", "icon-512-maskable.png"] {
+        fs::copy(paths.assets_site.join("icons").join(name), out.join(name))?;
     }
     for path in ["privacy", "terms", "support", "how-to-play", "leaders", ".well-known"] {
         let src = site.join(path);
@@ -642,13 +668,9 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
         }
         copy_dir(&src, &out.join(path))?;
     }
-    let media = site.join("assets/media");
-    if media.is_dir() {
-        copy_dir(&media, &out.join("assets/media"))?;
-    }
     // Fingerprint site assets (styles/app/legal/wou-auth) with a content hash so edge and
     // browser caches never serve a stale version after a redeploy.
-    for name in ["styles.css", "app.js", "legal.css", "wou-auth.js"] {
+    for name in ["styles.css", "app.js", "legal.css", "wou-auth.js", "grid-bg.js"] {
         let hash = file_sha256(&out.join(name))?;
         let versioned = format!("{name}?v={}", &hash[..10]);
         let html = out.join("index.html");
@@ -657,7 +679,7 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
     }
     fs::write(
         out.join("robots.txt"),
-        "User-agent: *\nAllow: /\nDisallow: /internal/\nDisallow: /api/\nDisallow: /assets/cdn/\nDisallow: /*.wasm$\nDisallow: /*.wasm.br$\n\nSitemap: https://shadowsofwar.io/sitemap.xml\n",
+        "User-agent: *\nAllow: /\nDisallow: /internal/\nDisallow: /api/\nDisallow: /*.wasm$\nDisallow: /*.wasm.br$\n\nSitemap: https://shadowsofwar.io/sitemap.xml\n",
     )?;
     fs::write(
         out.join("sitemap.xml"),
@@ -781,6 +803,55 @@ fn cmd_native(paths: &Paths) -> Result<()> {
         .env("SOW_DATABASE_URL", "https://shadowsofwar.io/api");
     if !c.spawn()?.wait()?.success() {
         bail!("client failed");
+    }
+    Ok(())
+}
+
+fn cmd_local(paths: &Paths) -> Result<()> {
+    let version_path = paths.root.join(".version");
+    let version = fs::read_to_string(&version_path)
+        .with_context(|| format!("read {}", version_path.display()))?
+        .trim()
+        .to_string();
+    if version.is_empty() {
+        bail!(".version must not be empty");
+    }
+
+    println!("==> Building local web preview");
+    // Local preview must package the client from the current source tree. Reusing a stale
+    // wasm artifact makes UI/WASM work appear successful while the browser is running old code.
+    compile_wasm(paths, false)?;
+    package_self(paths, &paths.dist_web, &version)?;
+
+    let port = env::var("SOW_LOCAL_PORT").unwrap_or_else(|_| "4173".to_string());
+    let port_number = port
+        .parse::<u16>()
+        .with_context(|| format!("SOW_LOCAL_PORT must be a valid port: {port}"))?;
+    if port_number == 0 {
+        bail!("SOW_LOCAL_PORT must not be 0");
+    }
+    let port_arg = port_number.to_string();
+    let webroot = paths
+        .dist_web
+        .to_str()
+        .context("local webroot path is not UTF-8")?;
+    println!("✅ Local webroot ready at http://127.0.0.1:{port_number}/");
+    println!("   Backend: https://shadowsofwar.io (Ctrl-C to stop)");
+
+    let status = Command::new("python3")
+        .args([
+            "-m",
+            "http.server",
+            &port_arg,
+            "--bind",
+            "127.0.0.1",
+            "--directory",
+            webroot,
+        ])
+        .status()
+        .context("start local web server (python3 is required)")?;
+    if !status.success() {
+        bail!("local web server failed");
     }
     Ok(())
 }
@@ -925,9 +996,10 @@ fn main() -> Result<()> {
 
     match cmd.as_str() {
         "p" | "prod" | "play" => prod::execute(&paths, bump),
+        "local" | "l" => cmd_local(&paths),
         "native" | "n" | "" => cmd_native(&paths),
         _ => {
-            eprintln!("Usage: ./sow [p|native]");
+            eprintln!("Usage: ./sow [p|local|native]");
             std::process::exit(1);
         }
     }

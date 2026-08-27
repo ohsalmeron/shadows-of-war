@@ -1,8 +1,0 @@
-# Offline bundled map only (compile-time embed in WASM via repo_asset_bytes!).
-# Must contain exactly one slug folder. Online maps live under assets/maps/.
-# The tutorial map (eastanglia) is served from the online library like any other map.
-
-[world]
-source = "image"
-attribution = "Same terrain as assets/maps/world/ — synced for offline single-player boot."
-notes = "After editing assets/maps/world/, copy map.bin.br and thumbnail.webp here and rebuild the client."

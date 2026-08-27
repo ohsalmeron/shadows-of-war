@@ -44,9 +44,11 @@ impl SowApp {
                 UiAction::OpenCreateGame => {
                     self.ui.app.main_menu_state.show_custom_game = true;
                     self.ui.app.main_menu_state.custom_game_is_sp = false;
+                    self.ui.app.main_menu_state.error_message = None;
                 }
                 UiAction::OpenJoinBrowser => {
                     self.ui.app.main_menu_state.show_join_browser = true;
+                    self.ui.app.main_menu_state.error_message = None;
                 }
                 UiAction::CloseOverlay => {
                     self.ui.app.main_menu_state.show_custom_game = false;
@@ -71,6 +73,9 @@ impl SowApp {
                     if let Ok(lobby_id) = code.parse::<u64>() {
                         self.request_join(Some(lobby_id), false, None, None);
                         self.ui.app.main_menu_state.show_join_browser = false;
+                    } else {
+                        self.ui.app.main_menu_state.error_message =
+                            Some("Enter a valid lobby code".to_string());
                     }
                 }
                 UiAction::JoinWithPassword(lobby_id) => {
@@ -257,6 +262,8 @@ impl SowApp {
         config: Option<Box<sow_core::game_config::GameConfig>>,
         password: Option<String>,
     ) {
+        self.ui.app.main_menu_state.error_message = None;
+        self.ui.app.main_menu_state.notice = None;
         let matchmaking_join = lobby_id.is_none() && !is_private && config.is_none();
         self.join_matchmaking = matchmaking_join;
         if let Some(cfg) = config {
@@ -266,6 +273,11 @@ impl SowApp {
         self.ui.app.main_menu_state.custom_game_password = password.clone().unwrap_or_default();
         self.ui.app.main_menu_state.pending_join_lobby_id = lobby_id;
         self.ui.app.main_menu_state.is_waiting = true;
+        self.ui.app.main_menu_state.is_lobby_host = if lobby_id.is_some() {
+            false
+        } else {
+            !self.join_matchmaking
+        };
         let identity_ready = self.progress_account_id.is_some() || self.net.is_offline;
         self.join_waiting_for_identity = !identity_ready || self.net.client.is_none();
 
@@ -296,8 +308,5 @@ impl SowApp {
             spawn_sow_client_connect(url, &self.net.connect_tx, &self.tokio_rt);
         }
 
-        if lobby_id.is_none() {
-            self.ui.app.main_menu_state.is_lobby_host = !self.join_matchmaking;
-        }
     }
 }

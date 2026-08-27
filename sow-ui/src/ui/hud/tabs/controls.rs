@@ -55,7 +55,7 @@ pub(in crate::ui::hud) fn draw_buildings_strip(
                         egui::Color32::WHITE
                     };
                     let cost_txt = if cost.is_infinite() { "N/A".to_string() } else { crate::utils::format_number(cost) };
-                    let cl = if cost_txt == "N/A" { cost_txt } else { format!("🪙 {cost_txt}") };
+                    let cl = cost_txt;
                     (false, sel, afford, t, building_emoji(*kind).to_owned(), cl, sow_ui_kit::theme::palette::neon_cyan(), format!("{}", display_idx + 1))
                 }
                 StripItem::Nuke(kind) => {
@@ -67,16 +67,17 @@ pub(in crate::ui::hud) fn draw_buildings_strip(
 
             let (rect, mut resp) = ui.allocate_exact_size(
                 egui::vec2(col_w, total_h),
-                egui::Sense::click(),
+                egui::Sense::click_and_drag(),
             );
 
             resp = resp.on_hover_ui(|ui| {
                 if is_nuke {
                     crate::widgets::outlined_emoji_label(ui, "Nuke", egui::FontId::proportional(14.0), accent);
                     ui.add_space(4.0);
-                    crate::widgets::emoji_label(ui, "Missile payload that detonates on impact. Blast radius, flight speed, and size are upgraded by your city's Arsenal module level.", egui::FontId::proportional(12.0), egui::Color32::LIGHT_GRAY);
-                } else {
-                    let kind = match item { StripItem::Building(k) => *k, _ => unreachable!() };
+                    crate::widgets::emoji_label(ui, "Nuclear Strike: Devastating warhead. Obliterates troops, structures, and converts territory into neutral fallout.", egui::FontId::proportional(12.0), egui::Color32::LIGHT_GRAY);
+                    ui.add_space(6.0);
+                    crate::widgets::emoji_label(ui, "Target: Click any tile on the map", egui::FontId::proportional(13.0), egui::Color32::from_rgb(250, 204, 21));
+                } else if let StripItem::Building(kind) = item {
                     let name = match kind {
                         sow_core::game::BuildingKind::City => "City Center",
                         sow_core::game::BuildingKind::Bunker => "Defense Tower",
@@ -89,7 +90,7 @@ pub(in crate::ui::hud) fn draw_buildings_strip(
                         sow_core::game::BuildingKind::Factory => "Economic Engine: A specialized pure gold generator. Upgradable up to Level 5 to progressively multiply gold income. Must be spaced from other structures.",
                         sow_core::game::BuildingKind::Port => "Maritime Port: Specialized coastal harbor. Generates gold and troop income and enables launching naval fleets. Must be built near the shore.",
                     };
-                    let cost_idx = sow_core::game::BuildingKind::ALL.iter().position(|&k| k == kind).unwrap_or(0);
+                    let cost_idx = sow_core::game::BuildingKind::ALL.iter().position(|&k| k == *kind).unwrap_or(0);
                     let cost = state.building_costs[cost_idx];
                     crate::widgets::outlined_emoji_label(ui, name, egui::FontId::proportional(14.0), sow_ui_kit::theme::palette::neon_cyan());
                     ui.add_space(4.0);
@@ -97,7 +98,7 @@ pub(in crate::ui::hud) fn draw_buildings_strip(
                     ui.add_space(6.0);
                     let cost_text = if cost.is_infinite() { "N/A".to_string() } else { crate::utils::format_number(cost) };
                     let cost_color = if can_afford { egui::Color32::from_rgb(74, 222, 128) } else { egui::Color32::from_rgb(239, 68, 68) };
-                    crate::widgets::emoji_label(ui, &format!("Cost: 🪙 {cost_text} Gold"), egui::FontId::proportional(13.0), cost_color);
+                    crate::widgets::emoji_label(ui, &format!("Cost: {cost_text} Gold"), egui::FontId::proportional(13.0), cost_color);
                 }
             });
 

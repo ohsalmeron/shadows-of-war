@@ -92,8 +92,8 @@ last stand, alliance, or betrayal.
 
 ### Present in the repository
 
-- [Gameplay capture](../sow-web/site/assets/media/shadows-of-war-gameplay.mp4)
-- Session screenshots in `sow-web/site/assets/media/`
+- [Gameplay capture](../assets/site/media/shadows-of-war-gameplay.mp4)
+- Session screenshots in `assets/site/media/`
 - Leader artwork and avatars under the existing CDN asset tree
 - Landing page, FAQ, field manual, legal pages, and game shell
 
