@@ -421,7 +421,7 @@ html[data-theme="light"] .hero-wash { opacity: .35; filter: saturate(.8) contras
 /* FAQ */
 .faq-section { background: var(--surface); }
 .faq-section .inline-link { color: var(--orange); text-decoration: underline; text-underline-offset: 3px; }
-.faq-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.faq-list { display: grid; grid-template-columns: 1fr; gap: 10px; }
 .faq-item { border: 1px solid var(--line); background: var(--bg); transition: border-color .2s ease; }
 .faq-item[open] { border-color: var(--orange); }
 .faq-item summary { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 20px 21px; cursor: pointer; list-style: none; font: 700 14px/1.2 var(--font-display); text-transform: uppercase; letter-spacing: .02em; }

@@ -171,9 +171,6 @@
         var signIn = state.name_locked ? "ACCOUNT" : "SIGN IN";
         return "" +
             "<header class='sow-menu__topbar'>" +
-                "<div class='sow-menu__brand'>" +
-                    "<img class='sow-menu__brand-logo' src='/sow-long.svg' alt='Shadows of War'>" +
-                "</div>" +
                 "<div class='sow-menu__identity'>" +
                     "<button class='sow-menu__avatar' type='button' data-command='open_leader_picker' " +
                         "aria-label='Select leader' style=\"background-image:url('" + esc(avatarImage()) + "')\"></button>" +
@@ -200,9 +197,7 @@
     function renderCommandPanel() {
         return "" +
             "<section class='sow-menu__command'>" +
-                "<p class='sow-menu__eyebrow'>REAL-TIME STRATEGY</p>" +
-                "<h1>SHADOWS<br><em>OF WAR</em></h1>" +
-                "<p class='sow-menu__tagline'>Match-based real-time strategy on world maps. Choose a leader, build your economy, and conquer territory.</p>" +
+                "<img class='sow-menu__menu-logo' src='/sow-long.svg' alt='Shadows of War'>" +
                 "<button class='sow-menu__primary' type='button' data-command='quick_match'>QUICK MATCH <span>↗</span></button>" +
                 "<button class='sow-menu__secondary' type='button' data-command='open_browser'>LOBBY BROWSER <span>→</span></button>" +
                 "<form class='sow-menu__join' data-form='join'>" +
@@ -277,7 +272,7 @@
     }
 
     function renderFooter(label) {
-        return "<footer class='sow-menu__footer'><span>" + esc(label) + "</span><nav class='sow-menu__footer-links' aria-label='Game links'>" +
+        return "<footer class='sow-menu__footer'>" + (label ? "<span>" + esc(label) + "</span>" : "") + "<nav class='sow-menu__footer-links' aria-label='Game links'>" +
             "<a href='/how-to-play/'>GUIDES</a><a href='/terms/'>TERMS</a><a href='/privacy/'>PRIVACY</a>" +
             "<a href='https://discord.gg/eauHRf7zP' rel='noreferrer'>DISCORD</a><a href='https://github.com/worldofunreal/shadows-of-war' rel='noreferrer'>GITHUB</a>" +
             "</nav><span>SHADOWSOFWAR.IO</span></footer>";
@@ -299,7 +294,7 @@
                         renderPublicPanel() +
                     "</section>" +
                 "</main>" +
-                renderFooter("CROSS-PLATFORM RTS") +
+                renderFooter("") +
             "</div>" + leaderOverlay + settingsOverlay + renderPasswordModal();
     }
 

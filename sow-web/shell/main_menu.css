@@ -343,6 +343,13 @@
     justify-content: center;
 }
 
+.sow-menu__menu-logo {
+    display: block;
+    width: min(250px, 82%);
+    height: auto;
+    margin: 0 auto 28px;
+}
+
 .sow-menu__eyebrow,
 .sow-menu__panel-label {
     margin: 0 0 10px;
@@ -2780,6 +2787,11 @@
         overflow: hidden;
     }
 
+    .sow-menu__menu-logo {
+        width: min(220px, 76vw);
+        margin-bottom: 18px;
+    }
+
     .sow-menu__command h1 { font-size: clamp(30px, 10vw, 40px); line-height: 0.92; }
     .sow-menu__tagline { margin: 10px 0 14px; line-height: 1.5; }
     .sow-menu__primary,
@@ -2893,9 +2905,7 @@
     }
     .sow-menu__main--queue { grid-template-columns: minmax(260px, .8fr) minmax(0, 1.2fr); }
     .sow-menu__command { min-height: 0; max-height: 100%; overflow-y: auto; padding: 11px; }
-    .sow-menu__command h1 { font-size: 27px; }
-    .sow-menu__eyebrow { margin-bottom: 5px; }
-    .sow-menu__tagline { margin: 6px 0 8px; font-size: 9px; }
+    .sow-menu__menu-logo { width: min(170px, 28vw); margin-bottom: 10px; }
     .sow-menu__primary,
     .sow-menu__secondary,
     .sow-menu__danger { min-height: 34px; margin-top: 5px; }
