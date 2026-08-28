@@ -1,6 +1,7 @@
 use web_time::Instant;
 
 use crate::app::SowApp;
+#[cfg(not(target_arch = "wasm32"))]
 use sow_ui_kit::ClientPhase;
 
 impl SowApp {
@@ -61,6 +62,7 @@ impl SowApp {
     /// * NOTE: `sow_ui::ui::hud::tabs::battle_log` is a *different*, currently-disabled bottom-panel
     ///   tab (gated by `ENABLE_BOTTOM_HUD_LOG_TABS`). This method is the only attacks UI in use —
     ///   don't duplicate dispatch rendering elsewhere.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn render_attacks_panel(
         &mut self,
         ctx: &egui::Context,

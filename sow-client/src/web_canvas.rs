@@ -217,22 +217,26 @@ pub fn install_viewport_listeners() {
         return;
     };
 
-    let bump = Closure::<dyn FnMut()>::new(|| {
-        invalidate_viewport_cache();
-        if let Some(window) = web_sys::window() {
-            if let Ok(ev) = web_sys::Event::new("resize") {
-                let _ = window.dispatch_event(&ev);
-            }
-        }
-    });
-    let callback = bump.as_ref().unchecked_ref();
+    let invalidate = Closure::<dyn FnMut()>::new(invalidate_viewport_cache);
+    let callback = invalidate.as_ref().unchecked_ref();
     let _ = window.add_event_listener_with_callback("resize", callback);
     let _ = window.add_event_listener_with_callback("orientationchange", callback);
+    invalidate.forget();
+
     if let Some(vv) = window.visual_viewport() {
+        let request_resize = Closure::<dyn FnMut()>::new(|| {
+            invalidate_viewport_cache();
+            if let Some(window) = web_sys::window() {
+                if let Ok(ev) = web_sys::Event::new("resize") {
+                    let _ = window.dispatch_event(&ev);
+                }
+            }
+        });
+        let callback = request_resize.as_ref().unchecked_ref();
         let _ = vv.add_event_listener_with_callback("resize", callback);
         let _ = vv.add_event_listener_with_callback("scroll", callback);
+        request_resize.forget();
     }
-    bump.forget();
 }
 
 #[cfg(not(target_arch = "wasm32"))]

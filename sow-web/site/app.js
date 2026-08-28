@@ -136,12 +136,11 @@
     document.documentElement.dataset.theme = theme;
     localStorage.setItem('sow-theme', theme);
     const isLight = theme === 'light';
-    const toggle = $('[data-theme-toggle]');
-    if (toggle) {
+    $$('[data-theme-toggle]').forEach(toggle => {
       toggle.querySelector('.theme-icon').textContent = isLight ? '☾' : '☼';
       toggle.querySelector('.theme-label').textContent = isLight ? 'Dark mode' : 'Light mode';
       toggle.setAttribute('aria-label', isLight ? 'Switch to dark mode' : 'Switch to light mode');
-    }
+    });
     const themeColor = $('meta[name="theme-color"]');
     if (themeColor) themeColor.content = isLight ? '#f5f0e6' : '#0a0a0e';
   }
@@ -150,10 +149,10 @@
     const saved = localStorage.getItem('sow-theme');
     const preferred = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
     setTheme(saved || preferred);
-    $('[data-theme-toggle]')?.addEventListener('click', () => {
+    $$('[data-theme-toggle]').forEach(toggle => toggle.addEventListener('click', () => {
       audio.playConfirm();
       setTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
-    });
+    }));
   }
 
   function updateLeader(index, playAudio = false) {
@@ -189,6 +188,7 @@
     const detailImage = $('[data-detail-image]');
     if (detailImage) {
       detailImage.src = asset(leader);
+      detailImage.srcset = `${asset(leader, true)} 600w, ${asset(leader)} 1200w`;
       detailImage.alt = `${leader.name} artwork`;
     }
     const detailCode = $('[data-detail-code]');
@@ -283,8 +283,8 @@
   function initWouAuth() {
     if (typeof window.wouAuth === 'undefined') return;
 
-    const trigger = $('#wou-auth-trigger');
-    const label = $('#wou-auth-label');
+    const triggers = $$('[data-wou-auth-trigger]');
+    const labels = $$('[data-wou-auth-label]');
     const modal = $('#wou-auth-modal');
     const closeBtn = $('#wou-modal-close-btn');
     const loggedView = $('#wou-auth-logged-view');
@@ -310,7 +310,7 @@
 
       if (isAuth && user) {
         if (modalHeaderTitle) modalHeaderTitle.textContent = 'Account Profile';
-        if (label) label.textContent = user.clan_tag ? `[${user.clan_tag}] ${user.display_name}` : (user.display_name || user.username || 'Player');
+        labels.forEach(label => { label.textContent = user.clan_tag ? `[${user.clan_tag}] ${user.display_name}` : (user.display_name || user.username || 'Player'); });
         if (loggedView) loggedView.classList.remove('hidden');
         if (unloggedView) unloggedView.classList.add('hidden');
         if (userName) userName.textContent = user.display_name || user.username || 'Player';
@@ -318,17 +318,17 @@
         if (userId) userId.textContent = `ID: ${user.id}`;
       } else {
         if (modalHeaderTitle) modalHeaderTitle.textContent = 'Sign In';
-        if (label) label.textContent = 'Sign in';
+        labels.forEach(label => { label.textContent = 'Sign in'; });
         if (loggedView) loggedView.classList.add('hidden');
         if (unloggedView) unloggedView.classList.remove('hidden');
       }
     }
 
-    trigger?.addEventListener('click', () => {
+    triggers.forEach(trigger => trigger.addEventListener('click', () => {
       audio.playConfirm();
       updateAuthUi();
       window.wouAuth.openModal();
-    });
+    }));
 
     closeBtn?.addEventListener('click', () => {
       audio.playConfirm();

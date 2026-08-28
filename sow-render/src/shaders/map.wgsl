@@ -204,7 +204,8 @@ fn shade_map(in: VertexOutput) -> vec3<f32> {
         // Flat water — no procedural waves (they moiré into diagonal scanlines when zoomed out)
         var color_flat = vec3<f32>(65.0 / 255.0, 128.0 / 255.0, 175.0 / 255.0);
         if !is_ocean_water {
-            color_flat = vec3<f32>(55.0 / 255.0, 135.0 / 255.0, 168.0 / 255.0);
+            // Fresh teal/cyan inland water (lakes & rivers) contrasting clearly with land
+            color_flat = vec3<f32>(52.0 / 255.0, 160.0 / 255.0, 196.0 / 255.0);
         }
 
         terrain_color = vec4<f32>(color_flat, 1.0);
@@ -222,7 +223,7 @@ fn shade_map(in: VertexOutput) -> vec3<f32> {
         let elevation_shading = 0.82 + 0.28 * height_factor; // Brighten peaks, shadow valleys
         base_color = base_color * elevation_shading;
     }
-    if owner_id > 0u {
+    if owner_id > 0u && is_land {
         let albedo = owner_albedo(owner_id);
         
         var opacity = globals.territory_opacity;

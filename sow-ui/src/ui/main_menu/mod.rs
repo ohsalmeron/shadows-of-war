@@ -445,7 +445,7 @@ fn draw_home(
                 let gear = crate::widgets::ThemeButton::new("⚙")
                     .style(crate::widgets::ThemeButtonStyle::Tertiary)
                     .min_size(egui::vec2(gear_w, id_header_h))
-                    .text_size((20.0 * scale).clamp(16.0, 20.0));
+                    .text_size((24.0 * scale).clamp(18.0, 24.0));
                 if ui.add(gear).clicked() {
                     *action = Some(UiAction::ToggleSettings);
                 }

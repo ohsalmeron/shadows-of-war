@@ -40,7 +40,31 @@ impl SowEngine {
                 for pid in due {
                     let mut rng =
                         WyRand::new(seed.wrapping_add(pid as u64).wrapping_add(now));
-                    if let Some((sx, sy)) = self.find_valid_spawn(&mut rng) {
+                    // OF teamSpawnArea parity: team ghosts spawn inside their
+                    // map half (Red left, Blue right) — zone is cohesion, the
+                    // member floor is separation. Ring/anchor are fallbacks
+                    // only when the zone can't place them. (The world-map
+                    // path lands here: random_spawn=false, so spawn_human
+                    // never places anyone.)
+                    let team = self
+                        .state
+                        .players
+                        .iter()
+                        .find(|p| p.id == pid)
+                        .and_then(|p| p.team.clone());
+                    let spawn_point = team
+                        .as_ref()
+                        .map(|t| self.team_spawn_area(t))
+                        .and_then(|area| self.find_spawn_in_area(&mut rng, area))
+                        .or_else(|| {
+                            team.as_ref()
+                                .and_then(|t| self.team_centroid(t))
+                                .and_then(|(cx, cy)| {
+                                    self.find_valid_spawn_near(&mut rng, cx, cy, 12, 36)
+                                })
+                        })
+                        .or_else(|| self.find_valid_spawn(&mut rng));
+                    if let Some((sx, sy)) = spawn_point {
                         self.state.place_spawn(pid, sx, sy);
                     }
                 }
@@ -60,7 +84,18 @@ impl SowEngine {
                 for pid in unspawned {
                     use wyrand::WyRand;
                     let mut rng = WyRand::new(self.state.seed.wrapping_add(pid as u64));
-                    if let Some((sx, sy)) = self.find_valid_spawn(&mut rng) {
+                    // Teamed stragglers (incl. real humans) land in their
+                    // team's half too — the team must not split at spawn.
+                    let spawn_point = self
+                        .state
+                        .players
+                        .iter()
+                        .find(|p| p.id == pid)
+                        .and_then(|p| p.team.clone())
+                        .map(|t| self.team_spawn_area(&t))
+                        .and_then(|area| self.find_spawn_in_area(&mut rng, area))
+                        .or_else(|| self.find_valid_spawn(&mut rng));
+                    if let Some((sx, sy)) = spawn_point {
                         self.state.place_spawn(pid, sx, sy);
                         log::info!("Auto-spawned missing player {} at {}, {}", pid, sx, sy);
                     }

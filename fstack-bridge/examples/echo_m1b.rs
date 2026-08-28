@@ -114,7 +114,7 @@ async fn bridge_worker() {
                         }
                     }
                     let generation = *gens.get(&fd).unwrap_or(&0);
-                    if tx.push(Cmd::Send { fd, generation, buf }).is_err() {
+                    if tx.push(Cmd::Send { fd, generation, buf, tx_pending: None }).is_err() {
                         eprintln!("[tokio] TX ring full — dropping send for fd={}", fd);
                     }
                     drop(guard); // recycles the DPDK mbuf on the ff_run thread

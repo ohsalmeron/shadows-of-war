@@ -16,12 +16,16 @@ CRATES: dict[str, set[Path]] = {
         ROOT / "sow-client" / "src" / "render" / "frame" / "ui.rs",
         ROOT / "sow-client" / "src" / "render" / "interact" / "context_menu" / "build_popover.rs",
         ROOT / "sow-client" / "src" / "render" / "world" / "nameplates" / "render.rs",
+        # HUD shell bridge grew past 750 with full menu/HUD DOM controller.
+        ROOT / "sow-client" / "src" / "web_menu.rs",
     },
     "sow-render": set(),
     "sow-core": {
         ROOT / "sow-core" / "src" / "intent" / "nation" / "tests.rs",
         # Local-only deterministic AI tier contracts (#[cfg(test)], not shipped).
         ROOT / "sow-core" / "src" / "intent" / "nation" / "bot_lab.rs",
+        # AI intent grew past 750 with tier profiles + structures/combat modules.
+        ROOT / "sow-core" / "src" / "intent" / "nation" / "combat.rs",
     },
     "sow-data": {
         ROOT / "sow-data" / "src" / "colors" / "premium_colors.rs",

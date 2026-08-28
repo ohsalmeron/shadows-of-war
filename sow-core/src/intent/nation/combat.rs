@@ -78,6 +78,15 @@ impl SowEngine {
                     });
                 }
 
+                // D1 — OpenFront `sendBoatAttackToNearbyTerraNullius` parity:
+                // with no free land on our own frontier, cross water to the
+                // nearest neutral shores. Free like land expansion (growth,
+                // not war); every tier including passive tribes — neutral
+                // never means combat.
+                if !has_neutral && self.try_expansion_boat(bot_id, decisions) {
+                    return;
+                }
+
                 let trigger_ratio = slot.profile.trigger_ratio;
                 let reserve_ratio = slot.profile.reserve_ratio;
                 let expand_ratio = slot.profile.expand_ratio;
@@ -156,13 +165,19 @@ impl SowEngine {
                 // no neutral left) has no land move at all, so it may launch
                 // portless: idle "comfortable" ghosts must never happen.
                 let enclosed = !has_neutral && targets.is_empty();
+                // Portless breakout is tier-blind: an enclosed Nation starves
+                // exactly like an enclosed Ghost (islands = zero land actions).
+                // Vanilla tribes stay excluded (passive by design).
                 if can_fleet
-                    && (has_port || (slot.tier == AiTier::Ghost && enclosed))
+                    && (has_port || (enclosed && slot.tier != AiTier::Tribe))
                     && troops >= max_troops * 0.20
                     && (self.state.tick + bot_id as u64).is_multiple_of(24)
                 {
+                    let boat_send = (troops - (max_troops * 0.05)).max(0.0);
                     let mut best_target_p_id = None;
+                    let mut best_overall_p_id = None;
                     let mut min_troops = f64::MAX;
+                    let mut min_overall = f64::MAX;
                     for p in &self.state.players {
                         if p.alive && p.id != bot_id {
                             let is_friendly = {
@@ -170,11 +185,33 @@ impl SowEngine {
                                 p_me.alliances.contains(&p.id)
                                     || (p_me.team.is_some() && p_me.team == p.team)
                             };
-                            if !is_friendly && p.troops < min_troops && !p.border_tiles.is_empty() {
-                                min_troops = p.troops;
-                                best_target_p_id = Some(p.id);
+                            if !is_friendly && !p.border_tiles.is_empty() {
+                                if p.troops < min_overall {
+                                    min_overall = p.troops;
+                                    best_overall_p_id = Some(p.id);
+                                }
+                                // Same odds discipline as land initiation: no
+                                // boat suicide into a dwarfing target.
+                                let p_troops = p.troops.max(0.0);
+                                let p_is_tribe =
+                                    p.player_type == crate::player::PlayerType::Bot;
+                                let odds_ok = if p_is_tribe {
+                                    boat_send >= p_troops * 2.0
+                                } else {
+                                    boat_send >= p_troops * 0.20
+                                };
+                                if odds_ok && p.troops < min_troops {
+                                    min_troops = p.troops;
+                                    best_target_p_id = Some(p.id);
+                                }
                             }
                         }
+                    }
+                    if best_target_p_id.is_none() {
+                        // Enclosed with no odds-passing target: a desperate
+                        // breakout beats idling — idle enclosed bots must
+                        // never happen (the D2 contract).
+                        best_target_p_id = best_overall_p_id.filter(|_| enclosed);
                     }
                     if let Some(target_p_id) = best_target_p_id {
                         let mut route_resolved = false;
@@ -343,8 +380,99 @@ impl SowEngine {
                 // land but never target another player). Active tiers may
                 // initiate once their trigger threshold is reached.
                 let can_initiate = slot.profile.attacks_players;
+                let (mut target_owner, mut is_neutral) = (target_owner, is_neutral);
+
+                // OF odds discipline (AiAttackBehavior parity) — initiation
+                // only; defense and retaliation stay exempt:
+                //   · vs tribes (`calculateBotAttackTroops`): strike with 4×
+                //     the tribe's troops; if we can't afford that, our
+                //     affordable wave must still be ≥2× or we bank —
+                //     half-hearted pokes at food are how tribes balloon.
+                //   · vs real players (`isAttackTooWeak`): never initiate with
+                //     less than 20% of the target's troops; bleeding into a
+                //     prepared defense (tile cost scales with the defender's
+                //     TOTAL troops) only feeds the pile-on.
+                //   · blocked with free land adjacent: grow instead (OF
+                //     expansions precede wars) — never frozen.
+                // Affordability keys on the STANDING ARMY, not max_troops:
+                // max grows with territory while troops trail it for most of
+                // the match, so a max-based reserve zeroes out every war
+                // decision mid-expansion (OF can key on max — its armies sit
+                // near cap).
+                let mut odds_send: Option<f64> = None;
+                // Team games are exempt from the PLAYER-target odds gates —
+                // OF parity: troopSendCap/isAttackTooWeak return
+                // Infinity/false when teammates back the attack. The tribe
+                // window applies everywhere (tribes are the map's food).
+                let is_team_game = self.state.config.game_mode != "FFA";
+                if !is_neutral && !is_defending && bot_iq >= 130 {
+                    let (target_troops, target_is_tribe) = self
+                        .state
+                        .player(target_owner)
+                        .map(|p| {
+                            (
+                                p.troops.max(0.0),
+                                p.player_type == crate::player::PlayerType::Bot,
+                            )
+                        })
+                        .unwrap_or((0.0, false));
+                    // Tribe targets: NO affordability floor. Tribes sit AT
+                    // their troop cap (they never spend) while nations sit
+                    // far below theirs (sweeps drain troops and every
+                    // conquest raises max), so any troops-ratio window — OF's
+                    // 2× included — structurally favors the tribe and
+                    // re-freezes the map mid-game. The 4× sizing caps the
+                    // send; the conquest math (5:1 → max power at 1×) makes
+                    // even parity waves grind territory. FFA discipline stays
+                    // for PLAYER targets only, and team games are exempt
+                    // (OF: troopSendCap/isAttackTooWeak are FFA-only).
+                    let affordable =
+                        troops * (1.0 - slot.profile.reserve_ratio);
+                    let committed = if target_is_tribe {
+                        Some((target_troops * 4.0).min(affordable))
+                    } else if is_team_game
+                        || (affordable >= target_troops * 0.20 && target_troops < troops)
+                    {
+                        Some(affordable)
+                    } else if let Some(tribe_alt) = targets.iter().copied().find(|id| {
+                        self.state
+                            .player(*id)
+                            .map(|p| p.player_type == crate::player::PlayerType::Bot)
+                            .unwrap_or(false)
+                    }) {
+                        // Odds-locked player target (FFA): swing at a tribe
+                        // neighbor instead of banking — the attrition war on
+                        // tribes is always open, and picking a locked target
+                        // used to stall the whole AI while an attackable
+                        // tribe sat on the same border.
+                        let tt = self
+                            .state
+                            .player(tribe_alt)
+                            .map(|p| p.troops.max(0.0))
+                            .unwrap_or(0.0);
+                        target_owner = tribe_alt;
+                        Some((tt * 4.0).min(affordable))
+                    } else {
+                        None
+                    };
+                    match committed {
+                        Some(s) => odds_send = Some(s),
+                        None if has_neutral => {
+                            target_owner = 0;
+                            is_neutral = true;
+                        }
+                        None => return, // bank and accumulate for the real push
+                    }
+                }
+
+                // A committed odds decision IS the war trigger — the classic
+                // trigger ratio keys on max_troops, which explodes with
+                // territory while troops trail it, so mid-expansion nations
+                // could never pass it (they only wared true-late).
+                let odds_committed = odds_send.is_some();
                 if is_neutral
                     || is_defending
+                    || odds_committed
                     || (can_initiate && troops >= max_troops * trigger_ratio)
                 {
                     let reserve = max_troops
@@ -357,11 +485,14 @@ impl SowEngine {
                             reserve_ratio
                         };
                     let is_standard_bot = slot.tier == AiTier::Tribe;
-                    let p_send = if is_standard_bot && !is_neutral && !is_defending {
+                    let mut p_send = if is_standard_bot && !is_neutral && !is_defending {
                         (troops / 4.0).max(0.0)
                     } else {
                         (troops - reserve).max(0.0)
                     };
+                    if let Some(s) = odds_send {
+                        p_send = s;
+                    }
                     if p_send >= self.state.config.attack_cost_neutral {
                         // Neutral expansion is GROWTH, not war: it must stay
                         // free of the iq budget, or a high-cadence bot drains
@@ -388,6 +519,91 @@ impl SowEngine {
                 }
             }
         }
+    }
+
+    /// OpenFront `sendBoatAttackToNearbyTerraNullius` parity: probe random
+    /// neutral land tiles and sail an expansion wave to the first reachable
+    /// one. No port, no player target, no iq cost — pure growth.
+    pub(super) fn try_expansion_boat(
+        &mut self,
+        bot_id: u16,
+        decisions: &mut Vec<BotDecision>,
+    ) -> bool {
+        use crate::rng::NextIntExt;
+        use crate::warp_fleet::resolve_fleet_route;
+        use wyrand::WyRand;
+
+        let Some(p0) = self.state.player(bot_id) else {
+            return false;
+        };
+        let (troops, max_troops) = (p0.troops, p0.max_troops);
+        let (width, height) = (self.state.map.width, self.state.map.height);
+        let reserve = max_troops * 0.10; // OF expandRatio band (10–20%)
+        let send = (troops - reserve).max(0.0);
+        if send < self.state.config.attack_cost_neutral {
+            return false;
+        }
+        if std::env::var("SOW_AI_DEBUG").is_ok() {
+            eprintln!("TNBOAT enter id={bot_id} troops={troops:.0}");
+        }
+        let border = p0.border_tiles.clone();
+        let mut rng = WyRand::new(
+            self.state
+                .seed
+                .wrapping_add(bot_id as u64)
+                .wrapping_mul(0x9E3779B97F4A7C15)
+                .wrapping_add(self.state.tick as u64),
+        );
+        for sample in 0..8 {
+            let tx = rng.next_int(0, width as i32).max(0) as u32;
+            let ty = rng.next_int(0, height as i32).max(0) as u32;
+            let owner = self.state.map.owner_id(tx, ty);
+            let is_land = self.state.map.terrain[self.state.map.ref_id(tx, ty)].is_land();
+            if std::env::var("SOW_AI_DEBUG").is_ok() {
+                eprintln!("SMP id={bot_id} tick={} s={sample} t=({tx},{ty}) owner={owner} land={is_land}", self.state.tick);
+            }
+            if owner != 0 {
+                continue;
+            }
+            if !is_land {
+                continue;
+            }
+            if std::env::var("SOW_AI_DEBUG").is_ok() {
+                eprintln!("TNBOAT sample hit t={}", self.state.tick);
+            }
+            let route = resolve_fleet_route(
+                &self.state.map,
+                &self.water,
+                &mut self.path_scratch,
+                bot_id,
+                (0, ty * width + tx),
+                &border,
+                None,
+            );
+            if std::env::var("SOW_AI_DEBUG").is_ok() {
+                eprintln!(
+                    "ROUTE t={} target=({tx},{ty}) ok={} err={:?}",
+                    self.state.tick,
+                    route.is_ok(),
+                    route.as_ref().err()
+                );
+            }
+            if route.is_ok() {
+                if let Some(p) = self.state.player_mut(bot_id) {
+                    p.troops -= send;
+                }
+                decisions.push(BotDecision {
+                    bot_id,
+                    kind: BotDecisionKind::Attack,
+                    intent: GameplayIntent::LaunchFleet {
+                        target_tile: ty * width + tx,
+                        troops: Some(send),
+                    },
+                });
+                return true;
+            }
+        }
+        false
     }
 
     pub(super) fn maybe_launch_nuke(

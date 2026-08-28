@@ -1243,7 +1243,7 @@ fn assemble_release(
         ("server", file_sha256(&work.join("bin/sow-server"))?),
         ("database", file_sha256(&work.join("bin/sow-database"))?),
         ("ops", component_hash(&work.join("ops"))?),
-        ("relay", component_hash(&work.join("relay"))?),
+        ("relay", relay_component_hash(&work.join("relay"))?),
     ];
     let component_text = components
         .iter()
@@ -1281,14 +1281,54 @@ fn assemble_release(
     fs::create_dir_all(&releases)?;
     let dir = releases.join(&id);
     if dir.exists() {
-        fs::remove_dir_all(&dir)?;
+        let _ = fs::remove_dir_all(&dir);
     }
-    fs::rename(&work, &dir)?;
+    if let Err(_) = fs::rename(&work, &dir) {
+        if dir.exists() {
+            let _ = fs::remove_dir_all(&dir);
+        }
+        copy_dir(&work, &dir)?;
+        let _ = fs::remove_dir_all(&work);
+    }
     Ok(Release {
         id,
         version: version.to_string(),
         dir,
     })
+}
+
+/// Relay component hash with the git-revision stamp normalized out: the
+/// revision changes on every commit and used to force relay redeploys
+/// (worker drain included) with byte-identical binaries.
+fn relay_component_hash(relay: &Path) -> Result<String> {
+    use sha2::{Digest, Sha256};
+    let mut files: Vec<_> = walkdir::WalkDir::new(relay)
+        .into_iter()
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    files.retain(|entry| entry.file_type().is_file());
+    files.sort_by_key(|entry| entry.path().to_path_buf());
+    let mut hash = Sha256::new();
+    for entry in files {
+        hash.update(entry.path().strip_prefix(relay)?.to_string_lossy().as_bytes());
+        let mut bytes = fs::read(entry.path())?;
+        if entry
+            .path()
+            .file_name()
+            .map_or(false, |n| n.to_string_lossy().contains("override"))
+        {
+            let text = String::from_utf8_lossy(&bytes).to_string();
+            let normalized: String = text
+                .lines()
+                .map(|line| match line.find("SOW_RELAY_GIT=") {
+                    Some(idx) => format!("{}SOW_RELAY_GIT=NORM\n", &line[..idx]),
+                    None => format!("{line}\n"),
+                })
+                .collect();
+            bytes = normalized.into_bytes();
+        }
+        hash.update(&bytes);
+    }
+    Ok(format!("{:x}", hash.finalize()))
 }
 
 fn component_hash(path: &Path) -> Result<String> {

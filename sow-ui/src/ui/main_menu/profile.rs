@@ -225,14 +225,47 @@ pub fn draw_user_profile_header(
                 }
             }
 
-            ui.label(
-                egui::RichText::new(format!(
-                    "Lv {} · {} XP · ✦{}",
-                    state.account_level, state.account_xp, state.laurels
+            let prog_frame = egui::Frame::NONE
+                .fill(egui::Color32::from_rgba_unmultiplied(26, 30, 40, 200))
+                .stroke(Stroke::new(
+                    1.0_f32,
+                    egui::Color32::from_rgba_unmultiplied(243, 177, 43, 80),
                 ))
-                .font(egui::FontId::monospace(11.0))
-                .color(sow_ui_kit::theme::palette::text_muted()),
-            );
+                .corner_radius(egui::CornerRadius::same(6))
+                .inner_margin(egui::Margin::symmetric(8, 4));
+            prog_frame.show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    ui.label(
+                        egui::RichText::new(format!("LV {}", state.account_level))
+                            .font(egui::FontId::proportional(12.0))
+                            .strong()
+                            .color(egui::Color32::WHITE),
+                    );
+                    ui.label(
+                        egui::RichText::new("·")
+                            .font(egui::FontId::proportional(12.0))
+                            .color(sow_ui_kit::theme::palette::text_muted()),
+                    );
+                    ui.label(
+                        egui::RichText::new(format!("{} XP", state.account_xp))
+                            .font(egui::FontId::proportional(12.0))
+                            .strong()
+                            .color(sow_ui_kit::theme::palette::neon_cyan()),
+                    );
+                    ui.label(
+                        egui::RichText::new("·")
+                            .font(egui::FontId::proportional(12.0))
+                            .color(sow_ui_kit::theme::palette::text_muted()),
+                    );
+                    ui.label(
+                        egui::RichText::new(format!("✦ {}", state.laurels)) // emoji-ok
+                            .font(egui::FontId::proportional(12.0))
+                            .strong()
+                            .color(sow_ui_kit::theme::palette::neon_gold()),
+                    );
+                });
+            });
         });
     });
 }

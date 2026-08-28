@@ -264,6 +264,9 @@ impl SowEngine {
                             if self.state.map.owner_id(nx, ny) != execution.target_owner {
                                 continue;
                             }
+                            if !self.state.map.terrain[self.state.map.ref_id(nx, ny)].is_land() {
+                                continue;
+                            }
 
                             // How many tiles bordering (nx, ny) are owned by the attacker?
                             let mut num_owned_by_me = 0;

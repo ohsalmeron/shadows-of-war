@@ -405,22 +405,31 @@ pub(crate) fn render(
             // axis, sitting flush on its top edge — zero margin, never overlapping.
             if let Some(&rank_1based) = rank_of.get(&player.id) {
                 if rank_1based <= 3 {
-                    let (icon, tint) = match rank_1based {
-                        1 => ("👑", egui::Color32::from_rgb(250, 204, 21)),
-                        2 => ("🥈", egui::Color32::from_rgb(203, 213, 225)),
-                        _ => ("🥉", egui::Color32::from_rgb(217, 119, 6)),
+                    let (icon, tint_arr, tint_col) = match rank_1based {
+                        1 => ("👑", [250.0 / 255.0, 204.0 / 255.0, 21.0 / 255.0, 1.0], egui::Color32::from_rgb(250, 204, 21)),
+                        2 => ("🥈", [203.0 / 255.0, 213.0 / 255.0, 225.0 / 255.0, 1.0], egui::Color32::from_rgb(203, 213, 225)),
+                        _ => ("🥉", [217.0 / 255.0, 119.0 / 255.0, 6.0 / 255.0, 1.0], egui::Color32::from_rgb(217, 119, 6)),
                     };
                     let rank_rect = egui::Rect::from_center_size(
                         egui::pos2(center.x, avatar_cy - avatar_size / 2.0 - badge_size / 2.0),
                         egui::vec2(badge_size, badge_size),
                     );
-                    if !sow_ui_kit::widgets::try_paint_emoji(painter, icon, rank_rect, tint) {
+                    let rank_gpu = gfx.text_renderer.as_mut().is_some_and(|tr| {
+                        tr.push_emoji(
+                            icon,
+                            [rank_rect.center().x * sf, rank_rect.center().y * sf],
+                            rank_rect.height() * 0.5 * sf,
+                            tint_arr,
+                            ([0.0, 0.0, 0.0, 0.9], 1.5 * sf, 1.5 * sf),
+                        )
+                    });
+                    if !rank_gpu && !sow_ui_kit::widgets::try_paint_emoji(painter, icon, rank_rect, tint_col) {
                         painter.text(
                             rank_rect.center(),
                             egui::Align2::CENTER_CENTER,
                             icon,
                             egui::FontId::proportional(badge_size * 0.7),
-                            tint,
+                            tint_col,
                         );
                     }
                 }
@@ -432,7 +441,16 @@ pub(crate) fn render(
                     egui::pos2(left_x, avatar_cy),
                     egui::vec2(badge_size, badge_size),
                 );
-                if !sow_ui_kit::widgets::try_paint_emoji(
+                let star_gpu = gfx.text_renderer.as_mut().is_some_and(|tr| {
+                    tr.push_emoji(
+                        "⭐",
+                        [star_rect.center().x * sf, star_rect.center().y * sf],
+                        star_rect.height() * 0.5 * sf,
+                        [1.0; 4],
+                        ([0.0, 0.0, 0.0, 0.9], 1.5 * sf, 1.5 * sf),
+                    )
+                });
+                if !star_gpu && !sow_ui_kit::widgets::try_paint_emoji(
                     painter,
                     "⭐",
                     star_rect,

@@ -1,9 +1,9 @@
-:root { --bg: #0a0a0e; --surface: #12121a; --ink: #f0f0f8; --muted: #9090a8; --line: #2a2a39; --orange: #ff5500; --font: 'Work Sans', system-ui, sans-serif; --mono: 'Work Sans', system-ui, sans-serif; }
+:root { --bg: #0a0a0e; --surface: #12121a; --ink: #f0f0f8; --muted: #9090a8; --line: #2a2a39; --orange: #ff5500; --font: 'Work Sans', system-ui, sans-serif; --mono: 'Work Sans', system-ui, sans-serif; --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px); --sal: env(safe-area-inset-left, 0px); --sar: env(safe-area-inset-right, 0px); }
 html[data-theme="light"] { --bg: #f5f0e6; --surface: #ede7d8; --ink: #0f0f0f; --muted: #684e40; --line: #0f0f0f; --orange: #ff7a00; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.7 var(--font); }
 a { color: var(--orange); }
-.legal-wrap { width: min(760px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0 80px; }
+.legal-wrap { width: min(760px, calc(100% - 32px - var(--sal) - var(--sar))); margin: 0 auto; padding: max(32px, var(--sat)) 0 max(80px, var(--sab)); }
 .legal-nav { display: flex; justify-content: space-between; align-items: center; padding-bottom: 28px; border-bottom: 1px solid var(--line); }
 .legal-brand { color: var(--ink); font: 800 14px/1 'Work Sans', system-ui, sans-serif; letter-spacing: .1em; text-decoration: none; text-transform: uppercase; }
 .legal-brand span { color: var(--orange); }
@@ -17,4 +17,4 @@ h2 { margin: 0 0 13px; font: 800 22px/1.05 'Work Sans', system-ui, sans-serif; t
 p { margin: 0 0 14px; color: var(--muted); }
 li { margin: 8px 0; color: var(--muted); }
 footer { margin-top: 55px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font: 10px/1.6 var(--mono); text-transform: uppercase; }
-@media (max-width: 600px) { .legal-wrap { padding-top: 20px; } h1 { margin-top: 32px; } }
+@media (max-width: 600px) { .legal-wrap { width: min(100% - 24px - var(--sal) - var(--sar), 760px); padding-top: max(20px, var(--sat)); } .legal-nav a, article a, footer a { display: inline-flex; align-items: center; min-height: 44px; } footer a { justify-content: center; min-width: 44px; } h1 { margin-top: 32px; } }

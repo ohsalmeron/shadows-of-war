@@ -114,7 +114,10 @@ fn build_lab(w: u32, h: u32, mode: &str, specs: &[LabPlayer]) -> SowEngine {
                 [0.2, 0.5, 1.0],
                 &crate::game_config::GameConfig::default(),
             ),
-            PlayerType::Nation => Player::new_bot(
+            // Nations MUST be PlayerType::Nation (new_nation) — new_bot mints
+            // Bot-type players, which resolve to the TRIBE tier and silently
+            // turn every lab "nation" into a passive tribe with high IQ.
+            PlayerType::Nation => Player::new_nation(
                 spec.id,
                 format!("N{}", spec.id),
                 [0.8, 0.4, 0.1],
@@ -167,6 +170,25 @@ fn run_window(engine: &mut SowEngine, ticks: u64) -> bool {
     true
 }
 
+/// Grant `owner` a w×h land block. Territory is the only scale lever in the
+/// lab: absolute troop specs get clamped down to the 1-tile cap on the first
+/// income tick (max_troops derives from tile_count), so "big vs small" must
+/// be expressed as granted land.
+fn grant_block(engine: &mut SowEngine, owner: u16, x0: u32, y0: u32, w: u32, h: u32) {
+    let map_w = engine.state.map.width;
+    for y in y0..y0 + h {
+        for x in x0..x0 + w {
+            engine.state.map.set_owner_id(x, y, owner);
+            if let Some(p) = engine.state.player_mut(owner) {
+                p.tile_count += 1;
+                p.sum_x += x as u64;
+                p.sum_y += y as u64;
+                p.border_insert(y * map_w + x);
+            }
+        }
+    }
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // S1 — Ghost isolated on free land keeps expanding until domination/victory.
 // ──────────────────────────────────────────────────────────────────────────
@@ -176,7 +198,6 @@ fn s1_isolated_ghost_expands_until_victory() {
     let tribe = LabPlayer::tribe(2, 9, 9);
     let mut engine = build_lab(10, 10, "FFA", &[ghost, tribe]);
 
-    let start = tiles(&engine, 1);
     let mut reached_end = true;
     for window in 0..MAX_WINDOWS {
         let before = tiles(&engine, 1);
@@ -234,7 +255,6 @@ fn s2_armed_ghost_presses_player_over_neutral() {
 // alive=true, owner(3,3)=2, single ATT owner=2 target=0 in flight.
 // ──────────────────────────────────────────────────────────────────────────
 #[test]
-#[ignore = "known bug: enclosure-capture eats player tiles (game.rs set_tile_owner cascade); waiting for design ruling"]
 fn s3_vanilla_tribe_passive_but_growing() {
     let human = LabPlayer {
         id: 1,
@@ -384,7 +404,7 @@ fn s5_enclosed_coastal_ghost_breaks_out_by_sea() {
     //   Blue island (team BLUE): ghost + ally packed side by side (top-left)
     //   Red island: lone enemy nation (bottom-right)
     let blue_team = Some(Team::Blue);
-    let mut mk = |id: u16, kind, ai: bool, iq: u32, x: u32, y: u32, team| {
+    let mk = |id: u16, kind, ai: bool, iq: u32, x: u32, y: u32, team| {
         let mut p = if kind == PlayerType::Human {
             Player::new_human(
                 id,
@@ -552,7 +572,6 @@ fn s9_cluster_lobby_stall_emergence() {
         .iter()
         .map(|s| (s.id, tiles(&engine, s.id)))
         .collect();
-    let alive_start = specs.len();
 
     let mut prev_counts = start.clone();
     for window in 0..MAX_WINDOWS {
@@ -621,6 +640,134 @@ fn s9_cluster_lobby_stall_emergence() {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
+// S11 — ENDGAME REPRO: world fully partitioned, ZERO neutral land, everyone
+// armed (the user's screenshot state). Only path to growth is WAR against a
+// neighbor. A bot that "wants to win" must keep fighting; freezing here is
+// the exact live complaint. Runs at full sim speed (no clock, engine.tick()
+// back-to-back) in release mode.
+// ──────────────────────────────────────────────────────────────────────────
+#[test]
+fn s11_partitioned_world_war_keeps_flowing() {
+    use crate::maps::{load_map_from_payload, WORLD_MAP_BYTES};
+
+    let mapfile = load_map_from_payload(WORLD_MAP_BYTES).expect("world map decodes");
+    let (mw, mh) = (mapfile.width, mapfile.height);
+
+    let mut game = GameState::new(7, mw, mh, crate::game_config::GameConfig::default());
+    game.phase = GamePhase::Playing;
+    game.config.game_mode = "FFA".to_string();
+    game.config.map_control_win_percentage = 2.0;
+    game.map.terrain = mapfile
+        .terrain
+        .iter()
+        .map(|b| crate::map::MapTile::from_byte(*b))
+        .collect();
+
+    // SIX empires on REAL land — sampled from the map's own spawn table
+    // (guaranteed land, spread across continents).
+    let stride = ((mapfile.spawns.len() as f32) / 6.0).ceil().max(1.0) as usize;
+    let homes: Vec<(u32, u32)> = mapfile
+        .spawns
+        .iter()
+        .step_by(stride)
+        .take(6)
+        .map(|sp| (sp.x.min(mw - 1), sp.y.min(mh - 1)))
+        .collect();
+    assert!(homes.len() == 6, "need 6 land spawns, got {}", homes.len());
+    let mut lookup: Vec<Option<usize>> = vec![None];
+    for (i, item) in homes.iter().enumerate() {
+        let (hx, hy) = *item;
+        let id = (i + 1) as u16;
+        let mut p = Player::new_human(
+            id,
+            format!("E{id}"),
+            [0.3, 0.6, 1.0],
+            &crate::game_config::GameConfig::default(),
+        );
+        p.is_ai_controlled = true; // ghost-tier brain
+        p.iq = 170;
+        p.iq_points = 400.0;
+        p.troops = 15_000.0;
+        p.max_troops = 30_000.0;
+        p.gold = 200_000.0;
+        p.tile_count = 1;
+        p.border_insert(hy * mw + hx);
+        lookup.push(Some(i));
+        game.players.push(p);
+        game.map.set_owner_id(hx, hy, id);
+    }
+    game.player_lookup = lookup;
+
+    let water = WaterComponents::compute(&game.map, |_| {});
+    let mut engine = SowEngine::new(game, water);
+
+    // PHASE A — land-grab: let them fill the world (free neutral expansion).
+    for _ in 0..3000 {
+        if engine.state.phase != GamePhase::Playing {
+            break;
+        }
+        engine.tick();
+    }
+    let neutral_left = (0..mw * mh)
+        .filter(|i| {
+            let t = &engine.state.map.terrain[*i as usize];
+            t.is_land() && engine.state.map.owner_id(i % mw, i / mw) == 0
+        })
+        .count() as u32;
+    let counts: Vec<u32> = (1..=6).map(|id| tiles(&engine, id)).collect();
+    eprintln!(
+        "S11 PHASE-A done: neutral_left={neutral_left} tiles={counts:?} attacks_out={}",
+        engine.attacks.len()
+    );
+
+    // ── Dissect the frozen empire BEFORE window asserts ──
+    {
+        let (nb, neu) = engine.nation_scan_neighbors(6);
+        let p6 = engine.state.player(6).unwrap();
+        eprintln!(
+            "DISSECT p6: tiles={} troops={:.0}/max{:.0} pts={:.0} gold={:.0} nb={:?} neu={} fleets={} border={}",
+            p6.tile_count, p6.troops, p6.max_troops, p6.iq_points, p6.gold,
+            nb, neu, engine.fleets.len(), p6.border_tiles.count_ones()
+        );
+    }
+
+    // PHASE B — the endgame under test: zero neutral. With everyone armed,
+    // border wars MUST keep flowing. Measure activity across 3 windows.
+    let baseline_attacks = engine.state.next_attack_id;
+    for w in 0..3u32 {
+        let before_counts: Vec<u32> = (1..=6).map(|id| tiles(&engine, id)).collect();
+        let before_att = engine.state.next_attack_id;
+        for _ in 0..600 {
+            if engine.state.phase != GamePhase::Playing {
+                break;
+            }
+            engine.tick();
+        }
+        let after_counts: Vec<u32> = (1..=6).map(|id| tiles(&engine, id)).collect();
+        let new_attacks = engine.state.next_attack_id - before_att;
+        eprintln!(
+            "S11 w={w} att_new={new_attacks} before={before_counts:?} after={after_counts:?}"
+        );
+        assert!(
+            new_attacks > 0,
+            "S11 FAIL window {w}: ZERO new attacks with zero neutral — total freeze"
+        );
+    }
+    let _ = baseline_attacks;
+
+    // ── Dissect the frozen empire ──
+    if verbose() {
+        let (nb, neu) = engine.nation_scan_neighbors(6);
+        let p6 = engine.state.player(6).unwrap();
+        eprintln!(
+            "DISSECT p6: tiles={} troops={:.0}/max{:.0} pts={:.0} gold={:.0} nb={:?} neu={} fleets={} border={}",
+            p6.tile_count, p6.troops, p6.max_troops, p6.iq_points, p6.gold,
+            nb, neu, engine.fleets.len(), p6.border_tiles.count_ones()
+        );
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 // S10 — REAL WORLD MAP, prod-shaped roster: the reproduction attempt for the
 // live report "everyone stops expanding mid-game". Uses the bundled world
 // map (oceans/highlands/real terrain), real spawn points from the map file,
@@ -671,7 +818,10 @@ fn s10_real_world_lobby_midgame() {
                 [0.2, 0.5, 1.0],
                 &crate::game_config::GameConfig::default(),
             ),
-            PlayerType::Nation => Player::new_bot(
+            // Nations MUST be PlayerType::Nation (new_nation) — new_bot mints
+            // Bot-type players, which resolve to the TRIBE tier and silently
+            // turn every lab "nation" into a passive tribe with high IQ.
+            PlayerType::Nation => Player::new_nation(
                 spec.id,
                 format!("N{}", spec.id),
                 [0.8, 0.4, 0.1],
@@ -717,7 +867,7 @@ fn s10_real_world_lobby_midgame() {
         let live = run_window(&mut engine, WINDOW_TICKS * 3);
         let mut row = String::new();
         let mut stalls = Vec::new();
-        for (id, base) in &start {
+        for (id, _base) in &start {
             let now = tiles(&engine, *id);
             let prev_v = prev.iter().find(|(pid, _)| pid == id).unwrap().1;
             let grew = now.saturating_sub(prev_v);
@@ -771,5 +921,778 @@ fn s10_real_world_lobby_midgame() {
                 }
             }
         }
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// S12 — D1 PROOF: Vanilla tribe fully owning its island (zero neutral
+// adjacent) must cross water to keep eating free land — no port, no war,
+// no statue. OpenFront sendBoatAttackToNearbyTerraNullius parity.
+// ──────────────────────────────────────────────────────────────────────────
+#[test]
+fn s12_island_tribe_crosses_water_for_neutral() {
+    use crate::water_components::WaterComponents;
+
+    const W: u32 = 20;
+    let mut game = GameState::new(13, W, W, crate::game_config::GameConfig::default());
+    game.phase = GamePhase::Playing;
+    game.config.map_control_win_percentage = 2.0;
+
+    // Ocean everywhere; two islands. Water byte: is_ocean=1 (bit 5) —
+    // compute_shorelines only marks shores against OCEAN, and fleet routes
+    // require shoreline flags on the home coast.
+    for idx in 0..(W * W) as usize {
+        game.map.terrain[idx] = crate::map::MapTile::from_byte(0b0010_0000); // ocean
+    }
+    // Tribe island (0..=3, 0..=3): FULLY owned by the tribe → has_neutral=false.
+    // Free island (14..=19, 14..=19): 36 neutral tiles across the sea.
+    let mut tribe_tiles = 0u32;
+    for y in 0..4u32 {
+        for x in 0..4u32 {
+            let idx = y * W + x;
+            game.map.terrain[idx as usize] = crate::map::MapTile::from_byte(0b1000_0000);
+            game.map.set_owner_id(x, y, 1);
+            tribe_tiles += 1;
+        }
+    }
+    for y in 14..20u32 {
+        for x in 14..20u32 {
+            let idx = y * W + x;
+            game.map.terrain[idx as usize] = crate::map::MapTile::from_byte(0b1000_0000);
+        }
+    }
+
+    let mut tribe = Player::new_bot(
+        1,
+        "IslandTribe".into(),
+        [0.1, 0.8, 0.3],
+        &crate::game_config::GameConfig::default(),
+    );
+    tribe.iq = 60;
+    tribe.iq_points = 200.0;
+    tribe.troops = 5_000.0;
+    tribe.max_troops = 10_000.0;
+    tribe.tile_count = tribe_tiles;
+    // Register every island tile as owned/border (scan needs the ring).
+    for y in 0..4u32 {
+        for x in 0..4u32 {
+            tribe.border_insert(y * W + x);
+        }
+    }
+    game.players.push(tribe);
+
+    // Witness tribe on the free island: keeps the match alive (single-entity
+    // lobbies trigger instant victory) and is a LEGAL Vanilla target (Bot vs
+    // Bot) — exactly how OpenFront tribes interact.
+    let mut witness = Player::new_bot(
+        2,
+        "Witness".into(),
+        [0.9, 0.6, 0.1],
+        &crate::game_config::GameConfig::default(),
+    );
+    witness.iq = 50;
+    // Troopless on purpose: an expanding witness would claim every free tile
+    // of the target island and leave the tribe nothing neutral to sail to.
+    witness.troops = 0.0;
+    witness.max_troops = 0.0;
+    witness.max_troops_cap = Some(0.0);
+    witness.tile_count = 1;
+    witness.border_insert(14 * W + 14);
+    game.players.push(witness);
+    game.player_lookup = vec![None, Some(0), Some(1)];
+    game.map.set_owner_id(14, 14, 2);
+
+    if std::env::var("SOW_LAB_VERBOSE").is_ok() {
+        for y in 0..W {
+            let mut row = String::new();
+            for x in 0..W {
+                let idx = (y * W + x) as usize;
+                let t = if game.map.terrain[idx].is_land() { "L" } else { "~" };
+                let o = game.map.owner_id(x, y);
+                row.push_str(&format!("{t}{o:<2}"));
+            }
+            eprintln!("GRID y={y}: {row}");
+        }
+    }
+
+    game.map.compute_shorelines(); // fixture maps lack the baked shoreline bit
+
+    let water = WaterComponents::compute(&game.map, |_| {});
+
+    if std::env::var("SOW_LAB_VERBOSE").is_ok() {
+        eprintln!("S12 GRID (t=0):");
+        for y in 0..W {
+            let mut row = String::new();
+            for x in 0..W {
+                let idx = (y * W + x) as usize;
+                let t = if game.map.terrain[idx].is_land() { "L" } else { "~" };
+                let o = game.map.owner_id(x, y);
+                row.push_str(&format!("{t}{o:<2}"));
+            }
+            eprintln!("GRID y={y}: {row}");
+        }
+    }
+    let mut engine = SowEngine::new(game, water);
+
+    // Shoreline probe: which border tiles would player_water_components accept?
+    for raw in engine.state.player(1).unwrap().border_tiles.ones() {
+        let idx = raw as usize;
+        let t = &engine.state.map.terrain[idx];
+        let owner = engine.state.map.owner_id(idx as u32 % W, idx as u32 / W);
+        eprintln!(
+            "SHORE idx={raw} owner={owner} land={} shoreline={}",
+            t.is_land(),
+            t.is_shoreline()
+        );
+    }
+
+    let fleet_before = engine.state.next_fleet_id;
+    for t in 0..2500u64 {
+        engine.tick();
+        if t % 100 == 0 || t < 5 {
+            let alive: Vec<u16> = engine
+                .state
+                .players
+                .iter()
+                .filter(|p| p.alive && p.tile_count > 0)
+                .map(|p| p.id)
+                .collect();
+            eprintln!(
+                "S12TRACE t={t} phase={:?} winner={:?} alive={alive:?} t1={} t2={}",
+                engine.state.phase,
+                engine.state.winner,
+                tiles(&engine, 1),
+                tiles(&engine, 2)
+            );
+        }
+    }
+
+    let crossed = tiles(&engine, 1) > tribe_tiles;
+    assert!(
+        engine.state.next_fleet_id > fleet_before || crossed,
+        "S12 FAIL: island tribe never launched an expansion boat"
+    );
+    assert!(
+        crossed,
+        "S12 FAIL: boat launched but tribe never claimed free land across water"
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// S13 — SPAWN PROXIMITY: same-team members cluster around their team
+// centroid (OpenFront teamSpawnArea parity) — never scattered "por ningún
+// lado".
+// ──────────────────────────────────────────────────────────────────────────
+#[test]
+fn s13_team_members_spawn_clustered() {
+    use crate::protocol::Team;
+
+    let mut game = GameState::new(21, 40, 40, crate::game_config::GameConfig::default());
+    game.config.random_spawn = true;
+    for idx in 0..(40 * 40) as usize {
+        game.map.terrain[idx] = crate::map::MapTile::from_byte(0b1000_0000);
+    }
+    let water = WaterComponents::compute(&game.map, |_| {});
+    let mut engine = SowEngine::new(game, water);
+
+    let blues = [1u16, 2, 3, 4];
+    let reds = [5u16, 6];
+    for id in blues {
+        engine
+            .spawn_human(
+                id,
+                format!("B{id}"),
+                [0.2, 0.5, 1.0],
+                Some(Team::Blue),
+                crate::player::Leader::Caesar.civilization(),
+                crate::player::Leader::Caesar,
+                false,
+            );
+    }
+    for id in reds {
+        engine
+            .spawn_human(
+                id,
+                format!("R{id}"),
+                [1.0, 0.2, 0.2],
+                Some(Team::Red),
+                crate::player::Leader::Boudica.civilization(),
+                crate::player::Leader::Boudica,
+                false,
+            );
+    }
+
+    let home = |id: u16| -> (f64, f64) {
+        let p = engine.state.player(id).unwrap();
+        (
+            p.sum_x as f64 / p.tile_count as f64,
+            p.sum_y as f64 / p.tile_count as f64,
+        )
+    };
+    let dist = |a: (f64, f64), b: (f64, f64)| {
+        ((a.0 - b.0).powi(2) + (a.1 - b.1).powi(2)).sqrt()
+    };
+
+    // OF teamSpawnArea parity: each team owns a map half (Red left, Blue
+    // right on the 40x40 lab) and every member spawns inside its zone with
+    // the member floor (≥14) keeping homes apart — zone cohesion plus
+    // breathing room, never stacked.
+    let in_zone = |h: (f64, f64), left: bool| {
+        if left {
+            h.0 < 20.0
+        } else {
+            h.0 >= 20.0
+        }
+    };
+    let blue_homes: Vec<(f64, f64)> = blues.iter().map(|id| home(*id)).collect();
+    for (i, a) in blue_homes.iter().enumerate() {
+        assert!(
+            in_zone(*a, false),
+            "S13 FAIL: Blue member {a:?} spawned outside the Blue half"
+        );
+        for b in blue_homes[i + 1..].iter() {
+            let d = dist(*a, *b);
+            assert!(
+                d >= 12.0,
+                "S13 FAIL: Blue members {a:?}/{b:?} stacked at {d}"
+            );
+        }
+    }
+    let red_homes: Vec<(f64, f64)> = reds.iter().map(|id| home(*id)).collect();
+    for (i, a) in red_homes.iter().enumerate() {
+        assert!(
+            in_zone(*a, true),
+            "S13 FAIL: Red member {a:?} spawned outside the Red half"
+        );
+        for b in red_homes[i + 1..].iter() {
+            let d = dist(*a, *b);
+            assert!(d >= 12.0, "S13 FAIL: Red pair stacked at {d}");
+        }
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// S14 — OF calculateBotAttackTroops parity: nations hunt tribes DECISIVELY.
+//   A) A tribe too big to strike (affordable < 2× its troops) is never
+//      poked — not by land initiation, not by the weakest-player fleet
+//      path. The nation grows on free land instead of bleeding into a
+//      defense that scales with the tribe's TOTAL troops.
+//   B) A tribe within striking range gets the 4×-sized decisive strike
+//      (never a pointless poke) and gets eaten.
+// ──────────────────────────────────────────────────────────────────────────
+#[test]
+fn s14_nation_hunts_tribes_decisively() {
+    // A) big tribe nearby: the attrition war OPENS (no troops-ratio floor —
+    // tribes sit at cap while nations trail theirs, so any ratio bar closes
+    // the window and freezes the map mid-game)
+    {
+        let mut engine = build_lab(
+            90,
+            90,
+            "FFA",
+            &[LabPlayer::nation(1, 10, 10), LabPlayer::tribe(2, 26, 26)],
+        );
+        grant_block(&mut engine, 2, 23, 23, 12, 12); // 144 tiles ≈ 5.2K troops
+        let mut attacked = false;
+        let mut max_nation_tiles = 1u32;
+        for _ in 0..400 {
+            if !run_window(&mut engine, 1) {
+                break;
+            }
+            if engine
+                .attacks
+                .iter()
+                .any(|a| a.owner_id == 1 && a.target_owner == 2)
+            {
+                attacked = true;
+                break;
+            }
+            max_nation_tiles = max_nation_tiles.max(tiles(&engine, 1));
+        }
+        assert!(
+            attacked,
+            "S14 FAIL: nation never opened the attrition war on the big tribe"
+        );
+        assert!(
+            max_nation_tiles > 1 && engine.state.player(1).unwrap().alive,
+            "S14 FAIL: nation froze instead of growing on free land"
+        );
+    }
+    // B) small tribe in range: 4×-sized decisive strike eats it
+    {
+        let mut engine = build_lab(
+            90,
+            90,
+            "FFA",
+            &[LabPlayer::nation(1, 10, 10), LabPlayer::tribe(2, 16, 10)],
+        );
+        grant_block(&mut engine, 1, 8, 8, 5, 5); // nation opens with real scale
+        let mut strike_seen = None;
+        for _ in 0..800 {
+            let pre_tribe_troops = engine.state.player(2).unwrap().troops.max(1.0);
+            if !run_window(&mut engine, 1) {
+                break;
+            }
+            if let Some(a) = engine
+                .attacks
+                .iter()
+                .find(|a| a.owner_id == 1 && a.target_owner == 2)
+            {
+                // Ratio vs the tribe's PRE-STRIKE troops: combat drains the
+                // defender the same tick, so post-hoc ratios overshoot 4×.
+                strike_seen = Some(a.troops / pre_tribe_troops);
+                break;
+            }
+        }
+        if let Some(ratio) = strike_seen {
+            assert!(
+                ratio >= 0.95 && ratio <= 4.05,
+                "S14 FAIL: strike ratio {ratio} — expected the decisive 1×..4× band"
+            );
+        }
+        run_window(&mut engine, 800);
+        assert!(
+            tiles(&engine, 2) == 0 || !engine.state.player(2).unwrap().alive,
+            "S14 FAIL: the decisive strike did not eat the small tribe"
+        );
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// S15 — OF isAttackTooWeak parity: a smart AI never initiates against a
+// neighbor whose troops dwarf its affordable wave (<20%), and never freezes:
+// with free land adjacent it grows instead (OF expansions precede wars).
+// Passive big tribe as the neighbor so no defensive counter-confound.
+// ──────────────────────────────────────────────────────────────────────────
+#[test]
+fn s15_no_suicide_against_dwarfing_player() {
+    // FFA: never initiate against a player neighbor that outguns you (OF
+    // `weakest` + `isAttackTooWeak`). A NATION is the dwarfing neighbor —
+    // tribe neighbors get ground down by attrition unconditionally (S14-A).
+    let mut engine = build_lab(
+        90,
+        90,
+        "FFA",
+        &[LabPlayer::ghost(1, 10, 10), LabPlayer::nation(2, 40, 40)],
+    );
+    grant_block(&mut engine, 2, 36, 36, 9, 9); // ≈2.3K+ troops vs ghost's ~240
+    let mut suicided = false;
+    let mut max_ghost_tiles = 1u32;
+    for _ in 0..200 {
+        if !run_window(&mut engine, 1) {
+            break;
+        }
+        if engine
+            .attacks
+            .iter()
+            .any(|a| a.owner_id == 1 && a.target_owner == 2)
+        {
+            suicided = true;
+            break;
+        }
+        max_ghost_tiles = max_ghost_tiles.max(tiles(&engine, 1));
+    }
+    assert!(
+        !suicided,
+        "S15 FAIL: ghost initiated against a dwarfing neighbor — odds discipline missing"
+    );
+    assert!(
+        max_ghost_tiles > 1,
+        "S15 FAIL: ghost froze behind free land instead of growing"
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// S16 — LONG-HORIZON ECOSYSTEM, high density with symmetric friction
+// (≈6.7 min game time). Sparse open maps snowball; density forces the
+// contested mid-game the docility complaint lives in. Regression-detects the
+// total freeze (windows going quiet) and the gray-carpet win.
+// ──────────────────────────────────────────────────────────────────────────
+#[test]
+fn s16_long_horizon_wars_keep_flowing() {
+    let mut specs: Vec<LabPlayer> = Vec::new();
+    let mut id = 1u16;
+    for row in 0..5 {
+        for col in 0..4 {
+            specs.push(LabPlayer::nation(id, 6 + col * 18, 6 + row * 18));
+            id += 1;
+        }
+    }
+    specs.push(LabPlayer::ghost(id, 40, 40));
+    id += 1;
+    let ghost_id = id - 1;
+    let first_tribe = id;
+    let mut tribes = 0;
+    for row in 0..5 {
+        for col in 0..8 {
+            if tribes >= 40 {
+                break;
+            }
+            let x = 2 + col * 9 + 4;
+            let y = 2 + row * 16 + 9;
+            let clash = specs.iter().any(|s| {
+                (s.x as i32 - x).abs() < 4 && (s.y as i32 - y).abs() < 4
+            });
+            if clash || (x, y) == (40, 40) {
+                continue;
+            }
+            specs.push(LabPlayer::tribe(id, x as u32, y as u32));
+            id += 1;
+            tribes += 1;
+        }
+    }
+    let last_tribe = id - 1;
+
+    let mut engine = build_lab(80, 80, "FFA", &specs);
+    engine.state.config.map_control_win_percentage = 95.0; // never end early
+    for s in &specs {
+        if s.kind == crate::player::PlayerType::Bot {
+            grant_block(
+                &mut engine,
+                s.id,
+                s.x.saturating_sub(2),
+                s.y.saturating_sub(2),
+                5,
+                5,
+            );
+        }
+    }
+
+    let windows = 8;
+    let mut tribe_war_ticks = Vec::new();
+    let mut contacts_log: Vec<u32> = Vec::new();
+    let mut tribe_mass_log: Vec<u32> = Vec::new();
+    for _ in 0..windows {
+        let mut hits = 0u32;
+        for _ in 0..500 {
+            if !run_window(&mut engine, 1) {
+                break;
+            }
+            if engine.attacks.iter().any(|a| {
+                a.owner_id <= ghost_id
+                    && engine
+                        .state
+                        .player(a.target_owner)
+                        .map(|p| p.player_type == crate::player::PlayerType::Bot)
+                        .unwrap_or(false)
+            }) {
+                hits += 1;
+            }
+        }
+        let mut tribes_alive = 0u32;
+        let mut tribe_tiles = 0u32;
+        let mut ai_alive = 0u32;
+        for t in first_tribe..=last_tribe {
+            if let Some(pl) = engine.state.player(t) {
+                if pl.alive {
+                    tribes_alive += 1;
+                    tribe_tiles += pl.tile_count;
+                }
+            }
+        }
+        for a in 1..=ghost_id {
+            if engine.state.player(a).map(|pl| pl.alive).unwrap_or(false) {
+                ai_alive += 1;
+            }
+        }
+        // count AI players with at least one Bot-type neighbor border
+        let mut contacts = 0u32;
+        for a in 1..=ghost_id {
+            let Some(pl) = engine.state.player(a) else { continue };
+            if !pl.alive {
+                continue;
+            }
+            let touches = pl.border_tiles.ones().any(|raw| {
+                let bx = (raw as u32) % engine.state.map.width;
+                let by = (raw as u32) / engine.state.map.width;
+                let mut hit = false;
+                engine.state.map.for_each_neighbor(bx, by, |nx, ny| {
+                    if hit {
+                        return;
+                    }
+                    let o = engine.state.map.owner_id(nx, ny);
+                    if o != 0 && o != pl.id {
+                        if let Some(op) = engine.state.player(o) {
+                            if op.player_type == crate::player::PlayerType::Bot {
+                                hit = true;
+                            }
+                        }
+                    }
+                });
+                hit
+            });
+            if touches {
+                contacts += 1;
+            }
+        }
+        contacts_log.push(contacts);
+        tribe_mass_log.push(tribe_tiles);
+        eprintln!(
+            "S16 W{}: hits={hits} ai_alive={ai_alive} tribes_alive={tribes_alive} tribe_tiles={tribe_tiles} ai-with-tribe-border={contacts}",
+            tribe_war_ticks.len()
+        );
+        tribe_war_ticks.push(hits);
+    }
+    // The freeze signature: tribe borders exist AND tribes still hold real
+    // mass, yet zero wars. (Player-war preference is legitimate; a resolved
+    // map with tribes ground to stubs is not the regress.)
+    for (w, hits) in tribe_war_ticks.iter().enumerate() {
+        if contacts_log[w] > 0 && tribe_mass_log[w] >= 500 {
+            assert!(
+                *hits >= 3,
+                "S16 FAIL: window {w} had {} AIs bordering tribes holding {} tiles but only {hits} tribe-war ticks — docility regress",
+                contacts_log[w], tribe_mass_log[w]
+            );
+        }
+    }
+    let total_land = 80u32 * 80;
+    let mut tribe_tiles_end = 0u32;
+    for t in first_tribe..=last_tribe {
+        if let Some(p) = engine.state.player(t) {
+            tribe_tiles_end += p.tile_count;
+        }
+    }
+    let functioning = (1..=20u16)
+        .filter(|id| {
+            engine
+                .state
+                .player(*id)
+                .map(|p| p.alive && p.tile_count > 50)
+                .unwrap_or(false)
+        })
+        .count();
+    eprintln!(
+        "S16 final: tribe tiles={tribe_tiles_end}/{total_land} nations-functioning={functioning}"
+    );
+    assert!(
+        tribe_tiles_end * 10 < total_land * 8,
+        "S16 FAIL: tribes own {tribe_tiles_end}/{total_land} tiles — gray carpet won"
+    );
+    assert!(
+        functioning >= 1,
+        "S16 FAIL: no AI nation alive & functioning (>50 tiles)"
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// S17 — SPAWNING-PHASE ZONES (the path that actually runs on world maps):
+// random_spawn=false → spawn_human registers WITHOUT position and the engine's
+// Spawning phase places team ghosts. Regression for the option-D miss: the
+// area code shipped into spawn_human while the live path kept the old tight
+// centroid ring (tick.rs:52). Team ghosts + teamed stragglers must land in
+// their own half (Red left, Blue right), never stacked.
+// ──────────────────────────────────────────────────────────────────────────
+#[test]
+fn s17_spawning_phase_team_ghosts_in_zone() {
+    use crate::engine::SowEngine;
+    use crate::game::GamePhase;
+    use crate::water_components::WaterComponents;
+
+    let mut game = GameState::new(23, 60, 60, crate::game_config::GameConfig::default());
+    game.phase = GamePhase::Spawning { end_tick: 12 };
+    game.config.random_spawn = false;
+    for idx in 0..(60 * 60) as usize {
+        game.map.terrain[idx] = crate::map::MapTile::from_byte(0b1000_0000);
+    }
+
+    // Register players WITHOUT positions — the live world-map shape.
+    let mut lookup: Vec<Option<usize>> = vec![None];
+    let roster: Vec<(u16, Option<Team>, bool)> = vec![
+        (1, Some(Team::Blue), true),
+        (2, Some(Team::Blue), true),
+        (3, Some(Team::Blue), true),
+        (4, Some(Team::Blue), true),
+        (5, Some(Team::Red), true),
+        (6, Some(Team::Red), true),
+        (7, Some(Team::Red), false), // real human, red team
+    ];
+    for (i, (id, team, ai)) in roster.iter().enumerate() {
+        let mut p = Player::new_human(
+            *id,
+            format!("P{id}"),
+            [0.5, 0.5, 0.5],
+            &crate::game_config::GameConfig::default(),
+        );
+        p.team = team.clone();
+        p.is_ai_controlled = *ai;
+        game.players.push(p);
+        lookup.push(Some(i));
+    }
+    game.player_lookup = lookup;
+
+    let water = WaterComponents::default();
+    let mut engine = SowEngine::new(game, water);
+    // Drive the Spawning phase manually (run_window gates on Playing), then
+    // a few Playing ticks for good measure.
+    for _ in 0..60 {
+        if engine.state.phase == GamePhase::Playing {
+            break;
+        }
+        engine.tick();
+    }
+    assert_eq!(engine.state.phase, GamePhase::Playing, "S17: phase never ended");
+    assert!(run_window(&mut engine, 5));
+
+    let home = |id: u16| -> (f64, f64) {
+        let p = engine.state.player(id).unwrap();
+        assert!(p.has_spawned, "S17 FAIL: player {id} never spawned");
+        (
+            p.sum_x as f64 / p.tile_count as f64,
+            p.sum_y as f64 / p.tile_count as f64,
+        )
+    };
+    for id in [1u16, 2, 3, 4] {
+        assert!(
+            home(id).0 >= 30.0,
+            "S17 FAIL: blue player {id} spawned outside the Blue half"
+        );
+    }
+    for id in [5u16, 7] {
+        assert!(
+            home(id).0 < 30.0,
+            "S17 FAIL: red player {id} spawned outside the Red half"
+        );
+    }
+    let blues: Vec<(f64, f64)> = [1u16, 2, 3, 4].iter().map(|id| home(*id)).collect();
+    for (i, a) in blues.iter().enumerate() {
+        for b in blues[i + 1..].iter() {
+            let d = ((a.0 - b.0).powi(2) + (a.1 - b.1).powi(2)).sqrt();
+            assert!(d >= 12.0, "S17 FAIL: blue homes {a:?}/{b:?} stacked at {d}");
+        }
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// S18 — WORLD-MAP SPAWN ZONES, the no-excuses repro: real terrain, real geo
+// roster (spawn_ai 128/420), teamed ghosts registered WITHOUT position,
+// real Spawning-phase drive. If a team balls up here, the lab sees it.
+// ──────────────────────────────────────────────────────────────────────────
+#[test]
+fn s18_world_map_team_spawn_zones() {
+    use crate::engine::SowEngine;
+    use crate::game::GamePhase;
+    use crate::maps::{load_map_from_payload, WORLD_MAP_BYTES};
+    use crate::water_components::WaterComponents;
+
+    let mapfile = load_map_from_payload(WORLD_MAP_BYTES).expect("world map decodes");
+    let (mw, mh) = (mapfile.width, mapfile.height);
+
+    let mut game = GameState::new(31, mw, mh, crate::game_config::GameConfig::default());
+    game.phase = GamePhase::Spawning { end_tick: 400 };
+    game.config.random_spawn = false;
+    game.config.game_mode = "Teams".to_string();
+
+    let mut lookup: Vec<Option<usize>> = vec![None];
+    let mut id = 1u16;
+    for (team, n) in [(Team::Red, 8u32), (Team::Blue, 8)] {
+        for _ in 0..n {
+            let mut p = Player::new_human(
+                id,
+                format!("P{id}"),
+                [0.5, 0.5, 0.5],
+                &crate::game_config::GameConfig::default(),
+            );
+            p.team = Some(team);
+            p.is_ai_controlled = true;
+            game.players.push(p);
+            lookup.push(Some((id - 1) as usize)); // player slot, NOT team idx
+            id += 1;
+        }
+    }
+    game.player_lookup = lookup;
+    game.map.terrain = mapfile
+        .terrain
+        .iter()
+        .map(|b| crate::map::MapTile::from_byte(*b))
+        .collect();
+    game.total_land_tiles = mapfile.num_land_tiles;
+
+    let water = WaterComponents::compute(&game.map, |_| {});
+    let mut engine = SowEngine::new(game, water);
+    engine.spawn_ai(128, 420); // the real geo roster, placed before ghosts fire
+
+    for _ in 0..500 {
+        if engine.state.phase == GamePhase::Playing {
+            break;
+        }
+        engine.tick();
+    }
+    assert_eq!(engine.state.phase, GamePhase::Playing, "S18: phase never ended");
+
+    let report = |label: &str, ids: &[u16]| -> (f64, f64, f64) {
+        let homes: Vec<(f64, f64)> = ids
+            .iter()
+            .map(|id| {
+                let p = engine.state.player(*id).unwrap();
+                assert!(p.has_spawned, "S18 FAIL: {label} ghost {id} never spawned");
+                (
+                    p.sum_x as f64 / p.tile_count as f64,
+                    p.sum_y as f64 / p.tile_count as f64,
+                )
+            })
+            .collect();
+        let mut min_d = f64::MAX;
+        for (i, a) in homes.iter().enumerate() {
+            for b in homes[i + 1..].iter() {
+                min_d = min_d.min(((a.0 - b.0).powi(2) + (a.1 - b.1).powi(2)).sqrt());
+            }
+        }
+        let xs: Vec<f64> = homes.iter().map(|h| h.0).collect();
+        let ys: Vec<f64> = homes.iter().map(|h| h.1).collect();
+        let spread = ((xs.iter().cloned().fold(0. / 0., f64::max) - xs.iter().cloned().fold(f64::MAX, f64::min))
+            .hypot(ys.iter().cloned().fold(0. / 0., f64::max) - ys.iter().cloned().fold(f64::MAX, f64::min)));
+        eprintln!(
+            "S18 {label}: homes={:?} min_pair={:.1} bbox_diag={:.1}",
+            homes.iter().map(|h| (h.0 as u32, h.1 as u32)).collect::<Vec<_>>(),
+            min_d,
+            spread
+        );
+        (min_d, spread, xs.iter().cloned().sum::<f64>() / xs.len() as f64)
+    };
+    let red = report("RED", &(1..=8u16).collect::<Vec<_>>());
+    let blue = report("BLUE", &(9..=16u16).collect::<Vec<_>>());
+    let half = mw as f64 / 2.0;
+    assert!(red.2 < half, "S18 FAIL: red centroid {:.0} outside left half ({half})", red.2);
+    assert!(blue.2 >= half, "S18 FAIL: blue centroid {:.0} outside right half ({half})", blue.2);
+    assert!(
+        red.0 >= 12.0 && blue.0 >= 12.0,
+        "S18 FAIL: stacked — red min pair {:.1}, blue min pair {:.1}",
+        red.0,
+        blue.0
+    );
+    // A balled team hugs one spot: bbox diagonal tiny vs the half's size.
+    assert!(
+        red.1 >= mw as f64 * 0.15 && blue.1 >= mw as f64 * 0.15,
+        "S18 FAIL: balled up — red spread {:.0}, blue spread {:.0} (half is {:.0} wide)",
+        red.1,
+        blue.1,
+        half
+    );
+}
+
+#[test]
+fn s18_probe_area_seeds() {
+    use crate::engine::SowEngine;
+    use crate::maps::{load_map_from_payload, WORLD_MAP_BYTES};
+    use wyrand::WyRand;
+
+    let mapfile = load_map_from_payload(WORLD_MAP_BYTES).expect("world map decodes");
+    let (mw, mh) = (mapfile.width, mapfile.height);
+    let mut game = GameState::new(31, mw, mh, crate::game_config::GameConfig::default());
+    game.map.terrain = mapfile
+        .terrain
+        .iter()
+        .map(|b| crate::map::MapTile::from_byte(*b))
+        .collect();
+    let water = crate::water_components::WaterComponents::default();
+    let mut engine = SowEngine::new(game, water);
+    engine.spawn_ai(128, 420);
+
+    let area = engine.team_spawn_area(&Team::Red);
+    eprintln!("S18PROBE red area={area:?} map={mw}x{mh}");
+    for pid in 1..=8u16 {
+        let mut rng = WyRand::new(31u64.wrapping_add(pid as u64).wrapping_add(77));
+        let r = engine.find_spawn_in_area(&mut rng, area);
+        eprintln!("S18PROBE pid={pid} -> {r:?}");
     }
 }

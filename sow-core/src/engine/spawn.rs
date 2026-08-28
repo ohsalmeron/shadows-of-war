@@ -334,7 +334,24 @@ impl SowEngine {
             return;
         }
 
-        if let Some((sx, sy)) = self.find_valid_spawn(&mut rng) {
+        // OF teamSpawnArea parity (GameImpl.ts:960 + per-map manifests): each
+        // team owns a map half (Team {Red, Blue} → Red left, Blue right) and
+        // EVERY member spawns inside it — the zone is the cohesion, the
+        // member floor is the separation. Ring/anchor path kept as fallback.
+        let spawn_point = team
+            .as_ref()
+            .map(|t| self.team_spawn_area(t))
+            .and_then(|area| self.find_spawn_in_area(&mut rng, area))
+            .or_else(|| {
+                team.as_ref()
+                    .and_then(|t| self.team_centroid(t))
+                    .and_then(|(cx, cy)| {
+                        self.find_valid_spawn_near(&mut rng, cx, cy, 12, 36)
+                    })
+            })
+            .or_else(|| self.find_valid_spawn(&mut rng));
+
+        if let Some((sx, sy)) = spawn_point {
             let mut player = Player::new_human(player_id, name, color, &config);
             player.team = team;
             player.civilization = civilization;
@@ -475,6 +492,129 @@ impl SowEngine {
             );
         }
         log::info!("spawn_scripted: placed {}/{}", placed, spawns.len());
+    }
+
+    /// OF teamSpawnArea parity (GameImpl.ts:960 + per-map manifests): each
+    /// team owns a map half — `Team {Red, Blue}` → Red left, Blue right — and
+    /// every member spawns inside it (2 teams → left/right halves, the same
+    /// split OF's manifests hand-author).
+    pub(crate) fn team_spawn_area(
+        &self,
+        team: &crate::protocol::Team,
+    ) -> (u32, u32, u32, u32) {
+        let (w, h) = (self.state.map.width, self.state.map.height);
+        let half = w / 2;
+        match team {
+            crate::protocol::Team::Red => (0, 0, half, h),
+            crate::protocol::Team::Blue => (half, 0, w - half, h),
+        }
+    }
+
+    /// Sample free land inside a team's area, keeping the member floor to
+    /// every other home. If the floor can't be met the area still wins —
+    /// floor is waived and any free land in the zone is taken. Zone cohesion
+    /// outranks spacing; spacing never pushes a member out of its zone.
+    pub(crate) fn find_spawn_in_area(
+        &self,
+        rng: &mut wyrand::WyRand,
+        area: (u32, u32, u32, u32),
+    ) -> Option<(u32, u32)> {
+        use crate::rng::NextIntExt;
+        let (ax, ay, aw, ah) = area;
+        let sample = |rng: &mut wyrand::WyRand| -> Option<(u32, u32)> {
+            if aw == 0 || ah == 0 {
+                return None;
+            }
+            let nx = ax + rng.next_int(0, aw as i32) as u32;
+            let ny = ay + rng.next_int(0, ah as i32) as u32;
+            let ux = nx.min(ax + aw - 1);
+            let uy = ny.min(ay + ah - 1);
+            if self.state.map.owner_id(ux, uy) != 0
+                || !self.state.map.terrain[self.state.map.ref_id(ux, uy)].is_land()
+            {
+                None
+            } else {
+                Some((ux, uy))
+            }
+        };
+        for _ in 0..300 {
+            if let Some((ux, uy)) = sample(rng) {
+                if self.home_clear(ux, uy) {
+                    return Some((ux, uy));
+                }
+            }
+        }
+        for _ in 0..300 {
+            if let Some(free) = sample(rng) {
+                return Some(free);
+            }
+        }
+        None
+    }
+
+    /// Member floor: ≥14 tiles between any two homes ("cerca sí, encimados
+    /// no", widened after the Aug 27 follow-up screenshot — first cut was an
+    /// 8-tile floor and blobs still rendered stacked).
+    pub(crate) fn home_clear(&self, ux: u32, uy: u32) -> bool {
+        const MEMBER_FLOOR_SQ: f64 = 196.0;
+        self.state.players.iter().all(|p| {
+            if p.tile_count == 0 {
+                return true;
+            }
+            let hx = p.sum_x as f64 / p.tile_count as f64;
+            let hy = p.sum_y as f64 / p.tile_count as f64;
+            let (dx, dy) = (hx - ux as f64, hy - uy as f64);
+            dx * dx + dy * dy >= MEMBER_FLOOR_SQ
+        })
+    }
+
+    /// OpenFront teamSpawnArea fallback: same-team members cluster around
+    /// their first spawned member instead of scattering across the map.
+    pub(crate) fn find_valid_spawn_near(
+        &self,
+        rng: &mut wyrand::WyRand,
+        cx: u32,
+        cy: u32,
+        min_d: i32,
+        max_d: i32,
+    ) -> Option<(u32, u32)> {
+        use crate::rng::NextIntExt;
+        for _ in 0..200 {
+            let ang = rng.next_int(0, 360) as f64 * std::f64::consts::TAU / 360.0;
+            let dist = rng.next_int(min_d, max_d.max(min_d + 1)) as f64;
+            let nx = cx as i32 + (ang.cos() * dist).round() as i32;
+            let ny = cy as i32 + (ang.sin() * dist).round() as i32;
+            if !self.state.map.is_valid_coord(nx, ny) {
+                continue;
+            }
+            let (ux, uy) = (nx as u32, ny as u32);
+            if self.state.map.owner_id(ux, uy) != 0
+                || !self.state.map.terrain[self.state.map.ref_id(ux, uy)].is_land()
+            {
+                continue;
+            }
+            if self.home_clear(ux, uy) {
+                return Some((ux, uy));
+            }
+        }
+        None
+    }
+
+    /// Centroid of an already-placed team (first member spawns randomly and
+    /// becomes the anchor; everyone else rings around it).
+    pub(crate) fn team_centroid(&self, team: &crate::protocol::Team) -> Option<(u32, u32)> {
+        let mut sum = (0u64, 0u64, 0u64);
+        for p in &self.state.players {
+            if p.team.as_ref() == Some(team) && p.tile_count > 0 {
+                sum.0 += p.sum_x;
+                sum.1 += p.sum_y;
+                sum.2 += p.tile_count as u64;
+            }
+        }
+        if sum.2 == 0 {
+            return None;
+        }
+        Some(((sum.0 / sum.2) as u32, (sum.1 / sum.2) as u32))
     }
 
     fn nearest_free_land(&self, tx: u32, ty: u32) -> Option<(u32, u32)> {

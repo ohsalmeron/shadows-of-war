@@ -85,6 +85,12 @@ impl SowEngine {
                 do_attack
             };
 
+            #[cfg(test)]
+            if std::env::var("SOW_AI_DEBUG").is_ok() && bot_id == 1 && tick < 250 {
+                eprintln!(
+                    "SCHED id={bot_id} tick={tick} interval={interval} offset={offset} phase={phase} do_attack={do_attack}"
+                );
+            }
             if !do_attack && !do_structures {
                 continue; // Nothing to do this tick for this entity
             }
@@ -103,6 +109,38 @@ impl SowEngine {
         }
 
         schedule.sort_unstable_by_key(|s| s.bot_id);
+        if std::env::var("SOW_AI_DEBUG").is_ok() {
+            let probes: Vec<(u16, usize)> = self
+                .state
+                .players
+                .iter()
+                .map(|p| (p.id, p.border_tiles.count_ones()))
+                .collect();
+            let mut neutral_probe: Vec<(u16, bool)> = Vec::new();
+            for p in &self.state.players {
+                let mut has = false;
+                for raw in p.border_tiles.ones() {
+                    let bx = (raw as u32) % self.state.map.width;
+                    let by = (raw as u32) / self.state.map.width;
+                    self.state.map.for_each_neighbor(bx, by, |nx, ny| {
+                        if self.state.map.owner_id(nx, ny) == 0
+                            && self.state.map.terrain[self.state.map.ref_id(nx, ny)].is_land()
+                        {
+                            has = true;
+                        }
+                    });
+                }
+                neutral_probe.push((p.id, has));
+            }
+            eprintln!(
+                "AICALL tick={} sched={} ids={:?} borders={:?} neutral={:?}",
+                self.state.tick,
+                schedule.len(),
+                schedule.iter().map(|s| s.bot_id).collect::<Vec<_>>(),
+                probes,
+                neutral_probe
+            );
+        }
         if schedule.is_empty() {
             return;
         }

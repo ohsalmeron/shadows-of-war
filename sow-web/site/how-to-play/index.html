@@ -2,7 +2,7 @@
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@300..900&display=swap" rel="stylesheet">
@@ -64,7 +64,9 @@
       <a href="/how-to-play/" aria-current="page">How to play</a>
       <a href="/#faq">FAQ</a>
       <a href="/#play">Play</a>
-      <a class="button button-orange" href="/play/">Play Now</a>
+      <div class="mobile-menu-actions">
+        <button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch color theme"><span class="theme-icon" aria-hidden="true">☼</span><span class="theme-label">Light mode</span></button>
+      </div>
     </nav>
   </header>
 
@@ -164,7 +166,7 @@
   <script>
     (() => {
       const root = document.documentElement;
-      const toggle = document.querySelector('[data-theme-toggle]');
+      const toggles = [...document.querySelectorAll('[data-theme-toggle]')];
       const menu = document.querySelector('#mobile-menu');
       const menuToggle = document.querySelector('[data-menu-toggle]');
       menu.setAttribute('aria-hidden', 'true');
@@ -172,12 +174,14 @@
         root.dataset.theme = theme;
         localStorage.setItem('sow-theme', theme);
         const light = theme === 'light';
-        toggle.querySelector('.theme-icon').textContent = light ? '☾' : '☼';
-        toggle.querySelector('.theme-label').textContent = light ? 'Dark mode' : 'Light mode';
-        toggle.setAttribute('aria-label', light ? 'Switch to dark mode' : 'Switch to light mode');
+        toggles.forEach(toggle => {
+          toggle.querySelector('.theme-icon').textContent = light ? '☾' : '☼';
+          toggle.querySelector('.theme-label').textContent = light ? 'Dark mode' : 'Light mode';
+          toggle.setAttribute('aria-label', light ? 'Switch to dark mode' : 'Switch to light mode');
+        });
       };
       applyTheme(localStorage.getItem('sow-theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
-      toggle.addEventListener('click', () => applyTheme(root.dataset.theme === 'light' ? 'dark' : 'light'));
+      toggles.forEach(toggle => toggle.addEventListener('click', () => applyTheme(root.dataset.theme === 'light' ? 'dark' : 'light')));
       menuToggle.addEventListener('click', () => {
         const open = menu.classList.toggle('is-open');
         menuToggle.setAttribute('aria-expanded', String(open));

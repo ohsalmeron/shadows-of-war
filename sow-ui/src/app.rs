@@ -148,6 +148,7 @@ impl ClientApp {
             ClientPhase::Playing => {
                 #[cfg(target_arch = "wasm32")]
                 {
+                    let _ = cancel_intents;
                     None
                 }
                 #[cfg(not(target_arch = "wasm32"))]

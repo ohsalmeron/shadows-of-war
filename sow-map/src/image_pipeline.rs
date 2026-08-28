@@ -8,7 +8,7 @@ use sow_core::maps;
 use std::collections::VecDeque;
 
 const MIN_ISLAND_SIZE: usize = 30;
-const MIN_LAKE_SIZE: usize = 200;
+const MIN_LAKE_SIZE: usize = 0;
 
 const LAND_BIT: u8 = 0b1000_0000;
 const SHORE_BIT: u8 = 0b0100_0000;

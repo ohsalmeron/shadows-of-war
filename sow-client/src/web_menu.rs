@@ -13,6 +13,7 @@ use web_time::Instant;
 
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
 
 use crate::app::SowApp;
 use sow_ui::UiAction;
@@ -83,9 +84,63 @@ enum WebMenuCommand {
     BuildStructure {
         kind: String,
     },
+    CancelPlacement,
+    ToggleInbox,
+    SetBottomTab {
+        tab: String,
+    },
+    AcceptAlliance {
+        target_player_id: u16,
+    },
+    RejectAlliance {
+        target_player_id: u16,
+    },
+    OpenTransfer {
+        target_player_id: u16,
+    },
+    CloseTransfer,
+    SendResources {
+        target_player_id: u16,
+        gold: f64,
+        troops: f64,
+    },
+    RequestResources {
+        target_player_id: u16,
+        gold: f64,
+        troops: f64,
+    },
+    AcceptResourceRequest {
+        target_player_id: u16,
+    },
+    RejectResourceRequest {
+        target_player_id: u16,
+    },
+    ConfirmBetrayal,
+    CancelBetrayal,
+    ClearEventLog,
+    CancelAttack {
+        attack_id: u64,
+    },
+    RecallFleet {
+        fleet_id: u64,
+    },
     Surrender,
     ToggleLeaderboard,
     ReturnToMenu,
+    ZoomIn,
+    ZoomOut,
+    CenterCamera,
+    ExpressEmoji {
+        emoji: String,
+        #[serde(default)]
+        pinned: bool,
+    },
+    SetEmojiPinned {
+        pinned: bool,
+    },
+    FocusPlayer {
+        player_id: u16,
+    },
 }
 
 thread_local! {
@@ -93,13 +148,17 @@ thread_local! {
     /// Last payload handed to JS. publish_state runs every frame; without this
     /// guard each frame allocates a fresh JSON string plus a JS-side copy.
     static LAST_PUBLISHED: RefCell<String> = RefCell::new(String::new());
-    /// Cheap fingerprint for the small, hot in-match HUD payload. This avoids rebuilding and
-    /// serializing the payload when neither the displayed values nor the simulation snapshot
-    /// changed.
+    /// Cheap fingerprint for the small, hot in-match HUD payload. Heavy cold panels are
+    /// represented by the snapshot tick only while a panel that needs them is open.
     static LAST_HUD_KEY: RefCell<Option<HudPublishKey>> = const { RefCell::new(None) };
-    /// The shell polls SOW_MENU_STATE at 80ms; publishing faster than that is
-    /// invisible work, so attempts are throttled to match the consumer.
+    /// The browser consumes changed payloads through SOW_onStateUpdate. The
+    /// fallback menu poll does not run during gameplay, so this keeps the
+    /// bridge from attempting work more often than the visible HUD can change.
     static LAST_PUBLISH_ATTEMPT: Cell<Option<Instant>> = const { Cell::new(None) };
+    /// Player-derived hot values are cached by snapshot tick so the player list is not scanned
+    /// on every publish attempt.
+    static LAST_MY_PLAYER: RefCell<Option<(u64, u16, Option<MyPlayerSummary>)>> =
+        const { RefCell::new(None) };
 }
 
 /// Minimum gap between state-publish attempts, matching the JS poll cadence.
@@ -109,40 +168,74 @@ const PUBLISH_MIN_INTERVAL_MS: u128 = 75;
 struct HudPublishKey {
     gold: u64,
     troops: u64,
+    max_troops: u64,
     troop_rate: u64,
     attack_ratio: u32,
     spawn_timer_tenths: i32,
     active_attacks: usize,
+    active_fleets: usize,
+    selected_building: u8,
+    selected_nuke: u8,
+    building_costs: [u64; 9],
     settings_mute: bool,
     settings_music_volume: u32,
     settings_reduced_motion: bool,
     leaderboard_open: bool,
+    inbox_open: bool,
+    bottom_tab: u8,
+    transfer_target: Option<u16>,
+    betrayal_open: bool,
+    sync_open: bool,
+    inbox_count: usize,
+    event_log_len: usize,
+    notification_len: usize,
     snapshot_tick: u64,
+    hovered_tile: u32,
+    hovered_owner: u16,
 }
 
-fn hud_publish_key(
-    app: &sow_ui::ClientApp,
-    snapshot_tick: u64,
-    leaderboard_open: bool,
-) -> HudPublishKey {
-    HudPublishKey {
-        gold: app.hud_state.gold.to_bits(),
-        troops: app.hud_state.troops.to_bits(),
-        troop_rate: app.hud_state.troop_rate.to_bits(),
-        attack_ratio: app.hud_state.attack_ratio.to_bits(),
-        // The browser displays tenths; finer changes cannot change the rendered HUD.
-        spawn_timer_tenths: app
-            .hud_state
-            .spawn_timer_secs
-            .map(|secs| (secs.max(0.0) * 10.0).round() as i32)
-            .unwrap_or(-1),
-        active_attacks: app.hud_state.attacks.len(),
-        settings_mute: app.settings_state.mute_all,
-        settings_music_volume: app.settings_state.music_volume.to_bits(),
-        settings_reduced_motion: app.settings_state.reduced_motion,
-        leaderboard_open,
-        snapshot_tick: if leaderboard_open { snapshot_tick } else { 0 },
-    }
+#[derive(Clone, Copy)]
+struct MyPlayerSummary {
+    gold: f64,
+    troops: f64,
+    max_troops: f64,
+    alive: bool,
+    has_spawned: bool,
+    team: Option<sow_core::protocol::Team>,
+    kills: u32,
+    deaths: u32,
+    assists: u32,
+    inbox_count: usize,
+}
+
+fn my_player_summary(app: &SowApp, snapshot_tick: u64, my_pid: u16) -> Option<MyPlayerSummary> {
+    LAST_MY_PLAYER.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some((cached_tick, cached_pid, summary)) = *cache {
+            if cached_tick == snapshot_tick && cached_pid == my_pid {
+                return summary;
+            }
+        }
+        let summary = app
+            .sim
+            .current_snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.players.iter().find(|player| player.id == my_pid))
+            .map(|player| MyPlayerSummary {
+                gold: player.gold,
+                troops: player.troops,
+                max_troops: player.max_troops,
+                alive: player.alive,
+                has_spawned: player.has_spawned,
+                team: player.team,
+                kills: player.kills,
+                deaths: player.deaths,
+                assists: player.assists,
+                inbox_count: player.alliance_requests.len() + player.resource_requests.len(),
+            });
+        *cache = Some((snapshot_tick, my_pid, summary));
+        summary
+    })
 }
 
 fn publish_due() -> bool {
@@ -373,6 +466,110 @@ impl SowApp {
                     };
                     self.ui.app.hud_state.selected_building_kind = Some(structure_kind);
                 }
+                WebMenuCommand::CancelPlacement => {
+                    self.ui.app.hud_state.selected_building_kind = None;
+                    self.ui.app.hud_state.selected_nuke_kind = None;
+                }
+                WebMenuCommand::ToggleInbox => {
+                    self.ui.app.hud_state.show_alliance_inbox =
+                        !self.ui.app.hud_state.show_alliance_inbox;
+                }
+                WebMenuCommand::SetBottomTab { tab } => {
+                    self.ui.app.hud_state.bottom_tab = match tab.to_ascii_lowercase().as_str() {
+                        "battle" | "battle_log" => sow_ui::ui::hud::BottomHudTab::BattleLog,
+                        "event" | "event_log" => sow_ui::ui::hud::BottomHudTab::EventLog,
+                        _ => sow_ui::ui::hud::BottomHudTab::Controls,
+                    };
+                }
+                WebMenuCommand::AcceptAlliance { target_player_id } => {
+                    self.send_intent(sow_core::protocol::GameplayIntent::AcceptAlliance {
+                        target_player: target_player_id,
+                    });
+                }
+                WebMenuCommand::RejectAlliance { target_player_id } => {
+                    self.send_intent(sow_core::protocol::GameplayIntent::RejectAlliance {
+                        target_player: target_player_id,
+                    });
+                }
+                WebMenuCommand::OpenTransfer { target_player_id } => {
+                    self.ui.app.hud_state.show_ask_panel = Some(target_player_id);
+                    self.ui.app.hud_state.transfer_confirm_pending = false;
+                }
+                WebMenuCommand::CloseTransfer => {
+                    self.ui.app.hud_state.show_ask_panel = None;
+                    self.ui.app.hud_state.transfer_confirm_pending = false;
+                }
+                WebMenuCommand::SendResources {
+                    target_player_id,
+                    gold,
+                    troops,
+                } => {
+                    self.send_intent(sow_core::protocol::GameplayIntent::SendResources {
+                        target_player: target_player_id,
+                        gold: gold.max(0.0),
+                        troops: troops.max(0.0),
+                    });
+                    self.ui.app.hud_state.show_ask_panel = None;
+                    self.ui.app.hud_state.transfer_confirm_pending = false;
+                }
+                WebMenuCommand::RequestResources {
+                    target_player_id,
+                    gold,
+                    troops,
+                } => {
+                    self.send_intent(sow_core::protocol::GameplayIntent::RequestResources {
+                        target_player: target_player_id,
+                        gold: gold.max(0.0),
+                        troops: troops.max(0.0),
+                    });
+                    self.ui.app.hud_state.show_ask_panel = None;
+                    self.ui.app.hud_state.transfer_confirm_pending = false;
+                }
+                WebMenuCommand::AcceptResourceRequest { target_player_id } => {
+                    self.send_intent(
+                        sow_core::protocol::GameplayIntent::AcceptResourceRequest {
+                            target_player: target_player_id,
+                        },
+                    );
+                }
+                WebMenuCommand::RejectResourceRequest { target_player_id } => {
+                    self.send_intent(
+                        sow_core::protocol::GameplayIntent::RejectResourceRequest {
+                            target_player: target_player_id,
+                        },
+                    );
+                }
+                WebMenuCommand::ConfirmBetrayal => {
+                    let warning = self
+                        .ui
+                        .app
+                        .hud_state
+                        .show_betrayal_warning
+                        .clone()
+                        .or_else(|| self.ui.app.hud_state.betrayal_warning_cached.clone());
+                    if let Some((ally_id, intent)) = warning {
+                        self.send_intent(sow_core::protocol::GameplayIntent::BreakAlliance {
+                            target_player: ally_id,
+                        });
+                        self.send_intent(intent);
+                    }
+                    self.ui.app.hud_state.show_betrayal_warning = None;
+                    self.ui.app.hud_state.betrayal_warning_cached = None;
+                }
+                WebMenuCommand::CancelBetrayal => {
+                    self.ui.app.hud_state.show_betrayal_warning = None;
+                    self.ui.app.hud_state.betrayal_warning_cached = None;
+                }
+                WebMenuCommand::ClearEventLog => {
+                    self.ui.app.hud_state.event_log.clear();
+                    self.ui.app.hud_state.event_log_seen_count = 0;
+                }
+                WebMenuCommand::CancelAttack { attack_id } => {
+                    self.send_intent(sow_core::protocol::GameplayIntent::CancelAttack { attack_id });
+                }
+                WebMenuCommand::RecallFleet { fleet_id } => {
+                    self.send_intent(sow_core::protocol::GameplayIntent::RecallFleet { fleet_id });
+                }
                 WebMenuCommand::Surrender => {
                     self.send_intent(sow_core::protocol::GameplayIntent::Resign);
                 }
@@ -384,6 +581,45 @@ impl SowApp {
                         &self.ui.egui_ctx.clone(),
                         Some(UiAction::LeaveLobby),
                     );
+                }
+                WebMenuCommand::ZoomIn => {
+                    self.process_ui_actions(
+                        &self.ui.egui_ctx.clone(),
+                        Some(UiAction::ZoomIn),
+                    );
+                }
+                WebMenuCommand::ZoomOut => {
+                    self.process_ui_actions(
+                        &self.ui.egui_ctx.clone(),
+                        Some(UiAction::ZoomOut),
+                    );
+                }
+                WebMenuCommand::CenterCamera => {
+                    self.process_ui_actions(
+                        &self.ui.egui_ctx.clone(),
+                        Some(UiAction::CenterCamera),
+                    );
+                }
+                WebMenuCommand::ExpressEmoji { emoji, pinned } => {
+                    self.send_intent(sow_core::protocol::GameplayIntent::ExpressEmoji {
+                        emoji,
+                        pinned,
+                    });
+                }
+                WebMenuCommand::SetEmojiPinned { pinned } => {
+                    self.ui.app.hud_state.pin_emoji = pinned;
+                }
+                WebMenuCommand::FocusPlayer { player_id } => {
+                    if let Some(snap) = &self.sim.current_snapshot {
+                        if let Some(player) = snap.players.iter().find(|p| p.id == player_id) {
+                            if player.tile_count > 0 && player.alive {
+                                let world_cx = player.centroid_x + 0.5;
+                                let world_cy = player.centroid_y + 0.5;
+                                self.input.camera_focus_target = Some((world_cx, world_cy));
+                                self.input.target_zoom = 8.0;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -398,39 +634,366 @@ fn phase_name(phase: sow_ui::ClientPhase) -> &'static str {
     }
 }
 
-fn build_hud_payload(app: &sow_ui::ClientApp, leaderboard_open: bool) -> serde_json::Value {
-    if app.phase != sow_ui::ClientPhase::Playing {
+fn hovered_tile_owner(app: &SowApp) -> (u32, u16) {
+    if !app.input.camera_zoom.is_finite() || app.input.camera_zoom <= 0.0 {
+        return (u32::MAX, 0);
+    }
+    let world_x = (app.input.last_mouse_x as f32 - app.input.camera_x) / app.input.camera_zoom;
+    let world_y = (app.input.last_mouse_y as f32 - app.input.camera_y) / app.input.camera_zoom;
+    let (col, row) = crate::render::world::movers::world_to_tile(world_x, world_y);
+    if col < 0 || row < 0 || col >= app.sim.map_w as i32 || row >= app.sim.map_h as i32 {
+        return (u32::MAX, 0);
+    }
+    let idx = (row * app.sim.map_w as i32 + col) as usize;
+    let owner = app
+        .gfx
+        .map_renderer
+        .as_ref()
+        .and_then(|renderer| renderer.owners.get(idx).copied())
+        .unwrap_or(0);
+    (idx as u32, owner)
+}
+
+fn hud_publish_key(app: &SowApp) -> HudPublishKey {
+    let hud = &app.ui.app.hud_state;
+    let (hovered_tile, hovered_owner) = hovered_tile_owner(app);
+    let snapshot_tick = app
+        .sim
+        .current_snapshot
+        .as_ref()
+        .map(|snapshot| snapshot.tick)
+        .unwrap_or(0);
+    let cold_open = app.ui.show_leaderboard
+        || hovered_owner != 0
+        || hud.show_alliance_inbox
+        || hud.show_ask_panel.is_some()
+        || hud.show_betrayal_warning.is_some()
+        || hud.sync_state.is_some()
+        || hud.bottom_tab != sow_ui::ui::hud::BottomHudTab::Controls;
+    let my_pid = app.sim.my_player_id.unwrap_or(hud.my_player_id);
+    let inbox_count = my_player_summary(app, snapshot_tick, my_pid)
+        .map(|player| player.inbox_count)
+        .unwrap_or(0);
+
+    HudPublishKey {
+        gold: hud.gold.to_bits(),
+        troops: hud.troops.to_bits(),
+        max_troops: hud.max_troops.to_bits(),
+        troop_rate: hud.troop_rate.to_bits(),
+        attack_ratio: hud.attack_ratio.to_bits(),
+        spawn_timer_tenths: hud
+            .spawn_timer_secs
+            .map(|secs| (secs.max(0.0) * 10.0).round() as i32)
+            .unwrap_or(-1),
+        active_attacks: hud.attacks.len(),
+        active_fleets: hud.fleets.len(),
+        selected_building: hud
+            .selected_building_kind
+            .map(|kind| kind as u8)
+            .unwrap_or(u8::MAX),
+        selected_nuke: hud.selected_nuke_kind.map(|kind| kind as u8).unwrap_or(u8::MAX),
+        building_costs: std::array::from_fn(|index| hud.building_costs[index].to_bits()),
+        settings_mute: app.ui.app.settings_state.mute_all,
+        settings_music_volume: app.ui.app.settings_state.music_volume.to_bits(),
+        settings_reduced_motion: app.ui.app.settings_state.reduced_motion,
+        leaderboard_open: app.ui.show_leaderboard,
+        inbox_open: hud.show_alliance_inbox,
+        bottom_tab: match hud.bottom_tab {
+            sow_ui::ui::hud::BottomHudTab::Controls => 0,
+            sow_ui::ui::hud::BottomHudTab::BattleLog => 1,
+            sow_ui::ui::hud::BottomHudTab::EventLog => 2,
+        },
+        transfer_target: hud.show_ask_panel,
+        betrayal_open: hud.show_betrayal_warning.is_some(),
+        sync_open: hud.sync_state.is_some(),
+        inbox_count,
+        event_log_len: hud.event_log.len(),
+        notification_len: hud.hud_notifications.len(),
+        snapshot_tick: if cold_open { snapshot_tick } else { 0 },
+        hovered_tile,
+        hovered_owner,
+    }
+}
+
+fn player_json(player: &sow_core::protocol::PlayerSnapshot, my_pid: u16, total_land_tiles: u32) -> serde_json::Value {
+    let territory_pct = (player.tile_count as f32 / total_land_tiles.max(1) as f32).clamp(0.0, 1.0);
+    serde_json::json!({
+        "id": player.id,
+        "name": &player.name,
+        "troops": player.troops,
+        "max_troops": player.max_troops,
+        "tile_count": player.tile_count,
+        "territory_pct": territory_pct,
+        "is_alive": player.alive,
+        "is_me": player.id == my_pid,
+        "leader": leader_id(player.leader),
+        "civilization": player.civilization.name(),
+        "team": player.team,
+        "active_emoji": &player.active_emoji,
+        "disconnected": player.disconnected,
+        "traitor": player.traitor,
+        "kills": player.kills,
+        "deaths": player.deaths,
+        "assists": player.assists,
+        "cap_x": player.centroid_x,
+        "cap_y": player.centroid_y,
+    })
+}
+
+fn build_leaderboard(snapshot: &sow_core::protocol::SimSnapshot, my_pid: u16) -> serde_json::Value {
+    let mut players: Vec<&sow_core::protocol::PlayerSnapshot> = snapshot.players.iter().collect();
+    players.sort_unstable_by(|a, b| {
+        b.tile_count
+            .cmp(&a.tile_count)
+            .then_with(|| b.troops.total_cmp(&a.troops))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    serde_json::Value::Array(
+        players
+            .into_iter()
+            .map(|player| player_json(player, my_pid, snapshot.total_land_tiles))
+            .collect(),
+    )
+}
+
+fn build_hover_payload(
+    snapshot: &sow_core::protocol::SimSnapshot,
+    owner_id: u16,
+    my_pid: u16,
+) -> serde_json::Value {
+    let Some(player) = snapshot.players.iter().find(|player| player.id == owner_id) else {
+        return serde_json::Value::Null;
+    };
+    let mut cities = 0;
+    let mut factories = 0;
+    let mut ports = 0;
+    let mut bunkers = 0;
+    for building in &snapshot.buildings {
+        if building.owner_id != owner_id {
+            continue;
+        }
+        match building.kind {
+            sow_core::game::BuildingKind::City => cities += 1,
+            sow_core::game::BuildingKind::Factory => factories += 1,
+            sow_core::game::BuildingKind::Port => ports += 1,
+            sow_core::game::BuildingKind::Bunker => bunkers += 1,
+        }
+    }
+    let mut payload = player_json(player, my_pid, snapshot.total_land_tiles);
+    payload["cities"] = serde_json::json!(cities);
+    payload["factories"] = serde_json::json!(factories);
+    payload["ports"] = serde_json::json!(ports);
+    payload["bunkers"] = serde_json::json!(bunkers);
+    payload
+}
+
+fn build_inbox(snapshot: &sow_core::protocol::SimSnapshot, my_pid: u16) -> serde_json::Value {
+    let Some(me) = snapshot.players.iter().find(|player| player.id == my_pid) else {
+        return serde_json::Value::Array(Vec::new());
+    };
+    let mut requests = Vec::new();
+    for requester_id in &me.alliance_requests {
+        if let Some(requester) = snapshot.players.iter().find(|player| player.id == *requester_id) {
+            requests.push(serde_json::json!({
+                "kind": "alliance",
+                "requester_id": requester.id,
+                "name": &requester.name,
+                "leader": leader_id(requester.leader),
+                "active": requester.alive,
+            }));
+        }
+    }
+    for request in &me.resource_requests {
+        if let Some(requester) = snapshot.players.iter().find(|player| player.id == request.requester) {
+            requests.push(serde_json::json!({
+                "kind": "resources",
+                "requester_id": requester.id,
+                "name": &requester.name,
+                "gold": request.gold,
+                "troops": request.troops,
+            }));
+        }
+    }
+    serde_json::Value::Array(requests)
+}
+
+fn build_battle_log(hud: &sow_ui::ui::hud::HudState, my_pid: u16) -> serde_json::Value {
+    let mut rows = Vec::new();
+    for attack in hud.attacks.iter().filter(|attack| {
+        attack.owner_id == my_pid || attack.target_owner == my_pid
+    }) {
+        rows.push(serde_json::json!({
+            "kind": if attack.target_owner == my_pid { "incoming" } else { "outgoing" },
+            "id": attack.id,
+            "troops": attack.troops,
+            "retreating": attack.retreating,
+            "target_owner": attack.target_owner,
+        }));
+    }
+    for fleet in hud.fleets.iter().filter(|fleet| fleet.owner_id == my_pid) {
+        rows.push(serde_json::json!({
+            "kind": "navy",
+            "id": fleet.id,
+            "troops": fleet.troops,
+            "retreating": fleet.retreating,
+        }));
+    }
+    serde_json::Value::Array(rows)
+}
+
+fn build_event_log(hud: &sow_ui::ui::hud::HudState) -> serde_json::Value {
+    serde_json::Value::Array(
+        hud.event_log
+            .iter()
+            .map(|entry| serde_json::json!({ "message": &entry.message }))
+            .collect(),
+    )
+}
+
+fn build_hud_payload(app: &SowApp) -> serde_json::Value {
+    if app.ui.app.phase != sow_ui::ClientPhase::Playing {
         return serde_json::Value::Null;
     }
-    let mut payload = serde_json::json!({
-        "gold": app.hud_state.gold,
-        "troops": app.hud_state.troops,
-        "troop_rate": app.hud_state.troop_rate,
-        "attack_ratio": app.hud_state.attack_ratio,
-        "spawn_timer_secs": app.hud_state.spawn_timer_secs,
-        "active_attacks_count": app.hud_state.attacks.len(),
+
+    let hud = &app.ui.app.hud_state;
+    let my_pid = app.sim.my_player_id.unwrap_or(hud.my_player_id);
+    let snapshot = app.sim.current_snapshot.as_ref();
+    let snapshot_tick = snapshot.map(|snapshot| snapshot.tick).unwrap_or(0);
+    let me = my_player_summary(app, snapshot_tick, my_pid);
+    let match_over = snapshot.is_some_and(|snapshot| {
+        snapshot.winner.is_some()
+            || me.is_some_and(|player| !player.alive && player.has_spawned)
     });
-    // The rankings are a cold, on-demand view. Serializing hundreds of players while the
-    // drawer is closed was the dominant avoidable cost in the web bridge.
-    if leaderboard_open {
-        let my_pid = app.hud_state.my_player_id;
-        let leaderboard: Vec<serde_json::Value> = app
-            .hud_state
-            .players
+    let is_winner = snapshot.is_some_and(|snapshot| {
+        if let Some(team) = snapshot.winning_team {
+            me.and_then(|player| player.team) == Some(team)
+        } else {
+            snapshot.winner == Some(my_pid)
+        }
+    });
+    let winner_name = snapshot
+        .and_then(|snapshot| {
+            snapshot
+                .winner
+                .and_then(|winner_id| snapshot.players.iter().find(|player| player.id == winner_id))
+        })
+        .map(|player| player.name.clone())
+        .unwrap_or_default();
+    let (hovered_tile, hovered_owner) = hovered_tile_owner(app);
+    let selected_building = hud.selected_building_kind.map(|kind| match kind {
+        sow_core::game::BuildingKind::City => "City",
+        sow_core::game::BuildingKind::Factory => "Factory",
+        sow_core::game::BuildingKind::Port => "Port",
+        sow_core::game::BuildingKind::Bunker => "Bunker",
+    });
+    let costs = &hud.building_costs;
+    let mut payload = serde_json::json!({
+        "gold": me.map(|player| player.gold).unwrap_or(hud.gold),
+        "troops": me.map(|player| player.troops).unwrap_or(hud.troops),
+        "max_troops": me.map(|player| player.max_troops).unwrap_or(hud.max_troops),
+        "troop_rate": hud.troop_rate,
+        "attack_ratio": hud.attack_ratio,
+        "spawn_timer_secs": hud.spawn_timer_secs,
+        "selected_building": selected_building,
+        "selected_nuke": hud.selected_nuke_kind.is_some(),
+        "bottom_tab": match hud.bottom_tab {
+            sow_ui::ui::hud::BottomHudTab::Controls => "controls",
+            sow_ui::ui::hud::BottomHudTab::BattleLog => "battle_log",
+            sow_ui::ui::hud::BottomHudTab::EventLog => "event_log",
+        },
+        "pin_emoji": hud.pin_emoji,
+        "building_costs": {
+            "city": costs[0],
+            "bunker": costs[1],
+            "factory": costs[2],
+            "port": costs[3],
+        },
+        "fps": app.time.current_fps,
+        "ping": app.net.last_ping_time.elapsed().as_millis() as u32,
+        "hovered_tile": if hovered_tile == u32::MAX { serde_json::Value::Null } else { serde_json::json!(hovered_tile) },
+        "hovered": serde_json::Value::Null,
+        "inbox_count": me.map(|player| player.inbox_count).unwrap_or(0),
+        "match_over": match_over,
+        "is_winner": is_winner,
+        "winner_name": winner_name,
+        "player_kda": {
+            "kills": me.map(|player| player.kills).unwrap_or(0),
+            "deaths": me.map(|player| player.deaths).unwrap_or(0),
+            "assists": me.map(|player| player.assists).unwrap_or(0),
+        },
+    });
+
+    if let Some(snapshot) = snapshot {
+        if hovered_owner != 0 {
+            payload["hovered"] = build_hover_payload(snapshot, hovered_owner, my_pid);
+        }
+        if app.ui.show_leaderboard {
+            payload["leaderboard"] = build_leaderboard(snapshot, my_pid);
+        }
+        if hud.show_alliance_inbox {
+            payload["inbox"] = build_inbox(snapshot, my_pid);
+        }
+        if let Some(target_id) = hud.show_ask_panel {
+            if let Some(target) = snapshot.players.iter().find(|player| player.id == target_id) {
+                payload["transfer"] = serde_json::json!({
+                    "target_id": target.id,
+                    "target_name": &target.name,
+                    "target_alive": target.alive,
+                    "confirm_pending": hud.transfer_confirm_pending,
+                });
+            }
+        }
+    }
+
+    if hud.bottom_tab == sow_ui::ui::hud::BottomHudTab::BattleLog {
+        payload["battle_log"] = build_battle_log(hud, my_pid);
+    }
+    if hud.bottom_tab == sow_ui::ui::hud::BottomHudTab::EventLog {
+        payload["event_log"] = build_event_log(hud);
+    }
+    if hud.show_betrayal_warning.is_some() || hud.betrayal_warning_cached.is_some() {
+        let warning = hud
+            .show_betrayal_warning
+            .as_ref()
+            .or(hud.betrayal_warning_cached.as_ref());
+        if let Some((ally_id, _)) = warning {
+            payload["betrayal"] = serde_json::json!({
+                "ally_id": ally_id,
+                "ally_name": snapshot
+                    .and_then(|snapshot| snapshot.players.iter().find(|player| player.id == *ally_id))
+                    .map(|player| player.name.clone())
+                    .unwrap_or_else(|| "Ally".to_string()),
+            });
+        }
+    }
+    if let Some(sync) = &hud.sync_state {
+        payload["sync"] = serde_json::to_value(sync).unwrap_or(serde_json::Value::Null);
+    }
+    payload["notifications"] = serde_json::Value::Array(
+        hud.hud_notifications
             .iter()
-            .map(|p| {
-                serde_json::json!({
-                    "id": p.id,
-                    "name": &p.name,
-                    "troops": p.troops,
-                    "tile_count": p.tile_count,
-                    "is_alive": p.alive,
-                    "is_me": p.id == my_pid,
-                    "leader": leader_id(p.leader),
-                })
-            })
-            .collect();
-        payload["leaderboard"] = serde_json::Value::Array(leaderboard);
+            .map(|notice| serde_json::json!({ "message": &notice.message }))
+            .collect(),
+    );
+    if match_over {
+        let reward = app.ui.reward_cache.or_else(|| {
+            me.map(|player| sow_data::rewards::calculate(sow_data::rewards::RewardInput {
+                won: is_winner,
+                players_defeated: app.progress_session_defeats.players,
+                empires_defeated: app.progress_session_defeats.empires,
+                tribes_defeated: app.progress_session_defeats.tribes,
+                kills: player.kills,
+                assists: player.assists,
+                tutorial: app.sim.config.tutorial,
+            }))
+        });
+        if let Some(reward) = reward {
+            payload["rewards"] = serde_json::json!({
+                "xp": reward.xp,
+                "leader_xp": reward.leader_xp,
+                "laurels": reward.laurels,
+            });
+        }
     }
     payload
 }
@@ -462,19 +1025,16 @@ fn notice_name(notice: Option<sow_ui::LobbyNotice>) -> Option<&'static str> {
 
 /// Publish a browser-safe snapshot. It is intentionally separate from MainMenuState so the
 /// DOM never receives transient textures, map bytes, or internal auth/session material.
-pub(crate) fn publish_state(
-    state: &sow_ui::ui::main_menu::MainMenuState,
-    app: &sow_ui::ClientApp,
-    progress: &crate::player_progress::PlayerProgress,
-    snapshot_tick: u64,
-    leaderboard_open: bool,
-) {
+pub(crate) fn publish_state(app: &SowApp) {
     if !publish_due() {
         return;
     }
 
-    let payload = if app.phase == sow_ui_kit::ClientPhase::Playing {
-        let hud_key = hud_publish_key(app, snapshot_tick, leaderboard_open);
+    let state = &app.ui.app.main_menu_state;
+    let progress = &app.progress;
+
+    let payload = if app.ui.app.phase == sow_ui_kit::ClientPhase::Playing {
+        let hud_key = hud_publish_key(app);
         let hud_changed = LAST_HUD_KEY.with(|last| {
             let mut last = last.borrow_mut();
             if *last == Some(hud_key) {
@@ -487,17 +1047,19 @@ pub(crate) fn publish_state(
         if !hud_changed {
             return;
         }
+        let hud_payload = build_hud_payload(app);
         serde_json::json!({
             "phase": "Playing",
-            "hud": build_hud_payload(app, leaderboard_open),
+            "hud": hud_payload,
             "settings": {
-                "mute_all": app.settings_state.mute_all,
-                "music_volume": app.settings_state.music_volume,
-                "reduced_motion": app.settings_state.reduced_motion,
+                "mute_all": app.ui.app.settings_state.mute_all,
+                "music_volume": app.ui.app.settings_state.music_volume,
+                "reduced_motion": app.ui.app.settings_state.reduced_motion,
             },
         })
     } else {
         LAST_HUD_KEY.with(|last| *last.borrow_mut() = None);
+        LAST_MY_PLAYER.with(|cache| *cache.borrow_mut() = None);
         let leaders: Vec<serde_json::Value> = sow_core::player::Leader::ALL
             .into_iter()
             .map(|leader| {
@@ -511,6 +1073,8 @@ pub(crate) fn publish_state(
             })
             .collect();
         let map_catalog: Vec<serde_json::Value> = app
+            .ui
+            .app
             .asset_loader
             .map_catalog
             .as_ref()
@@ -530,15 +1094,17 @@ pub(crate) fn publish_state(
             .unwrap_or_default();
 
         serde_json::json!({
-            "phase": phase_name(app.phase),
-            "loader_job": splash_job_name(&app.splash_state.job),
-            "loader_progress": app.splash_state.progress.clamp(0.0, 1.0),
+            "phase": phase_name(app.ui.app.phase),
+            "loader_job": splash_job_name(&app.ui.app.splash_state.job),
+            "loader_progress": app.ui.app.splash_state.progress.clamp(0.0, 1.0),
             "loader_status": app
+                .ui
+                .app
                 .splash_state
                 .status_override
                 .as_deref()
-                .unwrap_or(app.splash_state.status_text.as_str()),
-            "loader_done": app.splash_state.done,
+                .unwrap_or(app.ui.app.splash_state.status_text.as_str()),
+            "loader_done": app.ui.app.splash_state.done,
             "connected": state.is_connected,
             "connecting": state.is_connecting,
             "waiting": state.is_waiting,
@@ -569,9 +1135,9 @@ pub(crate) fn publish_state(
             "custom_game_is_sp": state.custom_game_is_sp,
             "hud": serde_json::Value::Null,
             "settings": {
-                "mute_all": app.settings_state.mute_all,
-                "music_volume": app.settings_state.music_volume,
-                "reduced_motion": app.settings_state.reduced_motion,
+                "mute_all": app.ui.app.settings_state.mute_all,
+                "music_volume": app.ui.app.settings_state.music_volume,
+                "reduced_motion": app.ui.app.settings_state.reduced_motion,
             },
         })
     };
@@ -590,11 +1156,15 @@ pub(crate) fn publish_state(
     let Some(window) = web_sys::window() else {
         return;
     };
-    if let Err(error) = js_sys::Reflect::set(
+    let js_str = JsValue::from_str(&serialized);
+    let _ = js_sys::Reflect::set(
         window.as_ref(),
         &JsValue::from_str("SOW_MENU_STATE"),
-        &JsValue::from_str(&serialized),
-    ) {
-        log::warn!("[WEB MENU] failed to publish state: {:?}", error);
+        &js_str,
+    );
+    if let Ok(func_val) = js_sys::Reflect::get(window.as_ref(), &JsValue::from_str("SOW_onStateUpdate")) {
+        if let Ok(func) = func_val.dyn_into::<js_sys::Function>() {
+            let _ = func.call1(window.as_ref(), &js_str);
+        }
     }
 }

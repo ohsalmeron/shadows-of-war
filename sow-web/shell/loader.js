@@ -166,7 +166,7 @@
         if (barWrapEl) {
             barWrapEl.style.width = barWidth + 'px';
             barWrapEl.style.height = barHeight + 'px';
-            barWrapEl.style.bottom = bottomPadding + 'px';
+            barWrapEl.style.bottom = 'max(' + bottomPadding + 'px, var(--sow-sab))';
         }
         if (barFull) {
             barFull.style.width = barWidth + 'px';

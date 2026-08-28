@@ -619,9 +619,14 @@ struct RelayCandidate {
     players_tx: Vec<(u16, mpsc::Sender<Vec<u8>>)>,
 }
 
+// Content-derived build identity (see build.rs). Proves which sources the
+// running jail executes; printed once at startup as [SERVER-BOOT].
+include!(concat!(env!("OUT_DIR"), "/build_epoch.rs"));
+
 #[tokio::main]
 async fn main() {
     env_logger::init();
+    log::info!("[SERVER-BOOT] build_epoch={BUILD_EPOCH:#018x}");
 
     if std::env::var("SOW_DB_SECRET")
         .ok()

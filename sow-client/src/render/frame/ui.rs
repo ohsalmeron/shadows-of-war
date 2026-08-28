@@ -362,6 +362,7 @@ impl SowApp {
         self.gfx.render_ctx = Some(render_ctx);
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn render_player_hover_panel(&self, ctx: &egui::Context) {
         // Ponytail: YAGNI - skip entirely on mobile / small screens
         if ctx.input(|i| i.viewport_rect().width()) < 720.0 {
@@ -635,6 +636,7 @@ impl SowApp {
             });
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn render_placement_cancel_button(&mut self, ctx: &egui::Context) {
         let has_building = self.ui.app.hud_state.selected_building_kind.is_some();
         if !has_building && self.ui.app.hud_state.selected_nuke_kind.is_none() {

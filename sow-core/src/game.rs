@@ -390,9 +390,23 @@ impl GameState {
             let mut to_capture = [(0, 0); 6];
             let mut capture_count = 0;
 
+            // Vanilla tribes must never swallow player territory through the
+            // enclosure cascade — their waves only claim free land. Directed
+            // conquest stays exclusive to attacks that declare a target.
+            let capturer_is_passive_tribe = {
+                let capturer = self.player(new_owner);
+                capturer.map_or(false, |p| {
+                    p.player_type == crate::player::PlayerType::Bot
+                        && self.config.bot_difficulty == crate::game_config::BotDifficulty::Vanilla
+                })
+            };
+
             for &(nx, ny) in neighbors.iter().take(n_count) {
                 let n_owner = self.map.owner_id(nx, ny);
-                if n_owner != new_owner && self.map.terrain[self.map.ref_id(nx, ny)].is_land() {
+                if n_owner != new_owner
+                    && self.map.terrain[self.map.ref_id(nx, ny)].is_land()
+                    && !(capturer_is_passive_tribe && n_owner != 0)
+                {
                     let mut surrounded = true;
                     self.map.for_each_neighbor(nx, ny, |nnx, nny| {
                         if self.map.owner_id(nnx, nny) != new_owner {
