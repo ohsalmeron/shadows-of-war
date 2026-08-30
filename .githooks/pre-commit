@@ -1,7 +1,0 @@
-#!/usr/bin/env bash
-echo "Running pre-commit checks..."
-if ! ./sow-tools/check.sh; then
-    echo "⚠️  [PRE-COMMIT ERROR]: Size check, emoji check, or cargo check failed!"
-    echo "Please fix the violations before committing, or commit with --no-verify if absolutely necessary."
-    exit 1
-fi

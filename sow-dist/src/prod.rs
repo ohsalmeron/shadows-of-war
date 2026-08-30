@@ -21,6 +21,9 @@ const REMOTE_RELEASES: &str = "/srv/sow/releases";
 const PUBLIC_ORIGIN: &str = "https://shadowsofwar.io";
 const SERVER_JAIL_IP: &str = "127.0.0.1";
 const DATABASE_JAIL_IP: &str = "127.0.0.1";
+const ANDROID_PROJECT: &str = "sow-dist/deploy/android";
+const ANDROID_BUNDLE: &str = "dist/android/com.shadowsofwar.aab";
+const ANDROID_VERSION_CODE: &str = ".android-version-code";
 
 struct Config {
     build_host: String,
@@ -77,16 +80,18 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
     require_secret("SOW_DB_SECRET")?;
     require_secret("SOW_RELAY_CONTROL_SECRET")?;
     let version = version(paths, bump)?;
+    let android_code = android_version_code(paths, &version, bump)?;
 
     println!("==> Production {version}");
     println!("==> 1/8 Preflight (read-only)");
     preflight(paths, &config)?;
 
     println!("==> 2/8 Build candidates");
-    let (_web, backend, _relay) = std::thread::scope(|scope| {
+    let (_web, backend, _relay, _android) = std::thread::scope(|scope| {
         let web = scope.spawn(|| build_web(paths, &version));
         let backend = scope.spawn(|| build_freebsd(paths, &config));
         let relay = scope.spawn(|| build_relay(paths, &config));
+        let android = scope.spawn(|| build_android(paths, &version, android_code));
         web.join()
             .map_err(|_| anyhow::anyhow!("web build panicked"))??;
         let backend = backend
@@ -95,7 +100,10 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
         let relay = relay
             .join()
             .map_err(|_| anyhow::anyhow!("relay build panicked"))??;
-        Ok::<_, anyhow::Error>(((), backend, relay))
+        android
+            .join()
+            .map_err(|_| anyhow::anyhow!("Android build panicked"))??;
+        Ok::<_, anyhow::Error>(((), backend, relay, ()))
     })?;
 
     println!("==> 3/8 Package immutable release");
@@ -205,6 +213,145 @@ fn version(paths: &Paths, bump: bool) -> Result<String> {
     Ok(next)
 }
 
+fn android_inputs(paths: &Paths) -> Vec<PathBuf> {
+    let project = paths.root.join(ANDROID_PROJECT);
+    vec![
+        project.join("app/build.gradle"),
+        project.join("app/proguard-rules.pro"),
+        project.join("app/src/main"),
+        project.join("build.gradle"),
+        project.join("settings.gradle"),
+        project.join("gradle.properties"),
+        project.join("gradle/wrapper/gradle-wrapper.jar"),
+        project.join("gradle/wrapper/gradle-wrapper.properties"),
+        project.join("gradlew"),
+        project.join("key.properties"),
+    ]
+}
+
+fn android_fingerprint(paths: &Paths, version: &str, version_code: u32) -> Result<String> {
+    let inputs = android_inputs(paths);
+    let input_refs = inputs.iter().map(PathBuf::as_path).collect::<Vec<_>>();
+    input_fingerprint(
+        "android-v1",
+        &format!("{version}:{version_code}"),
+        &input_refs,
+    )
+}
+
+fn android_needs_build(paths: &Paths, version: &str, version_code: u32) -> Result<bool> {
+    let bundle = paths.root.join(ANDROID_BUNDLE);
+    let cache = paths.root.join("dist/.sow-state/android-build");
+    if !bundle.is_file() || !cache.is_file() {
+        return Ok(true);
+    }
+    let fingerprint = android_fingerprint(paths, version, version_code)?;
+    Ok(fs::read_to_string(cache)?.trim() != fingerprint)
+}
+
+fn android_version_code(paths: &Paths, version: &str, bump: bool) -> Result<u32> {
+    let path = paths.root.join(ANDROID_VERSION_CODE);
+    let current = fs::read_to_string(&path)
+        .with_context(|| format!("read {}", path.display()))?
+        .trim()
+        .parse::<u32>()
+        .with_context(|| format!("{ANDROID_VERSION_CODE} must contain a positive integer"))?;
+    if current == 0 {
+        bail!("{ANDROID_VERSION_CODE} must contain a positive integer");
+    }
+    if !bump && !android_needs_build(paths, version, current)? {
+        return Ok(current);
+    }
+    let next = current
+        .checked_add(1)
+        .context("Android versionCode exhausted")?;
+    fs::write(&path, format!("{next}\n"))?;
+    println!("  Android versionCode {current} -> {next}");
+    Ok(next)
+}
+
+fn build_android(paths: &Paths, version: &str, version_code: u32) -> Result<()> {
+    let project = paths.root.join(ANDROID_PROJECT);
+    let gradlew = project.join("gradlew");
+    let key_properties = project.join("key.properties");
+    let bundle = project.join("app/build/outputs/bundle/release/app-release.aab");
+    let output = paths.root.join(ANDROID_BUNDLE);
+    let cache = paths.root.join("dist/.sow-state/android-build");
+
+    require_file(&gradlew, "Android Gradle wrapper")?;
+    require_file(&key_properties, "Android signing properties")?;
+    let fingerprint = android_fingerprint(paths, version, version_code)?;
+    if output.is_file() && cache.is_file() && fs::read_to_string(&cache)?.trim() == fingerprint {
+        println!("  Android AAB unchanged; reusing {}", output.display());
+        return Ok(());
+    }
+
+    let version_name_arg = format!("-PsowVersionName={version}");
+    let version_code_arg = format!("-PsowVersionCode={version_code}");
+    run(
+        "./gradlew",
+        &[
+            "--no-daemon",
+            "--no-configuration-cache",
+            ":app:bundleRelease",
+            &version_name_arg,
+            &version_code_arg,
+        ],
+        Some(&project),
+    )?;
+    require_file(&bundle, "Android release AAB")?;
+
+    let metadata_path = [
+        project.join(
+            "app/build/intermediates/merged_manifests/release/processReleaseManifest/output-metadata.json",
+        ),
+        project.join("app/build/intermediates/merged_manifests/release/output-metadata.json"),
+    ]
+    .into_iter()
+    .find(|path| path.is_file())
+    .context("Android output metadata not found after release build")?;
+    require_file(&metadata_path, "Android output metadata")?;
+    let metadata: serde_json::Value = serde_json::from_slice(&fs::read(&metadata_path)?)
+        .context("parse Android output metadata")?;
+    let application_id = metadata
+        .get("applicationId")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    let element = metadata
+        .get("elements")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|elements| elements.first())
+        .context("Android output metadata has no bundle element")?;
+    let built_code = element
+        .get("versionCode")
+        .and_then(serde_json::Value::as_u64)
+        .context("Android output metadata has no versionCode")?;
+    let built_name = element
+        .get("versionName")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    if application_id != "com.shadowsofwar" {
+        bail!("Android applicationId mismatch: {application_id}");
+    }
+    if built_code != u64::from(version_code) || built_name != version {
+        bail!(
+            "Android version mismatch: built {built_name} (code {built_code}), expected {version} (code {version_code})"
+        );
+    }
+
+    fs::create_dir_all(output.parent().context("Android output parent missing")?)?;
+    fs::copy(&bundle, &output).with_context(|| {
+        format!("copy {} to {}", bundle.display(), output.display())
+    })?;
+    fs::create_dir_all(cache.parent().context("Android cache parent missing")?)?;
+    fs::write(cache, format!("{fingerprint}\n"))?;
+    println!(
+        "  Android AAB ready: {} (version {version}, code {version_code})",
+        output.display()
+    );
+    Ok(())
+}
+
 fn preflight(paths: &Paths, config: &Config) -> Result<()> {
     let dirty_files = workspace_dirty_files(paths)?;
     if dirty_files.is_empty() {
@@ -218,7 +365,9 @@ fn preflight(paths: &Paths, config: &Config) -> Result<()> {
             println!("    {file}");
         }
     }
-    for command in ["cargo", "curl", "rsync", "rustc", "scp", "ssh", "wasm-opt"] {
+    for command in [
+        "cargo", "curl", "java", "rsync", "rustc", "scp", "ssh", "wasm-opt",
+    ] {
         if !Command::new("/bin/sh")
             .args(["-c", &format!("command -v {command} >/dev/null")])
             .status()?
@@ -1379,20 +1528,65 @@ fn remote_plan(config: &Config, release: &Release) -> Result<ComponentPlan> {
     )?;
     let current = parse_components(&remote);
     let local = parse_components(&fs::read_to_string(release.dir.join("COMPONENTS"))?);
-    let relay_remote = relay_manifest_remote(config)?
-        .and_then(|manifest| {
-            manifest
-                .get("relay_sha256")
-                .and_then(|value| value.as_str())
-                .map(|value| value.to_string())
-        });
+    let relay_remote = relay_manifest_remote(config)?;
+    let release_json: serde_json::Value =
+        serde_json::from_slice(&fs::read(release.dir.join("release.json"))?)?;
+    let relay = release_json
+        .get("relay")
+        .context("release.json has no relay metadata")?;
+    let expected_relay_sha = relay
+        .get("sha256")
+        .and_then(serde_json::Value::as_str)
+        .context("release relay sha256 missing")?;
+    let expected_bin_sha = relay
+        .get("bin_sha256")
+        .and_then(serde_json::Value::as_str)
+        .context("release relay bin_sha256 missing")?;
+    let expected_git = release_json
+        .get("git")
+        .and_then(serde_json::Value::as_str)
+        .context("release git missing")?;
+    let expected_fstack = relay
+        .get("fstack")
+        .and_then(serde_json::Value::as_str)
+        .context("release relay fstack missing")?;
+    let expected_knob = relay
+        .get("ws_write_timeout_ms")
+        .and_then(serde_json::Value::as_u64)
+        .context("release relay knob missing")?;
+    let relay_identity_drift = match &relay_remote {
+        None => true,
+        Some(manifest) => {
+            [
+                ("relay_sha256", expected_relay_sha),
+                ("relay_bin_sha256", expected_bin_sha),
+                ("git", expected_git),
+                ("fstack", expected_fstack),
+            ]
+            .iter()
+            .any(|(key, expected)| {
+                manifest.get(*key).and_then(serde_json::Value::as_str) != Some(*expected)
+            }) || manifest
+                .get("ws_write_timeout_ms")
+                .and_then(serde_json::Value::as_u64)
+                != Some(expected_knob)
+        }
+    };
     Ok(ComponentPlan {
         web: current.get("web") != local.get("web"),
         maps: current.get("maps") != local.get("maps"),
         server: current.get("server") != local.get("server"),
         database: current.get("database") != local.get("database"),
         ops: current.get("ops") != local.get("ops"),
-        relay: relay_remote != local.get("relay").cloned(),
+        relay: relay_identity_drift
+            || relay_remote
+                .and_then(|manifest| {
+                    manifest
+                        .get("relay_sha256")
+                        .and_then(|value| value.as_str())
+                        .map(str::to_string)
+                })
+                != local.get("relay").cloned(),
     })
 }
 

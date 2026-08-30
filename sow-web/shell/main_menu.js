@@ -273,7 +273,7 @@
 
     function renderFooter(label) {
         return "<footer class='sow-menu__footer'>" + (label ? "<span>" + esc(label) + "</span>" : "") + "<nav class='sow-menu__footer-links' aria-label='Game links'>" +
-            "<a href='/how-to-play/'>GUIDES</a><a href='/terms/'>TERMS</a><a href='/privacy/'>PRIVACY</a>" +
+            "<a href='/how-to-play/'>HOW TO PLAY</a><a href='/terms/'>TERMS</a><a href='/privacy/'>PRIVACY</a>" +
             "<a href='https://discord.gg/eauHRf7zP' rel='noreferrer'>DISCORD</a><a href='https://github.com/worldofunreal/shadows-of-war' rel='noreferrer'>GITHUB</a>" +
             "</nav><span>SHADOWSOFWAR.IO</span></footer>";
     }
@@ -347,7 +347,7 @@
                         "</section>" +
                     "</section>" +
                 "</main>" +
-                renderFooter("GLOBAL LOBBY BROWSER") +
+                renderFooter("LOBBY BROWSER") +
             "</div>" + renderPasswordModal();
     }
 
@@ -507,7 +507,7 @@
                                 renderFeedback() +
                                 "<div class='sow-menu__custom-actions'>" +
                                     "<button class='sow-menu__primary sow-menu__custom-launch-btn' type='submit'>" +
-                                        (isSp ? "START SIMULATION" : "CREATE ONLINE LOBBY") + " <span>↗</span>" +
+                                        (isSp ? "START SIMULATION" : "CREATE LOBBY") + " <span>↗</span>" +
                                     "</button>" +
                                     "<button class='sow-menu__ghost-button' type='button' data-command='close_overlay'>CANCEL</button>" +
                                 "</div>" +
@@ -515,7 +515,7 @@
                         "</form>" +
                     "</section>" +
                 "</main>" +
-                renderFooter("CUSTOM MATCH CREATOR") +
+                renderFooter("CREATE GAME") +
             "</div>";
     }
 
@@ -633,13 +633,13 @@
                     "</section>" +
                     "<section class='sow-menu__queue-players-card'>" +
                         "<div class='sow-menu__queue-players-head'>" +
-                            "<p class='sow-menu__panel-label'>COMBAT ROSTER</p>" +
+                            "<p class='sow-menu__panel-label'>PLAYERS</p>" +
                             "<span class='sow-menu__player-count-badge'>" + (lobby ? (lobby.num_players || 0) + " / " + (lobby.max_players || 8) + " PLAYERS" : "—") + "</span>" +
                         "</div>" +
                         "<div class='sow-menu__queue-roster-wrap'>" + rosterHtml + "</div>" +
                     "</section>" +
                 "</main>" +
-                renderFooter("LIVE ROOM") +
+                renderFooter("LOBBY") +
             "</div>";
     }
 
@@ -670,7 +670,7 @@
                 "<section class='sow-menu__modal sow-menu__leader-modal'>" +
                     "<div class='sow-menu__modal-head'>" +
                         "<div>" +
-                            "<p class='sow-menu__panel-label'>LEADERS OF HISTORY</p>" +
+                            "<p class='sow-menu__panel-label'>LEADERS</p>" +
                             "<h2>SELECT LEADER</h2>" +
                         "</div>" +
                         "<button class='sow-menu__icon-button' type='button' data-command='close_leader_picker' aria-label='Close'>×</button>" +
@@ -685,7 +685,7 @@
                                 "</div>" +
                                 "<h3>" + esc(activeLeader.name) + "</h3>" +
                                 "<div class='sow-menu__perk-card'>" +
-                                    "<div class='sow-menu__perk-title'>⚡ SPECIAL TRAIT &amp; PERK</div>" +
+                                    "<div class='sow-menu__perk-title'>⚡ COMMAND TRAIT</div>" +
                                     "<p class='sow-menu__perk-desc'>" + esc(activeLeader.perk || "Enhanced military & empire bonuses.") + "</p>" +
                                 "</div>" +
                                 "<button class='sow-menu__primary sow-menu__leader-confirm-btn' type='button' data-command='confirm_leader' data-leader-id='" + esc(activeLeader.id) + "'>" +
@@ -694,7 +694,7 @@
                             "</div>" +
                         "</div>" +
                         "<div class='sow-menu__leader-grid-wrap'>" +
-                            "<p class='sow-menu__panel-sublabel'>AVAILABLE CIVILIZATIONS (" + leaders.length + ")</p>" +
+                            "<p class='sow-menu__panel-sublabel'>LEADERS (" + leaders.length + ")</p>" +
                             "<div class='sow-menu__leader-grid'>" + listHtml + "</div>" +
                         "</div>" +
                     "</div>" +
@@ -732,7 +732,7 @@
                         "<label class='sow-menu__form-field sow-menu__form-field--wide'>" +
                             "<span>MOTION &amp; ANIMATION</span>" +
                             "<select class='sow-menu__select' name='reduced_motion' data-setting='reduced_motion'>" +
-                                "<option value='full' " + (!settings.reduced_motion ? "selected" : "") + ">FULL KINETIC DYNAMICS</option>" +
+                                "<option value='full' " + (!settings.reduced_motion ? "selected" : "") + ">FULL</option>" +
                                 "<option value='reduced' " + (settings.reduced_motion ? "selected" : "") + ">REDUCED MOTION</option>" +
                             "</select>" +
                         "</label>" +
@@ -1180,7 +1180,7 @@
             + '</footer>'
             + '<aside class="sow-hud__leaderboard hidden" id="sow-hud-leaderboard">'
             + '  <div class="sow-hud__panel-header">'
-            + '    <h3>CONQUEST RANKINGS</h3>'
+            + '    <h3>RANKINGS</h3>'
             + '    <button class="sow-hud__close-btn" type="button" data-command="toggle_leaderboard">✕</button>'
             + '  </div>'
             + '  <div class="sow-hud__leaderboard-rows" id="sow-hud-lb-rows"></div>'
@@ -1217,10 +1217,10 @@
             + '<div class="sow-hud__endgame-backdrop hidden" id="sow-hud-endgame-modal">'
             + '  <div class="sow-hud__endgame-card">'
             + '    <div class="sow-hud__endgame-banner" id="sow-hud-endgame-banner">VICTORY</div>'
-            + '    <h2 style="margin:0 0 12px;font-size:24px;" id="sow-hud-endgame-title">The World is Yours</h2>'
+            + '    <h2 style="margin:0 0 12px;font-size:24px;" id="sow-hud-endgame-title">MATCH COMPLETE</h2>'
             + '    <p style="color:var(--sow-muted);font-size:14px;margin-bottom:24px;" id="sow-hud-endgame-desc">Your conquest is complete.</p>'
             + '    <div class="sow-hud__endgame-stats" id="sow-hud-endgame-stats"></div>'
-            + '    <button class="sow-hud__btn" type="button" data-command="confirm_endgame_leave" style="background:var(--sow-gold);color:#0d0f13;font-weight:800;padding:12px 28px;">RETURN TO COMMAND</button>'
+            + '    <button class="sow-hud__btn" type="button" data-command="confirm_endgame_leave" style="background:var(--sow-gold);color:#0d0f13;font-weight:800;padding:12px 28px;">BACK TO MENU</button>'
             + '  </div>'
             + '</div>';
 
@@ -1619,8 +1619,8 @@
             hudRefs.endgame.classList.toggle("hidden", !isOver);
             if (isOver) {
                 if (hudRefs.endgameBanner) hudRefs.endgameBanner.textContent = isWinner ? 'VICTORY' : 'DEFEAT';
-                if (hudRefs.endgameTitle) hudRefs.endgameTitle.textContent = isWinner ? 'The World is Yours' : 'Your Empire Has Fallen';
-                if (hudRefs.endgameDesc) hudRefs.endgameDesc.textContent = isWinner ? 'Your conquest is complete. All realms have bowed to your authority.' : (hud.winner_name ? hud.winner_name + ' has unified the world.' : 'Your armies have been vanquished in glorious battle.');
+                if (hudRefs.endgameTitle) hudRefs.endgameTitle.textContent = isWinner ? 'MATCH WON' : 'MATCH LOST';
+                if (hudRefs.endgameDesc) hudRefs.endgameDesc.textContent = isWinner ? 'You reached the map-control victory threshold.' : (hud.winner_name ? 'Winner: ' + hud.winner_name : 'The match has ended.');
                 if (hudRefs.endgameStats) {
                     var kda = hud.player_kda || {};
                     var rewards = hud.rewards || {};

@@ -1,7 +1,7 @@
 {
   "name": "Shadows of War",
   "short_name": "Shadows of War",
-  "description": "Cross-platform multiplayer real-time strategy war game",
+  "description": "Multiplayer strategy war game",
   "start_url": "/play/",
   "scope": "/",
   "display": "fullscreen",

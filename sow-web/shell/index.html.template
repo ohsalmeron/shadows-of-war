@@ -3,22 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Play Shadows of War Online — Real-Time Strategy MMORTS</title>
-    <meta name="description" content="Launch the official Shadows of War real-time strategy game client. Join live multiplayer matches, deploy leaders, expand territory, and conquer the global map.">
-    <meta name="keywords" content="RTS, play Shadows of War, real-time strategy, multiplayer conquest, grand strategy, online game client">
+    <title>Play Shadows of War — MMORTS Strategy Game</title>
+    <meta name="description" content="Enter Shadows of War, a match-based MMORTS. Choose a historical leader, expand territory, build your economy, and fight for control of the map.">
+    <meta name="keywords" content="MMORTS, RTS, multiplayer strategy, territory conquest, grand strategy, Shadows of War">
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://shadowsofwar.io/play/">
-    <meta property="og:title" content="Play Shadows of War Online — Real-Time Strategy MMORTS">
-    <meta property="og:description" content="Launch the official Shadows of War real-time strategy game client. Join live multiplayer matches, deploy leaders, and conquer the global map.">
+    <meta property="og:title" content="Play Shadows of War — MMORTS Strategy Game">
+    <meta property="og:description" content="Enter Shadows of War, a match-based MMORTS. Choose a historical leader, expand territory, build your economy, and fight for control of the map.">
     <meta property="og:image" content="https://shadowsofwar.io/assets/shell/loader/sow-splash-desktop.webp">
 
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image">
     <meta property="twitter:url" content="https://shadowsofwar.io/play/">
-    <meta property="twitter:title" content="Play Shadows of War Online — Real-Time Strategy MMORTS">
-    <meta property="twitter:description" content="Launch the official Shadows of War real-time strategy game client. Join live multiplayer matches, deploy leaders, and conquer the global map.">
+    <meta property="twitter:title" content="Play Shadows of War — MMORTS Strategy Game">
+    <meta property="twitter:description" content="Enter Shadows of War, a match-based MMORTS. Choose a historical leader, expand territory, build your economy, and fight for control of the map.">
     <meta property="twitter:image" content="https://shadowsofwar.io/assets/shell/loader/sow-splash-desktop.webp">
 
     <meta name="application-name" content="Shadows of War">
@@ -178,7 +178,7 @@
     <!-- Portal store listings (Poki, CrazyGames, etc.) may scrape index.html for title/description. -->
     <div style="display: none;" aria-hidden="true">
         <h1>Shadows of War</h1>
-        <p>Shadows of War is a match-based real-time strategy game played on world maps. Join online matchmaking, command legendary civilizations, forge alliances, betray rivals, expand territory, and build your war economy in real time. Play now at shadowsofwar.io.</p>
+        <p>Shadows of War is a match-based MMORTS on world maps. Join matchmaking, command one of twelve historical leaders, forge alliances, betray rivals, expand territory, and build your war economy.</p>
     </div>
     <canvas id="blade" oncontextmenu="return false;" tabindex="0"></canvas>
     <div id="sow-menu" hidden aria-live="polite"></div>

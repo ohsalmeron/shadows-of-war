@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://shadowsofwar.io/play/"><img src="https://img.shields.io/badge/Play_Now-shadowsofwar.io-ff6b2c?style=for-the-badge" alt="Play now" /></a>
+  <a href="https://shadowsofwar.io/play/"><img src="https://img.shields.io/badge/Play-shadowsofwar.io-ff6b2c?style=for-the-badge" alt="Play" /></a>
   <a href="https://shadowsofwar.io/how-to-play/"><img src="https://img.shields.io/badge/Docs-How_to_Play-0a0a0e?style=flat-square" alt="How to play" /></a>
   <a href="https://github.com/worldofunreal/shadows-of-war/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square" alt="AGPL-3.0" /></a>
   <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/Rust-1.85-orange?style=flat-square&logo=rust" alt="Rust 1.85" /></a>
@@ -11,15 +11,15 @@
   <img src="https://img.shields.io/badge/Engine-deterministic_lockstep-0a0a0e?style=flat-square" alt="deterministic" />
 </p>
 
-<h1 align="center">Shadows of War — Browser MMORTS</h1>
+<h1 align="center">Shadows of War — MMORTS Strategy Game</h1>
 
 <p align="center">
-  <strong>Match-based browser MMORTS about territory conquest on world maps.</strong><br/>
+  <strong>Match-based MMORTS about territory conquest on world maps.</strong><br/>
   Choose 1 of 12 legendary leaders, expand borders, build economy, forge alliances, betray rivals.<br/>
-  <a href="https://shadowsofwar.io/play/"><strong>▶ Play now at shadowsofwar.io</strong></a> · <a href="https://shadowsofwar.io/how-to-play/">How to Play</a> · <a href="docs/launch-graph.md">Launch Graph</a> · <a href="docs/launch-kit.md">Launch Kit</a>
+  <a href="https://shadowsofwar.io/play/"><strong>▶ Play at shadowsofwar.io</strong></a> · <a href="https://shadowsofwar.io/how-to-play/">How to Play</a> · <a href="docs/launch-graph.md">Launch Graph</a> · <a href="docs/launch-kit.md">Launch Kit</a>
 </p>
 
-> **State-of-the-art open-source strategy** — deterministic Rust engine shared across Browser (WASM), Desktop and Mobile; WebGPU `blade` rendering; DPDK/F-Stack kernel-bypass relay; procedural harmonic audio. One `sow-core`, three targets. Verified in production `2026-08-22` on IONOS `74.208.246.177` + Azure F-Stack relay `20.122.128.185` (`docs/relay-architecture.md`).
+> **A verifiable strategy game and systems project** — deterministic Rust engine shared across web, desktop and mobile; WebGPU `blade` rendering; DPDK/F-Stack kernel-bypass relay; procedural harmonic audio. One `sow-core`, three targets. Verified in production `2026-08-22` on IONOS `74.208.246.177` + Azure F-Stack relay `20.122.128.185` (`docs/relay-architecture.md`).
 
 ---
 
