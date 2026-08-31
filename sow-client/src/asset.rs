@@ -10,6 +10,15 @@ impl SowApp {
         self.poll_leader_portrait_fetches();
         self.poll_boot_ui_fetches();
         }
+        #[cfg(target_arch = "wasm32")]
+        if self.ui.app.phase == ClientPhase::Playing {
+            // The browser shell owns the main menu, so the normal WASM path never reaches
+            // ClientApp::draw(MainMenu), where avatars are otherwise queued.
+            self.ui
+                .app
+                .asset_loader
+                .ensure_avatars_loaded(&self.ui.egui_ctx);
+        }
         self.poll_avatar_fetches();
         self.poll_portal_avatar_fetch();
         self.poll_database_events();
@@ -481,6 +490,7 @@ impl SowApp {
                 crate::player_progress::DbEvent::ProfileLoaded {
                     progress,
                     account_id,
+                    public_id,
                     display_name,
                     provider,
                     request_id,
@@ -500,7 +510,13 @@ impl SowApp {
                         account_id.chars().count(),
                         display_name.chars().count()
                     );
-                    self.apply_cloud_profile(progress, account_id, display_name, provider);
+                    self.apply_cloud_profile(
+                        progress,
+                        account_id,
+                        public_id,
+                        display_name,
+                        provider,
+                    );
                     log::info!(
                         "Successfully synced profile from cloud database: level {} ({} XP)",
                         self.progress.level,

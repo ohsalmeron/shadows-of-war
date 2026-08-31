@@ -7,6 +7,14 @@ use std::path::Path;
 pub const LEADERS_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("leaders");
 pub const GEO_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("geo_entities");
 pub const PLAYERS_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("players");
+pub const MATCHES_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("match_records");
+pub const PLAYER_MATCH_INDEX_TABLE: TableDefinition<&str, &[u8]> =
+    TableDefinition::new("player_match_index");
+pub const SEASON_RATINGS_TABLE: TableDefinition<&str, &[u8]> =
+    TableDefinition::new("season_ratings");
+pub const SEASONS_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("seasons");
+pub const PUBLIC_PROFILES_TABLE: TableDefinition<&str, &[u8]> =
+    TableDefinition::new("public_profiles");
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct LeaderRecord {
@@ -80,6 +88,15 @@ pub fn init_database<P: AsRef<Path>>(path: P) -> Result<Database, Box<dyn std::e
         write_txn.commit()?;
         log::info!("Redb metadata database successfully populated and committed!");
     }
+    // Tables are created independently of the initial-data branch so an
+    // existing installation gets the profile schema without replacing data.
+    let write_txn = db.begin_write()?;
+    write_txn.open_table(MATCHES_TABLE)?;
+    write_txn.open_table(PLAYER_MATCH_INDEX_TABLE)?;
+    write_txn.open_table(SEASON_RATINGS_TABLE)?;
+    write_txn.open_table(SEASONS_TABLE)?;
+    write_txn.open_table(PUBLIC_PROFILES_TABLE)?;
+    write_txn.commit()?;
     Ok(db)
 }
 

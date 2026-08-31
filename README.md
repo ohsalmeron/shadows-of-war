@@ -7,7 +7,7 @@
   <a href="https://shadowsofwar.io/how-to-play/"><img src="https://img.shields.io/badge/Docs-How_to_Play-0a0a0e?style=flat-square" alt="How to play" /></a>
   <a href="https://github.com/worldofunreal/shadows-of-war/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square" alt="AGPL-3.0" /></a>
   <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/Rust-1.85-orange?style=flat-square&logo=rust" alt="Rust 1.85" /></a>
-  <a href="https://discord.gg/eauHRf7zP"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&logo=discord" alt="Discord" /></a>
+  <a href="https://discord.gg/d6ZDeChSE"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&logo=discord" alt="Discord" /></a>
   <img src="https://img.shields.io/badge/Engine-deterministic_lockstep-0a0a0e?style=flat-square" alt="deterministic" />
 </p>
 

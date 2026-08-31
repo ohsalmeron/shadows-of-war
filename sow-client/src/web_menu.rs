@@ -86,9 +86,6 @@ enum WebMenuCommand {
     },
     CancelPlacement,
     ToggleInbox,
-    SetBottomTab {
-        tab: String,
-    },
     AcceptAlliance {
         target_player_id: u16,
     },
@@ -117,7 +114,6 @@ enum WebMenuCommand {
     },
     ConfirmBetrayal,
     CancelBetrayal,
-    ClearEventLog,
     CancelAttack {
         attack_id: u64,
     },
@@ -127,6 +123,7 @@ enum WebMenuCommand {
     Surrender,
     ToggleLeaderboard,
     ReturnToMenu,
+    ContinueObserving,
     ZoomIn,
     ZoomOut,
     CenterCamera,
@@ -159,6 +156,9 @@ thread_local! {
     /// on every publish attempt.
     static LAST_MY_PLAYER: RefCell<Option<(u64, u16, Option<MyPlayerSummary>)>> =
         const { RefCell::new(None) };
+    /// WASM nameplates need the same rank cache as native egui for the top-three crown/medals.
+    /// Refreshing is keyed by the authoritative snapshot tick, not the render/publish cadence.
+    static LAST_WEB_RANKINGS_TICK: Cell<Option<u64>> = const { Cell::new(None) };
 }
 
 /// Minimum gap between state-publish attempts, matching the JS poll cadence.
@@ -172,8 +172,6 @@ struct HudPublishKey {
     troop_rate: u64,
     attack_ratio: u32,
     spawn_timer_tenths: i32,
-    active_attacks: usize,
-    active_fleets: usize,
     selected_building: u8,
     selected_nuke: u8,
     building_costs: [u64; 9],
@@ -182,13 +180,12 @@ struct HudPublishKey {
     settings_reduced_motion: bool,
     leaderboard_open: bool,
     inbox_open: bool,
-    bottom_tab: u8,
     transfer_target: Option<u16>,
     betrayal_open: bool,
     sync_open: bool,
     inbox_count: usize,
-    event_log_len: usize,
     notification_len: usize,
+    is_spectating: bool,
     snapshot_tick: u64,
     hovered_tile: u32,
     hovered_owner: u16,
@@ -236,6 +233,49 @@ fn my_player_summary(app: &SowApp, snapshot_tick: u64, my_pid: u16) -> Option<My
         *cache = Some((snapshot_tick, my_pid, summary));
         summary
     })
+}
+
+fn refresh_web_leaderboard_cache(app: &mut SowApp) {
+    let Some(snapshot) = app.sim.current_snapshot.as_ref() else {
+        LAST_WEB_RANKINGS_TICK.with(|tick| tick.set(None));
+        app.ui.leaderboard_rankings.clear();
+        return;
+    };
+
+    let snapshot_tick = snapshot.tick;
+    let changed = LAST_WEB_RANKINGS_TICK.with(|tick| {
+        if tick.get() == Some(snapshot_tick) {
+            false
+        } else {
+            tick.set(Some(snapshot_tick));
+            true
+        }
+    });
+    if !changed {
+        return;
+    }
+
+    let mut rankings: Vec<sow_ui::ui::hud::leaderboard::LeaderboardRanking> = snapshot
+        .players
+        .iter()
+        .filter(|player| player.alive)
+        .map(|player| sow_ui::ui::hud::leaderboard::LeaderboardRanking {
+            id: player.id,
+            tiles: player.tile_count,
+            troops: player.troops,
+            name: sow_core::player::display_name(player.id, &player.name, player.player_type),
+            kills: player.kills,
+            deaths: player.deaths,
+            assists: player.assists,
+        })
+        .collect();
+    rankings.sort_unstable_by(|a, b| {
+        b.tiles
+            .cmp(&a.tiles)
+            .then_with(|| b.troops.total_cmp(&a.troops))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    app.ui.leaderboard_rankings = rankings;
 }
 
 fn publish_due() -> bool {
@@ -474,13 +514,6 @@ impl SowApp {
                     self.ui.app.hud_state.show_alliance_inbox =
                         !self.ui.app.hud_state.show_alliance_inbox;
                 }
-                WebMenuCommand::SetBottomTab { tab } => {
-                    self.ui.app.hud_state.bottom_tab = match tab.to_ascii_lowercase().as_str() {
-                        "battle" | "battle_log" => sow_ui::ui::hud::BottomHudTab::BattleLog,
-                        "event" | "event_log" => sow_ui::ui::hud::BottomHudTab::EventLog,
-                        _ => sow_ui::ui::hud::BottomHudTab::Controls,
-                    };
-                }
                 WebMenuCommand::AcceptAlliance { target_player_id } => {
                     self.send_intent(sow_core::protocol::GameplayIntent::AcceptAlliance {
                         target_player: target_player_id,
@@ -560,10 +593,6 @@ impl SowApp {
                     self.ui.app.hud_state.show_betrayal_warning = None;
                     self.ui.app.hud_state.betrayal_warning_cached = None;
                 }
-                WebMenuCommand::ClearEventLog => {
-                    self.ui.app.hud_state.event_log.clear();
-                    self.ui.app.hud_state.event_log_seen_count = 0;
-                }
                 WebMenuCommand::CancelAttack { attack_id } => {
                     self.send_intent(sow_core::protocol::GameplayIntent::CancelAttack { attack_id });
                 }
@@ -581,6 +610,10 @@ impl SowApp {
                         &self.ui.egui_ctx.clone(),
                         Some(UiAction::LeaveLobby),
                     );
+                }
+                WebMenuCommand::ContinueObserving => {
+                    self.ui.is_spectating = true;
+                    self.ui.endgame_cache = None;
                 }
                 WebMenuCommand::ZoomIn => {
                     self.process_ui_actions(
@@ -668,8 +701,7 @@ fn hud_publish_key(app: &SowApp) -> HudPublishKey {
         || hud.show_alliance_inbox
         || hud.show_ask_panel.is_some()
         || hud.show_betrayal_warning.is_some()
-        || hud.sync_state.is_some()
-        || hud.bottom_tab != sow_ui::ui::hud::BottomHudTab::Controls;
+        || hud.sync_state.is_some();
     let my_pid = app.sim.my_player_id.unwrap_or(hud.my_player_id);
     let inbox_count = my_player_summary(app, snapshot_tick, my_pid)
         .map(|player| player.inbox_count)
@@ -685,8 +717,6 @@ fn hud_publish_key(app: &SowApp) -> HudPublishKey {
             .spawn_timer_secs
             .map(|secs| (secs.max(0.0) * 10.0).round() as i32)
             .unwrap_or(-1),
-        active_attacks: hud.attacks.len(),
-        active_fleets: hud.fleets.len(),
         selected_building: hud
             .selected_building_kind
             .map(|kind| kind as u8)
@@ -698,17 +728,12 @@ fn hud_publish_key(app: &SowApp) -> HudPublishKey {
         settings_reduced_motion: app.ui.app.settings_state.reduced_motion,
         leaderboard_open: app.ui.show_leaderboard,
         inbox_open: hud.show_alliance_inbox,
-        bottom_tab: match hud.bottom_tab {
-            sow_ui::ui::hud::BottomHudTab::Controls => 0,
-            sow_ui::ui::hud::BottomHudTab::BattleLog => 1,
-            sow_ui::ui::hud::BottomHudTab::EventLog => 2,
-        },
         transfer_target: hud.show_ask_panel,
         betrayal_open: hud.show_betrayal_warning.is_some(),
         sync_open: hud.sync_state.is_some(),
         inbox_count,
-        event_log_len: hud.event_log.len(),
         notification_len: hud.hud_notifications.len(),
+        is_spectating: app.ui.is_spectating,
         snapshot_tick: if cold_open { snapshot_tick } else { 0 },
         hovered_tile,
         hovered_owner,
@@ -817,39 +842,6 @@ fn build_inbox(snapshot: &sow_core::protocol::SimSnapshot, my_pid: u16) -> serde
     serde_json::Value::Array(requests)
 }
 
-fn build_battle_log(hud: &sow_ui::ui::hud::HudState, my_pid: u16) -> serde_json::Value {
-    let mut rows = Vec::new();
-    for attack in hud.attacks.iter().filter(|attack| {
-        attack.owner_id == my_pid || attack.target_owner == my_pid
-    }) {
-        rows.push(serde_json::json!({
-            "kind": if attack.target_owner == my_pid { "incoming" } else { "outgoing" },
-            "id": attack.id,
-            "troops": attack.troops,
-            "retreating": attack.retreating,
-            "target_owner": attack.target_owner,
-        }));
-    }
-    for fleet in hud.fleets.iter().filter(|fleet| fleet.owner_id == my_pid) {
-        rows.push(serde_json::json!({
-            "kind": "navy",
-            "id": fleet.id,
-            "troops": fleet.troops,
-            "retreating": fleet.retreating,
-        }));
-    }
-    serde_json::Value::Array(rows)
-}
-
-fn build_event_log(hud: &sow_ui::ui::hud::HudState) -> serde_json::Value {
-    serde_json::Value::Array(
-        hud.event_log
-            .iter()
-            .map(|entry| serde_json::json!({ "message": &entry.message }))
-            .collect(),
-    )
-}
-
 fn build_hud_payload(app: &SowApp) -> serde_json::Value {
     if app.ui.app.phase != sow_ui::ClientPhase::Playing {
         return serde_json::Value::Null;
@@ -860,7 +852,7 @@ fn build_hud_payload(app: &SowApp) -> serde_json::Value {
     let snapshot = app.sim.current_snapshot.as_ref();
     let snapshot_tick = snapshot.map(|snapshot| snapshot.tick).unwrap_or(0);
     let me = my_player_summary(app, snapshot_tick, my_pid);
-    let match_over = snapshot.is_some_and(|snapshot| {
+    let match_over = !app.ui.is_spectating && snapshot.is_some_and(|snapshot| {
         snapshot.winner.is_some()
             || me.is_some_and(|player| !player.alive && player.has_spawned)
     });
@@ -896,11 +888,6 @@ fn build_hud_payload(app: &SowApp) -> serde_json::Value {
         "spawn_timer_secs": hud.spawn_timer_secs,
         "selected_building": selected_building,
         "selected_nuke": hud.selected_nuke_kind.is_some(),
-        "bottom_tab": match hud.bottom_tab {
-            sow_ui::ui::hud::BottomHudTab::Controls => "controls",
-            sow_ui::ui::hud::BottomHudTab::BattleLog => "battle_log",
-            sow_ui::ui::hud::BottomHudTab::EventLog => "event_log",
-        },
         "pin_emoji": hud.pin_emoji,
         "building_costs": {
             "city": costs[0],
@@ -914,6 +901,7 @@ fn build_hud_payload(app: &SowApp) -> serde_json::Value {
         "hovered": serde_json::Value::Null,
         "inbox_count": me.map(|player| player.inbox_count).unwrap_or(0),
         "match_over": match_over,
+        "is_spectating": app.ui.is_spectating,
         "is_winner": is_winner,
         "winner_name": winner_name,
         "player_kda": {
@@ -945,12 +933,6 @@ fn build_hud_payload(app: &SowApp) -> serde_json::Value {
         }
     }
 
-    if hud.bottom_tab == sow_ui::ui::hud::BottomHudTab::BattleLog {
-        payload["battle_log"] = build_battle_log(hud, my_pid);
-    }
-    if hud.bottom_tab == sow_ui::ui::hud::BottomHudTab::EventLog {
-        payload["event_log"] = build_event_log(hud);
-    }
     if hud.show_betrayal_warning.is_some() || hud.betrayal_warning_cached.is_some() {
         let warning = hud
             .show_betrayal_warning
@@ -1025,7 +1007,8 @@ fn notice_name(notice: Option<sow_ui::LobbyNotice>) -> Option<&'static str> {
 
 /// Publish a browser-safe snapshot. It is intentionally separate from MainMenuState so the
 /// DOM never receives transient textures, map bytes, or internal auth/session material.
-pub(crate) fn publish_state(app: &SowApp) {
+pub(crate) fn publish_state(app: &mut SowApp) {
+    refresh_web_leaderboard_cache(app);
     if !publish_due() {
         return;
     }
@@ -1060,6 +1043,8 @@ pub(crate) fn publish_state(app: &SowApp) {
     } else {
         LAST_HUD_KEY.with(|last| *last.borrow_mut() = None);
         LAST_MY_PLAYER.with(|cache| *cache.borrow_mut() = None);
+        LAST_WEB_RANKINGS_TICK.with(|tick| tick.set(None));
+        app.ui.leaderboard_rankings.clear();
         let leaders: Vec<serde_json::Value> = sow_core::player::Leader::ALL
             .into_iter()
             .map(|leader| {
@@ -1128,6 +1113,18 @@ pub(crate) fn publish_state(app: &SowApp) {
             "level": progress.level,
             "xp": progress.xp,
             "laurels": progress.laurels,
+            "public_profile_id": app.profile_public_id,
+            "profile_stats": {
+                "wins": progress.wins,
+                "matches_played": progress.matches_played,
+                "players_defeated": progress.players_defeated,
+                "empires_defeated": progress.empires_defeated,
+                "tribes_defeated": progress.tribes_defeated,
+                "kills": progress.kills,
+                "deaths": progress.deaths,
+                "assists": progress.assists,
+                "leader_xp": progress.leader_xp,
+            },
             "leaders": leaders,
             "map_catalog": map_catalog,
             "custom_game_config": &*state.custom_game_config,

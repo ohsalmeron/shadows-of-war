@@ -14,7 +14,7 @@ We only support the latest deployed version of the code on production servers (`
 
 If you discover a security vulnerability, please do not open a public issue. Instead, report it privately to:
 
-- **Email:** info@shadowsofwar.io
+- **Email:** hello@shadowsofwar.io
 - **Encryption:** (Optional) If you wish to encrypt your report, please email us to coordinate a secure keyshare.
 - **Response window:** We will acknowledge receipt of your report within 48 hours and provide an estimated timeline for the fix.
 

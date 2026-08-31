@@ -3,7 +3,7 @@ use sow_data::db::{PlayerDb, PlayerProfile};
 
 use axum::{
     Json, Router,
-    extract::{DefaultBodyLimit, Query, State},
+    extract::{DefaultBodyLimit, Path, Query, State},
     http::{HeaderMap, StatusCode, header},
     response::IntoResponse,
     routing::{get, post},
@@ -35,12 +35,15 @@ struct ProfileQuery {
 struct AnonymousProfileRequest {
     account_id: Option<String>,
     display_name: Option<String>,
+    #[serde(default)]
+    auth_secret: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct AnonymousDisplayNameRequest {
     account_id: String,
     display_name: String,
+    auth_secret: String,
 }
 
 #[derive(Deserialize)]
@@ -73,6 +76,29 @@ struct DirectSaveRequest {
 #[derive(Deserialize)]
 struct BotPoolSeedRequest {
     external_ids: Vec<String>,
+}
+
+#[derive(Deserialize, Default)]
+struct PublicSearchQuery {
+    q: Option<String>,
+    cursor: Option<usize>,
+    limit: Option<usize>,
+}
+
+#[derive(Deserialize, Default)]
+struct PublicHistoryQuery {
+    cursor: Option<usize>,
+    limit: Option<usize>,
+    queue: Option<String>,
+    mode: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+struct PublicLeaderboardQuery {
+    queue: Option<String>,
+    mode: Option<String>,
+    cursor: Option<usize>,
+    limit: Option<usize>,
 }
 
 /// POST /internal/verify — resolve an identity proof to a canonical account
@@ -264,6 +290,13 @@ async fn main() {
         crazygames_api_key,
         Some(Arc::clone(&redb_db_arc)),
     );
+    player_db
+        .ensure_current_season()
+        .expect("Failed to initialize current profile season");
+    match player_db.backfill_public_profiles().await {
+        Ok(migrated) => info!("Public profile index ready; migrated {migrated} legacy accounts"),
+        Err(error) => panic!("Failed to backfill public profile index: {error}"),
+    }
 
     let default_analytics_dir = std::path::Path::new(&redb_path)
         .parent()
@@ -300,6 +333,22 @@ async fn main() {
         .route("/event", post(handle_event))
         .route("/internal/analytics", get(handle_internal_analytics))
         .route("/profile", get(handle_get_profile))
+        .route("/profiles/search", get(handle_public_profile_search))
+        .route("/profiles/{public_id}", get(handle_public_profile))
+        .route(
+            "/profiles/{public_id}/matches",
+            get(handle_public_match_history),
+        )
+        .route(
+            "/profiles/{public_id}/seasons",
+            get(handle_public_profile_seasons),
+        )
+        .route("/matches/{match_id}", get(handle_public_match_detail))
+        .route("/seasons/current", get(handle_current_season))
+        .route(
+            "/seasons/{season_id}/leaderboard",
+            get(handle_public_leaderboard),
+        )
         .route("/profile/anonymous", post(handle_anonymous_profile))
         .route(
             "/profile/anonymous/name",
@@ -329,6 +378,219 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
+}
+
+async fn handle_public_profile_search(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<PublicSearchQuery>,
+) -> impl IntoResponse {
+    let limit = query.limit.unwrap_or(20).clamp(1, 20);
+    let cursor = query.cursor.unwrap_or(0).min(10_000);
+    let query_text = query.q.as_deref().unwrap_or("");
+    match state.db.search_public_profiles(query_text, cursor.saturating_add(limit)).await {
+        Ok(mut profiles) => {
+            if cursor < profiles.len() {
+                profiles.drain(..cursor);
+            } else {
+                profiles.clear();
+            }
+            profiles.truncate(limit);
+            let has_next = profiles.len() == limit;
+            let next_cursor = has_next.then_some(cursor.saturating_add(limit));
+            (StatusCode::OK, Json(serde_json::json!({
+                "items": profiles,
+                "next_cursor": next_cursor
+            }))).into_response()
+        }
+        Err(error) => {
+            error!("public profile search failed: {error}");
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ErrorResponse { error: "profiles unavailable".to_string() }),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn handle_public_profile(
+    State(state): State<Arc<AppState>>,
+    Path(public_id): Path<String>,
+) -> impl IntoResponse {
+    match state.db.public_profile(&public_id).await {
+        Ok(Some(profile)) => (StatusCode::OK, Json(profile)).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse { error: "profile not found".to_string() }),
+        )
+            .into_response(),
+        Err(error) => {
+            error!("public profile lookup failed: {error}");
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ErrorResponse { error: "profiles unavailable".to_string() }),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn handle_public_match_history(
+    State(state): State<Arc<AppState>>,
+    Path(public_id): Path<String>,
+    Query(query): Query<PublicHistoryQuery>,
+) -> impl IntoResponse {
+    let limit = query.limit.unwrap_or(20).clamp(1, 50);
+    let cursor = query.cursor.unwrap_or(0).min(10_000);
+    let queue = query.queue.as_deref();
+    let mode = query.mode.as_deref();
+    match state
+        .db
+        .public_match_history(&public_id, cursor, limit, queue, mode)
+        .await
+    {
+        Ok(Some(history)) => {
+            let has_next = history.len() > limit;
+            let next_cursor = if has_next {
+                Some(cursor.saturating_add(limit))
+            } else {
+                None
+            };
+            let items = history.into_iter().take(limit).collect::<Vec<_>>();
+            (StatusCode::OK, Json(serde_json::json!({
+                "items": items,
+                "next_cursor": next_cursor,
+            })))
+                .into_response()
+        }
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse { error: "profile not found".to_string() }),
+        )
+            .into_response(),
+        Err(error) => {
+            error!("public match history failed: {error}");
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ErrorResponse { error: "match history unavailable".to_string() }),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn handle_public_match_detail(
+    State(state): State<Arc<AppState>>,
+    Path(match_id): Path<String>,
+) -> impl IntoResponse {
+    match state.db.public_match_detail(&match_id) {
+        Ok(Some(detail)) => (StatusCode::OK, Json(detail)).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse { error: "match not found".to_string() }),
+        )
+            .into_response(),
+        Err(error) => {
+            error!("public match detail failed: {error}");
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ErrorResponse { error: "match unavailable".to_string() }),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn handle_public_profile_seasons(
+    State(state): State<Arc<AppState>>,
+    Path(public_id): Path<String>,
+) -> impl IntoResponse {
+    match state.db.public_ratings(&public_id).await {
+        Ok(Some(ratings)) => (StatusCode::OK, Json(serde_json::json!({ "items": ratings }))).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse { error: "profile not found".to_string() }),
+        )
+            .into_response(),
+        Err(error) => {
+            error!("public profile seasons failed: {error}");
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ErrorResponse { error: "seasons unavailable".to_string() }),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn handle_current_season(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    match state.db.seasons() {
+        Ok(seasons) => {
+            let current = seasons
+                .iter()
+                .find(|season| season.id == sow_data::profile::CURRENT_SEASON_ID)
+                .cloned();
+            (StatusCode::OK, Json(serde_json::json!({
+                "season": current,
+                "items": seasons,
+            })))
+                .into_response()
+        }
+        Err(error) => {
+            error!("current season lookup failed: {error}");
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ErrorResponse { error: "seasons unavailable".to_string() }),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn handle_public_leaderboard(
+    State(state): State<Arc<AppState>>,
+    Path(season_id): Path<u32>,
+    Query(query): Query<PublicLeaderboardQuery>,
+) -> impl IntoResponse {
+    if season_id != sow_data::profile::CURRENT_SEASON_ID {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse { error: "season not found".to_string() }),
+        )
+            .into_response();
+    }
+    let queue = query.queue.as_deref().unwrap_or("Matchmaking");
+    let mode = query.mode.as_deref().unwrap_or("FFA");
+    let limit = query.limit.unwrap_or(100).clamp(1, 100);
+    let cursor = query.cursor.unwrap_or(0).min(10_000);
+    match state.db.public_leaderboard(queue, mode, cursor.saturating_add(limit)).await {
+        Ok(mut items) => {
+            if cursor < items.len() {
+                items.drain(..cursor);
+            } else {
+                items.clear();
+            }
+            items.truncate(limit);
+            let has_next = items.len() == limit;
+            let next_cursor = has_next.then_some(cursor.saturating_add(limit));
+            (StatusCode::OK, Json(serde_json::json!({
+                "season_id": season_id,
+                "queue": queue,
+                "mode": mode,
+                "items": items,
+                "next_cursor": next_cursor,
+            })))
+                .into_response()
+        }
+        Err(error) => {
+            error!("public leaderboard lookup failed: {error}");
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ErrorResponse { error: "leaderboard unavailable".to_string() }),
+            )
+                .into_response()
+        }
+    }
 }
 
 /// Liveness probe for the pipeline and service supervisor. It deliberately
@@ -499,6 +761,7 @@ async fn handle_anonymous_profile(
         .get_or_create_anonymous(
             payload.account_id.as_deref(),
             payload.display_name.as_deref(),
+            payload.auth_secret.as_deref(),
         )
         .await
     {
@@ -530,7 +793,9 @@ async fn handle_anonymous_profile(
         }
         Err(error) => {
             let message = error.to_string();
-            let status = if message.contains("account_id must") {
+            let status = if message.contains("invalid secret") {
+                StatusCode::UNAUTHORIZED
+            } else if message.contains("account_id must") {
                 StatusCode::BAD_REQUEST
             } else {
                 StatusCode::NOT_FOUND
@@ -560,7 +825,11 @@ async fn handle_anonymous_display_name(
     );
     match state
         .db
-        .update_anonymous_display_name(&payload.account_id, &payload.display_name)
+        .update_anonymous_display_name(
+            &payload.account_id,
+            &payload.display_name,
+            &payload.auth_secret,
+        )
         .await
     {
         Ok(account) => {
@@ -573,7 +842,9 @@ async fn handle_anonymous_display_name(
         }
         Err(error) => {
             let message = error.to_string();
-            let status = if message.contains("account_id must") || message.contains("display_name")
+            let status = if message.contains("invalid secret") {
+                StatusCode::UNAUTHORIZED
+            } else if message.contains("account_id must") || message.contains("display_name")
             {
                 StatusCode::BAD_REQUEST
             } else {
@@ -979,7 +1250,11 @@ async fn handle_match_finalize(
         }
     };
 
-    match state.db.finalize_match(&payload.match_id).await {
+    match state
+        .db
+        .finalize_match_with_lobby(&payload.match_id, payload.lobby_json.as_deref())
+        .await
+    {
         Ok(()) => {
             if !participants.is_empty() {
                 let humans = state.db.count_human_players(&participants).await;

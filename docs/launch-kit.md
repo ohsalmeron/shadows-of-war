@@ -40,7 +40,8 @@ alliances, and betray rivals when the front line changes.
 
 Play now: https://shadowsofwar.io
 How to play: https://shadowsofwar.io/how-to-play/
-Discord: https://discord.gg/eauHRf7zP
+Discord: https://discord.gg/d6ZDeChSE
+Telegram: https://t.me/shadowsofwario
 GitHub: https://github.com/worldofunreal/shadows-of-war
 ```
 

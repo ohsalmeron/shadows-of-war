@@ -464,6 +464,7 @@ pub struct SowApp {
     pub gpu_init_failed: bool,
     pub progress: crate::player_progress::PlayerProgress,
     pub progress_account_id: Option<String>,
+    pub profile_public_id: Option<String>,
     pub progress_provider: String,
     /// Anonymous rename entered before the first profile response arrives.
     /// It is flushed once the canonical account ID is available.
@@ -485,6 +486,7 @@ pub struct SowApp {
     pub join_matchmaking: bool,
     pub progress_match_recorded: bool,
     pub progress_stats_submitted: bool,
+    pub progress_result_submitted: bool,
     pub progress_session_defeats: crate::player_progress::SessionDefeats,
     #[cfg(target_arch = "wasm32")]
     pub boot_db_settled: bool,

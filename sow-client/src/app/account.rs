@@ -19,12 +19,14 @@ fn fetch_anonymous_profile_request(
     struct AnonymousProfileRequest {
         account_id: Option<String>,
         display_name: Option<String>,
+        auth_secret: Option<String>,
     }
 
     let retry_display_name = requested_display_name.clone();
     let payload = AnonymousProfileRequest {
         account_id: account_id.clone(),
         display_name: requested_display_name,
+        auth_secret: crate::anonymous_identity::load_account_secret(),
     };
     let Ok(body) = serde_json::to_vec(&payload) else {
         log::error!(
@@ -52,6 +54,8 @@ fn fetch_anonymous_profile_request(
             struct DbAccount {
                 id: String,
                 #[serde(default)]
+                public_id: Option<String>,
+                #[serde(default)]
                 display_name: String,
                 profile: crate::player_progress::PlayerProgress,
                 /// One-time ownership secret, present only when just minted.
@@ -78,6 +82,7 @@ fn fetch_anonymous_profile_request(
                     let _ = tx.send(crate::player_progress::DbEvent::ProfileLoaded {
                         progress: account.profile,
                         account_id: account.id,
+                        public_id: account.public_id,
                         display_name: account.display_name,
                         provider: "anonymous".to_string(),
                         request_id,
@@ -210,6 +215,8 @@ impl SowApp {
                         struct DbAccount {
                             id: String,
                             #[serde(default)]
+                            public_id: Option<String>,
+                            #[serde(default)]
                             display_name: String,
                             profile: crate::player_progress::PlayerProgress,
                         }
@@ -218,6 +225,7 @@ impl SowApp {
                                 let _ = tx.send(crate::player_progress::DbEvent::ProfileLoaded {
                                     progress: account.profile,
                                     account_id: account.id,
+                                    public_id: account.public_id,
                                     display_name: account.display_name,
                                     provider: profile_provider,
                                     request_id,
@@ -321,6 +329,7 @@ impl SowApp {
         struct RenameRequest {
             account_id: String,
             display_name: String,
+            auth_secret: String,
         }
         #[derive(serde::Deserialize)]
         struct DbAccount {
@@ -328,9 +337,23 @@ impl SowApp {
             #[serde(default)]
             display_name: String,
         }
+        let Some(auth_secret) = crate::anonymous_identity::load_account_secret() else {
+            log::error!(
+                "[identity] rename request id={request_id} missing account secret account={account_hint_value}"
+            );
+            self.display_name_save_in_flight = false;
+            let _ = self.tasks.db_tx.send(
+                crate::player_progress::DbEvent::DisplayNameSaveFailed {
+                    request_id,
+                    status: Some(401),
+                },
+            );
+            return;
+        };
         let body = match serde_json::to_vec(&RenameRequest {
             account_id,
             display_name,
+            auth_secret,
         }) {
             Ok(body) => body,
             Err(error) => {
@@ -415,6 +438,7 @@ impl SowApp {
         &mut self,
         cloud: crate::player_progress::PlayerProgress,
         account_id: String,
+        public_id: Option<String>,
         display_name: String,
         provider: String,
     ) {
@@ -424,6 +448,7 @@ impl SowApp {
         let portal = self.progress.clone();
         self.progress.merge_boot_profile(cloud);
         self.progress_account_id = Some(account_id);
+        self.profile_public_id = public_id;
         self.progress_provider = provider;
         if self.progress_provider == "anonymous" {
             let pending_display_name = self
@@ -513,6 +538,8 @@ impl SowApp {
                 struct DbAccount {
                     id: String,
                     #[serde(default)]
+                    public_id: Option<String>,
+                    #[serde(default)]
                     display_name: String,
                     profile: crate::player_progress::PlayerProgress,
                 }
@@ -521,6 +548,7 @@ impl SowApp {
                         let _ = tx.send(crate::player_progress::DbEvent::ProfileLoaded {
                             progress: account.profile,
                             account_id: account.id,
+                            public_id: account.public_id,
                             display_name: account.display_name,
                             provider: "anonymous".to_string(),
                             request_id,

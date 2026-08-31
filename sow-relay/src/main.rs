@@ -34,7 +34,7 @@ use sow_core::player::Leader;
 use sow_core::protocol::{
     ClientMessage, GameplayIntent, LobbyInfo, LobbyKind, LobbyPlayerSyncState,
     ServerLobbiesBroadcastMessage, ServerLobbyClosedMessage, ServerMessage, ServerTurnMessage,
-    StampedIntent, Turn,
+    StampedIntent, Team, Turn,
 };
 use rustls::{Certificate, PrivateKey, ServerConfig};
 use sha2::{Digest, Sha256};
@@ -614,6 +614,54 @@ fn record_client_stats(lobby: &LobbyState, player_id: u16, stats: MatchPlayerSta
     }
 }
 
+fn record_match_report(
+    lobby: &LobbyState,
+    player_id: u16,
+    winner_player_id: Option<u16>,
+    winning_team: Option<Team>,
+    tick: u64,
+) {
+    let Some(account_id) = lobby
+        .tracker
+        .lock()
+        .unwrap()
+        .player_accounts
+        .get(&player_id)
+        .cloned()
+    else {
+        return;
+    };
+    let key = format!("sow:match:{}:report:{}", lobby.id, account_id);
+    let fields = vec![
+        (
+            "winner_player_id",
+            winner_player_id.map(|value| value.to_string()).unwrap_or_default(),
+        ),
+        (
+            "winning_team",
+            winning_team
+                .map(|value| format!("{value:?}"))
+                .unwrap_or_default(),
+        ),
+        ("tick", tick.to_string()),
+    ];
+    let guard = redis_shared();
+    let mut guard = guard.lock().unwrap();
+    if let Some(ref mut con) = *guard {
+        let result: redis::RedisResult<()> = con.hset_multiple(&key, &fields);
+        if let Err(error) = result {
+            error!("[REDIS] match report write failed key={key}: {error}");
+        } else {
+            let expire_result: redis::RedisResult<()> = con.expire(&key, 3600);
+            if let Err(error) = expire_result {
+            error!("[REDIS] match report TTL failed key={key}: {error}");
+            }
+        }
+    } else {
+        error!("[REDIS] match report unavailable for lobby {}", lobby.id);
+    }
+}
+
 enum ReplayCommand {
     Append(Turn),
     Finalize {
@@ -1036,6 +1084,8 @@ struct RegisterBody {
     players: Vec<PlayerEntry>,
     #[serde(default)]
     config: Option<GameConfig>,
+    #[serde(default)]
+    kind: String,
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
@@ -1043,6 +1093,10 @@ struct PlayerEntry {
     player_id: u16,
     name: String,
     database_account_id: Option<String>,
+    #[serde(default)]
+    leader: Leader,
+    #[serde(default)]
+    team: Option<Team>,
     #[serde(default)]
     session_id: Option<u64>,
     #[serde(default)]
@@ -2459,6 +2513,15 @@ async fn ws_task(
                                                 kills, deaths, assists, players_defeated, empires_defeated, tribes_defeated,
                                                 leader: Some(leader),
                                             });
+                                        }
+                                    }
+                                    ClientMessage::SubmitMatchReport { kills, deaths, assists, players_defeated, empires_defeated, tribes_defeated, leader, winner_player_id, winning_team, tick } => {
+                                        if let (Some(lobby), Some(pid)) = (&my_lobby, my_player_id) {
+                                            record_client_stats(lobby, pid, MatchPlayerStats {
+                                                kills, deaths, assists, players_defeated, empires_defeated, tribes_defeated,
+                                                leader: Some(leader),
+                                            });
+                                            record_match_report(lobby, pid, winner_player_id, winning_team, tick);
                                         }
                                     }
                                     _ => {}

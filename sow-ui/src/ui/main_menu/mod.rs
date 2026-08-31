@@ -236,7 +236,7 @@ pub fn draw_terms_privacy_footer(
         let text = egui::RichText::new("Discord")
             .font(sow_ui_kit::theme::font_regular(size))
             .color(link_color);
-        ui.hyperlink_to(text, "https://discord.gg/eauHRf7zP");
+        ui.hyperlink_to(text, "https://discord.gg/d6ZDeChSE");
     };
 
     let draw_github_link = |ui: &mut egui::Ui| {

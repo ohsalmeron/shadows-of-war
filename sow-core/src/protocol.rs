@@ -239,6 +239,24 @@ pub enum ClientMessage {
         tribes_defeated: u32,
         leader: String,
     },
+    /// Final deterministic snapshot used to verify a durable match result.
+    /// Appended to preserve decoding of older clients.
+    SubmitMatchReport {
+        kills: u32,
+        deaths: u32,
+        assists: u32,
+        #[serde(default)]
+        players_defeated: u32,
+        #[serde(default)]
+        empires_defeated: u32,
+        #[serde(default)]
+        tribes_defeated: u32,
+        leader: String,
+        winner_player_id: Option<u16>,
+        #[serde(default)]
+        winning_team: Option<Team>,
+        tick: u64,
+    },
 }
 
 /// Fields of a `Join`, factored out so `JoinWithAuth` can carry them without

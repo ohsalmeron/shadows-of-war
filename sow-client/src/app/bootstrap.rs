@@ -349,6 +349,7 @@ impl SowApp {
             gpu_init_failed: false,
             progress: crate::player_progress::PlayerProgress::default(),
             progress_account_id: stored_account_id,
+            profile_public_id: None,
             progress_provider: if has_stored_account {
                 String::from("anonymous")
             } else {
@@ -366,6 +367,7 @@ impl SowApp {
             join_matchmaking: false,
             progress_match_recorded: false,
             progress_stats_submitted: false,
+            progress_result_submitted: false,
             progress_session_defeats: crate::player_progress::SessionDefeats::default(),
             #[cfg(target_arch = "wasm32")]
             boot_db_settled: false,

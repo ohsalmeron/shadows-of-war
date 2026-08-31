@@ -1,5 +1,15 @@
-use crate::metadata_db::PLAYERS_TABLE;
+use crate::metadata_db::{
+    MATCHES_TABLE, PLAYER_MATCH_INDEX_TABLE, PLAYERS_TABLE, PUBLIC_PROFILES_TABLE,
+    SEASON_RATINGS_TABLE, SEASONS_TABLE,
+};
+use crate::profile::{
+    LeaderCareerStats, MatchRecord, PublicLeaderboardEntry, PublicLeaderSummary,
+    PublicMatchDetail, PublicMatchParticipant, PublicMatchSummary, PublicProfileIndex,
+    PublicProfileSummary, PublicProfileView,
+    PublicRatingView, SeasonRating, SeasonRecord, public_handle, public_profile_id, win_rate,
+};
 use log::{error, info};
+use redb::ReadableTable;
 use redis::{AsyncCommands, Client};
 use serde::{Deserialize, Serialize};
 
@@ -83,6 +93,8 @@ pub struct PlayerProfile {
     #[serde(default)]
     pub leader_xp: std::collections::BTreeMap<String, u32>,
     #[serde(default)]
+    pub leader_stats: std::collections::BTreeMap<String, LeaderCareerStats>,
+    #[serde(default)]
     pub laurels: u64,
     #[serde(default)]
     pub intro_completed: bool,
@@ -103,6 +115,7 @@ impl Default for PlayerProfile {
             deaths: 0,
             assists: 0,
             leader_xp: std::collections::BTreeMap::new(),
+            leader_stats: std::collections::BTreeMap::new(),
             laurels: 0,
             intro_completed: false,
         }
@@ -127,6 +140,8 @@ impl PlayerProfile {
         self.add_xp(reward.xp);
         let entry = self.leader_xp.entry(leader.to_string()).or_default();
         *entry = entry.saturating_add(reward.leader_xp);
+        let stats = self.leader_stats.entry(leader.to_string()).or_default();
+        stats.xp = stats.xp.saturating_add(reward.leader_xp);
         self.laurels = self.laurels.saturating_add(reward.laurels);
     }
 
@@ -174,6 +189,14 @@ impl PlayerProfile {
             .and_then(crate::rewards::canonical_leader_name)
             .or_else(|| self.preferred_leader.clone())
             .unwrap_or_else(|| "Caesar".to_string());
+        let leader_stats = self.leader_stats.entry(leader.clone()).or_default();
+        leader_stats.matches_played = leader_stats.matches_played.saturating_add(1);
+        if won {
+            leader_stats.wins = leader_stats.wins.saturating_add(1);
+        }
+        leader_stats.kills = leader_stats.kills.saturating_add(kills);
+        leader_stats.deaths = leader_stats.deaths.saturating_add(deaths);
+        leader_stats.assists = leader_stats.assists.saturating_add(assists);
         self.apply_reward(&leader, reward);
     }
 }
@@ -181,6 +204,9 @@ impl PlayerProfile {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PlayerAccount {
     pub id: String, // Stable canonical internal account ID
+    /// Stable public profile identifier safe to expose in URLs.
+    #[serde(default)]
+    pub public_id: String,
     /// Mutable player-facing name. Never used as an identity key.
     // Investigation Protocol: a missing field is not the literal name "ANON".
     // Migrate only from observed data at the anonymous-account boundary.
@@ -269,10 +295,720 @@ impl PlayerDb {
                     error!("Failed to persist account {} to REDB: {error}", account.id);
                 }
             }
+            if let Ok(mut table) = write_txn.open_table(PUBLIC_PROFILES_TABLE) {
+                let public_id = if account.public_id.is_empty() {
+                    public_profile_id(&account.id)
+                } else {
+                    account.public_id.clone()
+                };
+                let index = PublicProfileIndex {
+                    account_id: account.id.clone(),
+                    public_id,
+                    display_name: account.display_name.clone(),
+                    kind: format!("{:?}", account.kind),
+                    updated_at: account.updated_at,
+                };
+                if let Ok(json) = serde_json::to_vec(&index)
+                    && let Err(error) = table.insert(index.public_id.as_str(), json.as_slice())
+                {
+                    error!("Failed to persist public profile index {}: {error}", account.id);
+                }
+            }
             if let Err(error) = write_txn.commit() {
                 error!("Failed to commit account {} to REDB: {error}", account.id);
             }
         }
+    }
+
+    /// Persist one completed match and its per-player lookup keys. The match
+    /// row is idempotent, so relay retries cannot create duplicate history.
+    pub fn save_match_record(
+        &self,
+        record: &MatchRecord,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let Some(db) = &self.metadata_db else {
+            return Err("profile metadata database unavailable".into());
+        };
+        let write_txn = db.begin_write()?;
+        let mut matches = write_txn.open_table(MATCHES_TABLE)?;
+        let json = serde_json::to_vec(record)?;
+        matches.insert(record.match_id.as_str(), json.as_slice())?;
+        drop(matches);
+
+        let mut index = write_txn.open_table(PLAYER_MATCH_INDEX_TABLE)?;
+        for participant in &record.participants {
+            let key = format!(
+                "player:{}:{:020}:{}",
+                participant.account_id, record.completed_at, record.match_id
+            );
+            index.insert(key.as_str(), record.match_id.as_bytes())?;
+        }
+        drop(index);
+        write_txn.commit()?;
+        Ok(())
+    }
+
+    pub fn save_season_rating(
+        &self,
+        rating: &SeasonRating,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let Some(db) = &self.metadata_db else {
+            return Err("profile metadata database unavailable".into());
+        };
+        let key = format!(
+            "rating:{}:{}:{}:{}",
+            rating.account_id, rating.season_id, rating.queue, rating.mode
+        );
+        let write_txn = db.begin_write()?;
+        let mut table = write_txn.open_table(SEASON_RATINGS_TABLE)?;
+        let json = serde_json::to_vec(rating)?;
+        table.insert(key.as_str(), json.as_slice())?;
+        drop(table);
+        write_txn.commit()?;
+        Ok(())
+    }
+
+    fn load_season_rating(
+        &self,
+        account_id: &str,
+        queue: &str,
+        mode: &str,
+    ) -> Result<Option<SeasonRating>, Box<dyn std::error::Error + Send + Sync>> {
+        let Some(db) = &self.metadata_db else {
+            return Ok(None);
+        };
+        let key = format!(
+            "rating:{}:{}:{}:{}",
+            account_id,
+            crate::profile::CURRENT_SEASON_ID,
+            queue,
+            mode
+        );
+        let read_txn = db.begin_read()?;
+        let table = read_txn.open_table(SEASON_RATINGS_TABLE)?;
+        let Some(value) = table.get(key.as_str())? else {
+            return Ok(None);
+        };
+        Ok(Some(serde_json::from_slice(value.value())?))
+    }
+
+    fn pair_update(winner: &mut SeasonRating, loser: &mut SeasonRating) {
+        // Weng-Lin/OpenSkill update for one decisive comparison. FFA and team
+        // results are reduced to pairwise comparisons, keeping the stored
+        // ladder independent of client-provided UI values.
+        let beta = 25.0 / 6.0;
+        let c = (2.0 * beta * beta + winner.sigma * winner.sigma + loser.sigma * loser.sigma)
+            .sqrt()
+            .max(0.0001);
+        let t = (winner.mu - loser.mu) / c;
+        let normal = |x: f64| (-x * x / 2.0).exp() / (2.0 * std::f64::consts::PI).sqrt();
+        let cdf = |x: f64| 1.0 / (1.0 + (-1.702 * x).exp());
+        let v = normal(t) / cdf(t).max(1e-9);
+        let w = v * (v + t);
+        let winner_var = winner.sigma * winner.sigma;
+        let loser_var = loser.sigma * loser.sigma;
+        winner.mu += winner_var / c * v;
+        loser.mu -= loser_var / c * v;
+        winner.sigma *= (1.0 - winner_var / (c * c) * w).max(0.01).sqrt();
+        loser.sigma *= (1.0 - loser_var / (c * c) * w).max(0.01).sqrt();
+    }
+
+    fn apply_ratings(
+        &self,
+        record: &mut MatchRecord,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if !record.rating_eligible {
+            return Ok(());
+        }
+        let human_indexes = record
+            .participants
+            .iter()
+            .enumerate()
+            .filter(|(_, participant)| !participant.is_bot)
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        let mut ratings = human_indexes
+            .iter()
+            .map(|index| {
+                let participant = &record.participants[*index];
+                let rating = self
+                    .load_season_rating(&participant.account_id, &record.queue, &record.mode)?
+                    .unwrap_or(SeasonRating {
+                        schema_version: 1,
+                        account_id: participant.account_id.clone(),
+                        season_id: record.season_id,
+                        queue: record.queue.clone(),
+                        mode: record.mode.clone(),
+                        games_played: 0,
+                        wins: 0,
+                        mu: 25.0,
+                        sigma: 8.333,
+                        score: 0,
+                        tier: "Provisional".to_string(),
+                        division: None,
+                        peak_score: 0,
+                        placements_complete: false,
+                        updated_at: 0,
+                    });
+                Ok::<_, Box<dyn std::error::Error + Send + Sync>>(rating)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        if record.mode == "HumansVsNations" && human_indexes.len() == 1 {
+            let mut ai = SeasonRating {
+                mu: 25.0,
+                sigma: 1.0,
+                ..ratings[0].clone()
+            };
+            ai.account_id.clear();
+            let human_won = record.participants[human_indexes[0]].won;
+            if human_won {
+                Self::pair_update(&mut ratings[0], &mut ai);
+            } else {
+                Self::pair_update(&mut ai, &mut ratings[0]);
+            }
+        } else {
+            for left in 0..ratings.len() {
+                for right in left + 1..ratings.len() {
+                    let left_won = record.participants[human_indexes[left]].won;
+                    let right_won = record.participants[human_indexes[right]].won;
+                    if left_won == right_won {
+                        continue;
+                    }
+                    if left_won {
+                        let (winner, loser) = ratings.split_at_mut(right);
+                        Self::pair_update(&mut winner[left], &mut loser[0]);
+                    } else {
+                        let (winner, loser) = ratings.split_at_mut(right);
+                        Self::pair_update(&mut loser[0], &mut winner[left]);
+                    }
+                }
+            }
+        }
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        for (index, rating) in ratings.iter_mut().enumerate() {
+            let old_score = if rating.games_played == 0 {
+                crate::profile::ladder_score(25.0, 8.333)
+            } else {
+                rating.score
+            };
+            let participant = &mut record.participants[human_indexes[index]];
+            rating.games_played = rating.games_played.saturating_add(1);
+            if participant.won {
+                rating.wins = rating.wins.saturating_add(1);
+            }
+            rating.score = crate::profile::ladder_score(rating.mu, rating.sigma);
+            rating.placements_complete = rating.games_played >= 5;
+            let (tier, division) = crate::profile::tier_for_score(rating.score);
+            rating.tier = if rating.placements_complete {
+                tier.to_string()
+            } else {
+                "Provisional".to_string()
+            };
+            rating.division = if rating.placements_complete { division } else { None };
+            rating.peak_score = rating.peak_score.max(rating.score);
+            rating.updated_at = now;
+            participant.rating_delta = Some(rating.score as i16 - old_score as i16);
+            self.save_season_rating(rating)?;
+        }
+        Ok(())
+    }
+
+    pub fn save_season(
+        &self,
+        season: &SeasonRecord,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let Some(db) = &self.metadata_db else {
+            return Err("profile metadata database unavailable".into());
+        };
+        let key = format!("season:{:08}", season.id);
+        let write_txn = db.begin_write()?;
+        let mut table = write_txn.open_table(SEASONS_TABLE)?;
+        let json = serde_json::to_vec(season)?;
+        table.insert(key.as_str(), json.as_slice())?;
+        drop(table);
+        write_txn.commit()?;
+        Ok(())
+    }
+
+    fn public_index(
+        &self,
+        public_id: &str,
+    ) -> Result<Option<PublicProfileIndex>, Box<dyn std::error::Error + Send + Sync>> {
+        let Some(db) = &self.metadata_db else {
+            return Ok(None);
+        };
+        let read_txn = db.begin_read()?;
+        let table = read_txn.open_table(PUBLIC_PROFILES_TABLE)?;
+        let Some(value) = table.get(public_id)? else {
+            return Ok(None);
+        };
+        Ok(Some(serde_json::from_slice(value.value())?))
+    }
+
+    fn load_match_record(
+        &self,
+        match_id: &str,
+    ) -> Result<Option<MatchRecord>, Box<dyn std::error::Error + Send + Sync>> {
+        let Some(db) = &self.metadata_db else {
+            return Ok(None);
+        };
+        let read_txn = db.begin_read()?;
+        let table = read_txn.open_table(MATCHES_TABLE)?;
+        let Some(value) = table.get(match_id)? else {
+            return Ok(None);
+        };
+        Ok(Some(serde_json::from_slice(value.value())?))
+    }
+
+    fn match_history_for_account(
+        &self,
+        account_id: &str,
+        offset: usize,
+        limit: usize,
+        queue: Option<&str>,
+        mode: Option<&str>,
+    ) -> Result<Vec<MatchRecord>, Box<dyn std::error::Error + Send + Sync>> {
+        let Some(db) = &self.metadata_db else {
+            return Ok(Vec::new());
+        };
+        let prefix = format!("player:{account_id}:");
+        let read_txn = db.begin_read()?;
+        let table = read_txn.open_table(PLAYER_MATCH_INDEX_TABLE)?;
+        let mut match_ids = Vec::new();
+        for item in table.iter()? {
+            let (key, value) = item?;
+            if key.value().starts_with(&prefix)
+                && let Ok(match_id) = std::str::from_utf8(value.value())
+            {
+                match_ids.push(match_id.to_string());
+            }
+        }
+        drop(table);
+        drop(read_txn);
+        match_ids.sort_by(|left, right| right.cmp(left));
+        let mut skipped = 0usize;
+        let mut records = Vec::with_capacity(limit.min(match_ids.len().saturating_sub(offset)));
+        for match_id in match_ids {
+            if let Some(record) = self.load_match_record(&match_id)? {
+                if queue.is_none_or(|value| value == record.queue)
+                    && mode.is_none_or(|value| value == record.mode)
+                {
+                    if skipped < offset {
+                        skipped += 1;
+                        continue;
+                    }
+                    records.push(record);
+                    if records.len() >= limit {
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(records)
+    }
+
+    fn public_match_summary(
+        account_id: &str,
+        record: &MatchRecord,
+    ) -> Option<PublicMatchSummary> {
+        let participant = record
+            .participants
+            .iter()
+            .find(|participant| participant.account_id == account_id)?;
+        Some(PublicMatchSummary {
+            match_id: record.match_id.clone(),
+            completed_at: record.completed_at,
+            queue: record.queue.clone(),
+            mode: record.mode.clone(),
+            map_name: record.map_name.clone(),
+            duration_seconds: record.duration_seconds,
+            placement: participant.placement,
+            won: participant.won,
+            leader: participant.leader.clone(),
+            kills: participant.kills,
+            deaths: participant.deaths,
+            assists: participant.assists,
+            players_defeated: participant.players_defeated,
+            verified: record.verified,
+            rating_delta: participant.rating_delta,
+        })
+    }
+
+    fn public_summary(account: &PlayerAccount) -> PublicProfileSummary {
+        let public_id = if account.public_id.is_empty() {
+            public_profile_id(&account.id)
+        } else {
+            account.public_id.clone()
+        };
+        PublicProfileSummary {
+            public_id: public_id.clone(),
+            handle: public_handle(&account.display_name, &public_id),
+            display_name: account.display_name.clone(),
+            level: account.profile.level,
+            matches_played: account.profile.matches_played,
+            wins: account.profile.wins,
+            win_rate: win_rate(account.profile.wins, account.profile.matches_played),
+            kills: account.profile.kills,
+            deaths: account.profile.deaths,
+            assists: account.profile.assists,
+        }
+    }
+
+    /// Public profile DTO. Exact XP and laurels remain in the authenticated
+    /// menu bridge; this endpoint exposes level and gameplay statistics only.
+    pub async fn public_profile(
+        &self,
+        public_id: &str,
+    ) -> Result<Option<PublicProfileView>, Box<dyn std::error::Error + Send + Sync>> {
+        let Some(index) = self.public_index(public_id)? else {
+            return Ok(None);
+        };
+        let mut con = self.get_connection().await?;
+        let account = Self::load_account(&mut con, &index.account_id).await?;
+        if account.kind == AccountKind::Bot
+            || (account.public_id != public_id && !account.public_id.is_empty())
+        {
+            return Ok(None);
+        }
+        let mut leader_stats = account.profile.leader_stats.clone();
+        for (leader, xp) in &account.profile.leader_xp {
+            leader_stats.entry(leader.clone()).or_insert_with(|| LeaderCareerStats {
+                xp: *xp,
+                ..Default::default()
+            });
+        }
+        let mut leaders = leader_stats
+            .into_iter()
+            .map(|(leader, stats)| PublicLeaderSummary {
+                leader,
+                matches_played: stats.matches_played,
+                wins: stats.wins,
+                win_rate: win_rate(stats.wins, stats.matches_played),
+                kills: stats.kills,
+                deaths: stats.deaths,
+                assists: stats.assists,
+                xp: stats.xp,
+            })
+            .collect::<Vec<_>>();
+        leaders.sort_by(|left, right| right.xp.cmp(&left.xp));
+        let recent_matches = self
+            .match_history_for_account(&account.id, 0, 10, None, None)?
+            .iter()
+            .filter_map(|record| Self::public_match_summary(&account.id, record))
+            .collect();
+        let public_id = if account.public_id.is_empty() {
+            public_profile_id(&account.id)
+        } else {
+            account.public_id.clone()
+        };
+        Ok(Some(PublicProfileView {
+            public_id: public_id.clone(),
+            handle: public_handle(&account.display_name, &public_id),
+            display_name: account.display_name,
+            level: account.profile.level,
+            matches_played: account.profile.matches_played,
+            wins: account.profile.wins,
+            win_rate: win_rate(account.profile.wins, account.profile.matches_played),
+            kills: account.profile.kills,
+            deaths: account.profile.deaths,
+            assists: account.profile.assists,
+            players_defeated: account.profile.players_defeated,
+            empires_defeated: account.profile.empires_defeated,
+            tribes_defeated: account.profile.tribes_defeated,
+            preferred_leader: account.profile.preferred_leader,
+            leaders,
+            recent_matches,
+        }))
+    }
+
+    pub async fn search_public_profiles(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<PublicProfileSummary>, Box<dyn std::error::Error + Send + Sync>> {
+        let Some(db) = &self.metadata_db else {
+            return Ok(Vec::new());
+        };
+        let needle = query.trim().to_lowercase();
+        let read_txn = db.begin_read()?;
+        let table = read_txn.open_table(PUBLIC_PROFILES_TABLE)?;
+        let mut indexes = Vec::new();
+        for item in table.iter()? {
+            let (_, value) = item?;
+            let index: PublicProfileIndex = serde_json::from_slice(value.value())?;
+            if index.kind == "Bot" {
+                continue;
+            }
+            if needle.is_empty()
+                || index.display_name.to_lowercase().contains(&needle)
+                || index.public_id.to_lowercase().contains(&needle)
+            {
+                indexes.push(index);
+            }
+            if indexes.len() >= limit {
+                break;
+            }
+        }
+        drop(table);
+        drop(read_txn);
+        let mut con = self.get_connection().await?;
+        let mut result = Vec::with_capacity(indexes.len());
+        for index in indexes {
+            if let Ok(account) = Self::load_account(&mut con, &index.account_id).await
+                && account.kind != AccountKind::Bot
+            {
+                result.push(Self::public_summary(&account));
+            }
+        }
+        Ok(result)
+    }
+
+    pub async fn public_match_history(
+        &self,
+        public_id: &str,
+        offset: usize,
+        limit: usize,
+        queue: Option<&str>,
+        mode: Option<&str>,
+    ) -> Result<Option<Vec<PublicMatchSummary>>, Box<dyn std::error::Error + Send + Sync>> {
+        let Some(index) = self.public_index(public_id)? else {
+            return Ok(None);
+        };
+        let mut con = self.get_connection().await?;
+        let account = Self::load_account(&mut con, &index.account_id).await?;
+        if account.kind == AccountKind::Bot
+            || (account.public_id != public_id && !account.public_id.is_empty())
+        {
+            return Ok(None);
+        }
+        Ok(Some(
+            self.match_history_for_account(
+                &account.id,
+                offset,
+                limit.saturating_add(1),
+                queue,
+                mode,
+            )?
+                .iter()
+                .filter_map(|record| Self::public_match_summary(&account.id, record))
+                .collect(),
+        ))
+    }
+
+    pub fn public_match_detail(
+        &self,
+        match_id: &str,
+    ) -> Result<Option<PublicMatchDetail>, Box<dyn std::error::Error + Send + Sync>> {
+        let Some(record) = self.load_match_record(match_id)? else {
+            return Ok(None);
+        };
+        let winner_public_id = record.winner_account_id.as_ref().and_then(|account_id| {
+            record
+                .participants
+                .iter()
+                .find(|participant| &participant.account_id == account_id)
+                .map(|participant| participant.public_id.clone())
+        });
+        let participants = record
+            .participants
+            .iter()
+            .map(|participant| PublicMatchParticipant {
+                public_id: participant.public_id.clone(),
+                handle: public_handle(&participant.display_name, &participant.public_id),
+                is_bot: participant.is_bot,
+                leader: participant.leader.clone(),
+                team: participant.team.clone(),
+                placement: participant.placement,
+                won: participant.won,
+                kills: participant.kills,
+                deaths: participant.deaths,
+                assists: participant.assists,
+                players_defeated: participant.players_defeated,
+                verified: record.verified,
+                rating_delta: participant.rating_delta,
+            })
+            .collect();
+        Ok(Some(PublicMatchDetail {
+            match_id: record.match_id,
+            completed_at: record.completed_at,
+            queue: record.queue,
+            mode: record.mode,
+            map_name: record.map_name,
+            duration_seconds: record.duration_seconds,
+            winner_public_id,
+            winning_team: record.winning_team,
+            verified: record.verified,
+            rating_eligible: record.rating_eligible,
+            participants,
+        }))
+    }
+
+    pub fn ensure_current_season(
+        &self,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let Some(db) = &self.metadata_db else {
+            return Err("profile metadata database unavailable".into());
+        };
+        let key = format!("season:{:08}", crate::profile::CURRENT_SEASON_ID);
+        let read_txn = db.begin_read()?;
+        let exists = {
+            let table = read_txn.open_table(SEASONS_TABLE)?;
+            table.get(key.as_str())?.is_some()
+        };
+        drop(read_txn);
+        if !exists {
+            self.save_season(&SeasonRecord {
+                id: crate::profile::CURRENT_SEASON_ID,
+                name: crate::profile::CURRENT_SEASON_NAME.to_string(),
+                status: "active".to_string(),
+                starts_at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+                ends_at: None,
+            })?;
+        }
+        Ok(())
+    }
+
+    pub fn seasons(
+        &self,
+    ) -> Result<Vec<SeasonRecord>, Box<dyn std::error::Error + Send + Sync>> {
+        let Some(db) = &self.metadata_db else {
+            return Ok(Vec::new());
+        };
+        let read_txn = db.begin_read()?;
+        let table = read_txn.open_table(SEASONS_TABLE)?;
+        let mut seasons = Vec::new();
+        for item in table.iter()? {
+            let (_, value) = item?;
+            seasons.push(serde_json::from_slice(value.value())?);
+        }
+        seasons.sort_by_key(|season: &SeasonRecord| season.id);
+        Ok(seasons)
+    }
+
+    pub async fn public_ratings(
+        &self,
+        public_id: &str,
+    ) -> Result<Option<Vec<PublicRatingView>>, Box<dyn std::error::Error + Send + Sync>> {
+        let Some(index) = self.public_index(public_id)? else {
+            return Ok(None);
+        };
+        let mut con = self.get_connection().await?;
+        let account = Self::load_account(&mut con, &index.account_id).await?;
+        if account.kind == AccountKind::Bot
+            || (account.public_id != public_id && !account.public_id.is_empty())
+        {
+            return Ok(None);
+        }
+        let Some(db) = &self.metadata_db else {
+            return Ok(Some(Vec::new()));
+        };
+        let prefix = format!("rating:{}:", account.id);
+        let read_txn = db.begin_read()?;
+        let table = read_txn.open_table(SEASON_RATINGS_TABLE)?;
+        let mut ratings = Vec::new();
+        for item in table.iter()? {
+            let (key, value) = item?;
+            if key.value().starts_with(&prefix) {
+                ratings.push(serde_json::from_slice::<SeasonRating>(value.value())?);
+            }
+        }
+        drop(table);
+        drop(read_txn);
+        ratings.sort_by(|left, right| {
+            right
+                .season_id
+                .cmp(&left.season_id)
+                .then_with(|| left.queue.cmp(&right.queue))
+                .then_with(|| left.mode.cmp(&right.mode))
+        });
+        Ok(Some(
+            ratings
+                .into_iter()
+                .map(|rating| PublicRatingView {
+                    season_id: rating.season_id,
+                    season_name: if rating.season_id == crate::profile::CURRENT_SEASON_ID {
+                        crate::profile::CURRENT_SEASON_NAME.to_string()
+                    } else {
+                        format!("Season {}", rating.season_id)
+                    },
+                    queue: rating.queue,
+                    mode: rating.mode,
+                    games_played: rating.games_played,
+                    wins: rating.wins,
+                    placements_complete: rating.placements_complete,
+                    score: rating.score,
+                    tier: rating.tier,
+                    division: rating.division,
+                    peak_score: rating.peak_score,
+                })
+                .collect(),
+        ))
+    }
+
+    pub async fn public_leaderboard(
+        &self,
+        queue: &str,
+        mode: &str,
+        limit: usize,
+    ) -> Result<Vec<PublicLeaderboardEntry>, Box<dyn std::error::Error + Send + Sync>> {
+        let Some(db) = &self.metadata_db else {
+            return Ok(Vec::new());
+        };
+        let read_txn = db.begin_read()?;
+        let table = read_txn.open_table(SEASON_RATINGS_TABLE)?;
+        let mut ratings = Vec::new();
+        let marker = format!(":{}:{}:", crate::profile::CURRENT_SEASON_ID, queue);
+        for item in table.iter()? {
+            let (key, value) = item?;
+            let key = key.value();
+            if key.contains(&marker) && key.ends_with(&format!(":{mode}")) {
+                ratings.push(serde_json::from_slice::<SeasonRating>(value.value())?);
+            }
+        }
+        drop(table);
+        drop(read_txn);
+        let mut con = self.get_connection().await?;
+        let mut entries = Vec::new();
+        for rating in ratings {
+            let Ok(account) = Self::load_account(&mut con, &rating.account_id).await else {
+                continue;
+            };
+            if account.kind == AccountKind::Bot {
+                continue;
+            }
+            let public_id = if account.public_id.is_empty() {
+                public_profile_id(&account.id)
+            } else {
+                account.public_id.clone()
+            };
+            entries.push((rating, public_id, account.display_name));
+        }
+        entries.sort_by(|left, right| right.0.score.cmp(&left.0.score));
+        Ok(entries
+            .into_iter()
+            .take(limit)
+            .enumerate()
+            .map(|(index, (rating, public_id, display_name))| PublicLeaderboardEntry {
+                rank: index as u32 + 1,
+                public_id: public_id.clone(),
+                handle: public_handle(&display_name, &public_id),
+                queue: rating.queue,
+                mode: rating.mode,
+                score: rating.score,
+                tier: rating.tier,
+                division: rating.division,
+                games_played: rating.games_played,
+                wins: rating.wins,
+            })
+            .collect())
     }
 
     /// Key format for looking up canonical account ID by platform identity
@@ -295,6 +1031,33 @@ impl PlayerDb {
             return Err("Account not found".into());
         };
         Ok(serde_json::from_str(&acc_json)?)
+    }
+
+    async fn ensure_public_id(
+        &self,
+        account: PlayerAccount,
+    ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
+        if !account.public_id.is_empty() {
+            return Ok(account);
+        }
+        let public_id = public_profile_id(&account.id);
+        let mut con = self.get_connection().await?;
+        let updated = Self::update_account_atomic(
+            &mut con,
+            &Self::account_key(&account.id),
+            |account| {
+                if account.public_id.is_empty() {
+                    account.public_id = public_id.clone();
+                    account.updated_at = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+                }
+            },
+        )
+        .await?;
+        self.save_player_account_to_redb(&updated);
+        Ok(updated)
     }
 
     /// Replace one account only if the JSON read by this request is still the
@@ -613,7 +1376,7 @@ impl PlayerDb {
             && let Ok(account) = Self::load_account(&mut con, &account_id).await
         {
             let _: () = Self::record_analytics(&mut con, &account.id, false).await?;
-            return Ok(account);
+            return self.ensure_public_id(account).await;
         }
 
         // 2. Not found, create new stable account ID and register
@@ -638,6 +1401,7 @@ impl PlayerDb {
 
         let new_account = PlayerAccount {
             id: random_id.clone(),
+            public_id: public_profile_id(&random_id),
             display_name: generated_display_name(),
             profile: PlayerProfile::default(),
             linked_identities: vec![identity.clone()],
@@ -667,12 +1431,84 @@ impl PlayerDb {
         Ok(new_account)
     }
 
+    /// Migrate legacy accounts once at database boot. The scan is bounded by
+    /// Valkey's cursor API and only writes accounts missing their public ID;
+    /// existing profile aggregates are never rewritten.
+    pub async fn backfill_public_profiles(
+        &self,
+    ) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
+        let mut con = self.get_connection().await?;
+        let mut cursor = 0_u64;
+        let mut migrated = 0_usize;
+        loop {
+            let (next, keys): (u64, Vec<String>) = redis::cmd("SCAN")
+                .arg(cursor)
+                .arg("MATCH")
+                .arg("sow:player:account:*")
+                .arg("COUNT")
+                .arg(256)
+                .query_async(&mut con)
+                .await?;
+            for key in keys {
+                let Some(json): Option<String> = con.get(&key).await? else {
+                    continue;
+                };
+                let account: PlayerAccount = match serde_json::from_str(&json) {
+                    Ok(account) => account,
+                    Err(error) => {
+                        error!("Skipping malformed account during profile migration {key}: {error}");
+                        continue;
+                    }
+                };
+                if account.public_id.is_empty()
+                    || account.display_name.trim().is_empty()
+                    || account.display_name == "ANON"
+                {
+                    let public_id = public_profile_id(&account.id);
+                    let migrated_name = if account.display_name.trim().is_empty()
+                        || account.display_name == "ANON"
+                    {
+                        Some(generated_display_name())
+                    } else {
+                        None
+                    };
+                    let updated = Self::update_account_atomic(&mut con, &key, |account| {
+                        if account.public_id.is_empty() {
+                            account.public_id = public_id.clone();
+                        }
+                        if let Some(name) = migrated_name.as_deref()
+                            && (account.display_name.trim().is_empty()
+                                || account.display_name == "ANON")
+                        {
+                            account.display_name = name.to_string();
+                        }
+                        account.updated_at = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs();
+                    })
+                    .await?;
+                    self.save_player_account_to_redb(&updated);
+                    migrated += 1;
+                } else {
+                    self.save_player_account_to_redb(&account);
+                }
+            }
+            cursor = next;
+            if cursor == 0 {
+                break;
+            }
+        }
+        Ok(migrated)
+    }
+
     /// Load or create an anonymous account using the canonical account ID.
     /// New anonymous accounts do not create a provider identity index.
     pub async fn get_or_create_anonymous(
         &self,
         account_id: Option<&str>,
         requested_display_name: Option<&str>,
+        account_auth_secret: Option<&str>,
     ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
         let mut con = self.get_connection().await?;
 
@@ -684,6 +1520,14 @@ impl PlayerDb {
             if !account.linked_identities.is_empty() {
                 return Err("account is not anonymous".into());
             }
+            if let Some(stored_hash) = account.auth_secret_hash.as_deref()
+                && account_auth_secret.is_none_or(|secret| {
+                    blake3::hash(secret.as_bytes()).to_hex().to_string() != stored_hash
+                })
+            {
+                return Err("invalid secret".into());
+            }
+            let account = self.ensure_public_id(account).await?;
             if account.display_name.trim().is_empty() || account.display_name == "ANON" {
                 let migrated_name = requested_display_name
                     .map(normalize_display_name)
@@ -704,7 +1548,7 @@ impl PlayerDb {
                 self.save_player_account_to_redb(&account);
                 return Ok(account);
             }
-            return Ok(account);
+            return self.ensure_public_id(account).await;
         }
 
         let display_name = requested_display_name
@@ -722,6 +1566,7 @@ impl PlayerDb {
             let random_id = format!("{:032x}", rand::random::<u128>());
             let account = PlayerAccount {
                 id: random_id.clone(),
+                public_id: public_profile_id(&random_id),
                 display_name: display_name.clone(),
                 profile: PlayerProfile::default(),
                 linked_identities: Vec::new(),
@@ -837,6 +1682,7 @@ impl PlayerDb {
             };
             let account = PlayerAccount {
                 id: random_id.clone(),
+                public_id: public_profile_id(&random_id),
                 display_name: generated_display_name(),
                 profile: PlayerProfile::default(),
                 linked_identities: vec![identity.clone()],
@@ -897,6 +1743,7 @@ impl PlayerDb {
         &self,
         account_id: &str,
         display_name: &str,
+        auth_secret: &str,
     ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
         if !is_valid_account_id(account_id) {
             return Err("account_id must be exactly 32 hexadecimal characters".into());
@@ -910,6 +1757,10 @@ impl PlayerDb {
         let account: PlayerAccount = serde_json::from_str(&acc_json)?;
         if !account.linked_identities.is_empty() {
             return Err("account is not anonymous".into());
+        }
+        let provided_hash = blake3::hash(auth_secret.as_bytes()).to_hex().to_string();
+        if account.auth_secret_hash.as_deref() != Some(provided_hash.as_str()) {
+            return Err("invalid secret".into());
         }
         let account = Self::update_account_atomic(&mut con, &acc_key, |account| {
             account.display_name = display_name.clone();
@@ -1018,14 +1869,27 @@ impl PlayerDb {
         Ok(())
     }
 
-    /// Finalize match from relay-logged exit order in Valkey.
+    /// Finalize a match from relay-logged exit order in Valkey. The optional
+    /// lobby snapshot is retained in the durable public history record.
     pub async fn finalize_match(
         &self,
         match_id: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.finalize_match_with_lobby(match_id, None).await
+    }
+
+    pub async fn finalize_match_with_lobby(
+        &self,
+        match_id: &str,
+        lobby_json: Option<&str>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut con = self.get_connection().await?;
         let finalized_key = format!("sow:match:{match_id}:finalized");
         if con.exists(&finalized_key).await? {
+            return Ok(());
+        }
+        if self.load_match_record(match_id)?.is_some() {
+            let _: () = con.set(&finalized_key, "1").await?;
             return Ok(());
         }
 
@@ -1044,18 +1908,143 @@ impl PlayerDb {
         }
 
         let exits: Vec<String> = con.lrange(&exits_key, 0, -1).await?;
-        let winner = players
+        let exit_winner = players
             .iter()
             .find(|p| !exits.contains(p))
             .cloned()
             .or_else(|| exits.last().cloned());
 
-        let opponent_count = players.len().saturating_sub(1) as u32;
+        let lobby_value = lobby_json
+            .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok())
+            .unwrap_or_default();
+        let lobby_players = lobby_value
+            .get("players")
+            .and_then(serde_json::Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let queue = lobby_value
+            .get("kind")
+            .and_then(serde_json::Value::as_str)
+            .filter(|kind| !kind.is_empty())
+            .unwrap_or("Matchmaking")
+            .to_string();
+        let config = lobby_value.get("config");
+        let mode = config
+            .and_then(|value| value.get("game_mode"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("FFA")
+            .to_string();
+        let map_name = config
+            .and_then(|value| value.get("map_name"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("world")
+            .to_string();
+        let raw_player = |account_id: &str| {
+            lobby_players.iter().find(|player| {
+                player
+                    .get("database_account_id")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(account_id)
+            })
+        };
+        let team_for = |account_id: &str| {
+            raw_player(account_id)
+                .and_then(|player| player.get("team"))
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        };
+        let account_for_player_id = |player_id: u16| {
+            lobby_players
+                .iter()
+                .find(|player| {
+                    player
+                        .get("player_id")
+                        .and_then(serde_json::Value::as_u64)
+                        .and_then(|value| u16::try_from(value).ok())
+                        == Some(player_id)
+                })
+                .and_then(|player| player.get("database_account_id"))
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        };
+        let expected_humans = players
+            .iter()
+            .filter(|account_id| {
+                !raw_player(account_id)
+                    .and_then(|player| player.get("is_internal"))
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false)
+            })
+            .count();
+        let mut reports = Vec::new();
         for account_id in &players {
-            let won = winner.as_ref() == Some(account_id);
+            let is_internal = raw_player(account_id)
+                .and_then(|player| player.get("is_internal"))
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+            if is_internal {
+                continue;
+            }
+            let report_key = format!("sow:match:{match_id}:report:{account_id}");
+            let report: std::collections::HashMap<String, String> =
+                con.hgetall(&report_key).await?;
+            let Some(winner_player_id) = report
+                .get("winner_player_id")
+                .and_then(|value| value.parse::<u16>().ok())
+            else {
+                continue;
+            };
+            let tick = report
+                .get("tick")
+                .and_then(|value| value.parse::<u64>().ok())
+                .unwrap_or(0);
+            if tick == 0 {
+                continue;
+            }
+            let winning_team = report
+                .get("winning_team")
+                .filter(|value| !value.is_empty())
+                .cloned();
+            reports.push((account_id.clone(), winner_player_id, winning_team));
+        }
+        let reports_consistent = expected_humans > 0
+            && reports.len() == expected_humans
+            && reports.iter().all(|(_, winner_player_id, winning_team)| {
+                reports
+                    .first()
+                    .is_some_and(|(_, first_winner, first_team)| {
+                        first_winner == winner_player_id && first_team == winning_team
+                    })
+            });
+        let reported_winner = reports_consistent
+            .then(|| reports[0].1)
+            .and_then(account_for_player_id);
+        let winner = reported_winner.or(exit_winner);
+        let winning_team = if reports_consistent {
+            reports[0].2.clone()
+        } else {
+            winner.as_deref().and_then(team_for)
+        };
+        let completed_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let opponent_count = players.len().saturating_sub(1) as u32;
+        let mut participant_records = Vec::with_capacity(players.len());
+        for account_id in &players {
+            let raw = raw_player(account_id);
+            let raw_leader = raw
+                .and_then(|player| player.get("leader"))
+                .and_then(serde_json::Value::as_str)
+                .and_then(crate::rewards::canonical_leader_name);
             let stats_key = format!("sow:match:{match_id}:stats:{account_id}");
             let stats: Option<std::collections::HashMap<String, String>> =
                 con.hgetall(&stats_key).await?;
+            let team = team_for(account_id);
+            let won_by_player = winner.as_ref() == Some(account_id);
+            let won = winning_team
+                .as_ref()
+                .map_or(won_by_player, |winning| team.as_ref() == Some(winning));
 
             let (defeats, kills, deaths, assists, leader) = if let Some(map) = stats {
                 let parse = |k: &str| map.get(k).and_then(|v| v.parse().ok()).unwrap_or(0);
@@ -1084,6 +2073,47 @@ impl PlayerDb {
                     None,
                 )
             };
+            let leader = leader.or(raw_leader);
+            let placement = exits
+                .iter()
+                .position(|exit| exit == account_id)
+                .map(|position| (exits.len().saturating_sub(position)) as u16)
+                .unwrap_or(1);
+            let account = Self::load_account(&mut con, account_id).await?;
+            let public_id = if account.public_id.is_empty() {
+                public_profile_id(account_id)
+            } else {
+                account.public_id.clone()
+            };
+            let reward = crate::rewards::calculate(crate::rewards::RewardInput {
+                won,
+                players_defeated: defeats.players,
+                empires_defeated: defeats.empires,
+                tribes_defeated: defeats.tribes,
+                kills,
+                assists,
+                ..Default::default()
+            });
+            participant_records.push(crate::profile::MatchParticipantRecord {
+                account_id: account_id.clone(),
+                public_id,
+                display_name: account.display_name,
+                is_bot: account.kind == AccountKind::Bot,
+                leader: leader.clone(),
+                team,
+                placement,
+                won,
+                kills,
+                deaths,
+                assists,
+                players_defeated: defeats.players,
+                empires_defeated: defeats.empires,
+                tribes_defeated: defeats.tribes,
+                xp: reward.xp,
+                leader_xp: reward.leader_xp,
+                laurels: reward.laurels,
+                rating_delta: None,
+            });
 
             match self
                 .record_match_outcome_with_kda(
@@ -1109,6 +2139,32 @@ impl PlayerDb {
             }
         }
 
+        let human_count = participant_records.iter().filter(|player| !player.is_bot).count();
+        let rating_is_hvn = mode == "HumansVsNations";
+        let mut record = MatchRecord {
+            schema_version: 1,
+            match_id: match_id.to_string(),
+            season_id: crate::profile::CURRENT_SEASON_ID,
+            queue,
+            mode,
+            map_name,
+            started_at: completed_at,
+            completed_at,
+            duration_seconds: 0,
+            winner_account_id: winner,
+            winning_team,
+            verified: reports_consistent,
+            rating_eligible: reports_consistent
+                && if rating_is_hvn {
+                    human_count >= 1
+                } else {
+                    human_count >= 2
+                },
+            participants: participant_records,
+        };
+        self.apply_ratings(&mut record)?;
+        self.save_match_record(&record)?;
+
         let mut stats_keys: Vec<String> = Vec::new();
         for account_id in &players {
             stats_keys.push(format!("sow:match:{match_id}:stats:{account_id}"));
@@ -1116,7 +2172,6 @@ impl PlayerDb {
 
         let _: () = redis::pipe()
             .set(&finalized_key, "1")
-            .expire(&finalized_key, 3600)
             .del(&players_key)
             .del(&exits_key)
             .query_async::<()>(&mut con)
@@ -1124,6 +2179,10 @@ impl PlayerDb {
 
         for key in stats_keys {
             let _: () = con.del(&key).await?;
+        }
+        for account_id in &players {
+            let report_key = format!("sow:match:{match_id}:report:{account_id}");
+            let _: () = con.del(&report_key).await?;
         }
 
         info!("Finalized match {match_id} with {} players", players.len());

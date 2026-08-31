@@ -281,6 +281,8 @@ async fn register_relay(rc: &RelayCandidate, worker: &RelayWorker) -> Result<(),
         "active_empty_secs": active_empty_secs,
         "players": rc.relay_players_json,
         "tick_rate_ms": rc.tick_rate_ms,
+        "config": rc.config,
+        "kind": rc.kind,
     });
 
     let secret = std::env::var("SOW_RELAY_CONTROL_SECRET")
@@ -611,6 +613,7 @@ struct RelayCandidate {
     active_empty_secs: f32,
     tick_rate_ms: f32,
     config: GameConfig,
+    kind: String,
     seed: u64,
     start_players: Vec<PlayerInfo>,
     relay_players_json: Vec<serde_json::Value>,
@@ -906,6 +909,8 @@ async fn main() {
                                         "player_id": p.player_id,
                                         "name": p.name,
                                         "database_account_id": p.database_account_id,
+                                        "leader": p.leader,
+                                        "team": p.team,
                                         "is_internal": p.is_internal_bot,
                                         "session_id": p.session_id,
                                         "relay_ticket_digest": relay_ticket_digest,
@@ -958,6 +963,7 @@ async fn main() {
                                     active_empty_secs: lobby.active_empty_secs,
                                     tick_rate_ms: lobby.config.tick_rate_ms,
                                     config: lobby.config.clone(),
+                                    kind: format!("{:?}", lobby.kind),
                                     seed: lobby.seed,
                                     start_players,
                                     relay_players_json,
@@ -1431,6 +1437,7 @@ async fn main() {
                                             }
                                             sow_core::protocol::ClientMessage::SubmitStats { .. } => {}
                                             sow_core::protocol::ClientMessage::SubmitStatsWithLeader { .. } => {}
+                                            sow_core::protocol::ClientMessage::SubmitMatchReport { .. } => {}
                                         }
                                         continue;
                                     }

@@ -14,6 +14,8 @@ pub mod rewards;
 #[cfg(feature = "server")]
 pub mod metadata_db;
 #[cfg(feature = "server")]
+pub mod profile;
+#[cfg(feature = "server")]
 pub mod time_util;
 pub mod tribes;
 
@@ -25,6 +27,12 @@ pub use leaders::{Civilization, Leader, leader_for_civilization};
 #[cfg(feature = "server")]
 pub use metadata_db::{
     GeoEntityRecord, LeaderRecord, get_geo_entity_by_name, get_leader_by_name, init_database,
+};
+#[cfg(feature = "server")]
+pub use profile::{
+    MatchParticipantRecord, MatchRecord, PublicLeaderSummary, PublicMatchDetail, PublicMatchSummary,
+    PublicLeaderboardEntry, PublicProfileIndex, PublicProfileSummary, PublicProfileView,
+    PublicRatingView, SeasonRating, SeasonRecord,
 };
 pub use tribes::{
     EMPIRE_EMOJIS, FALLBACK_TRIBES, HISTORICAL_CIVILIZATIONS, TRIBE_ANIMALS, animal_for_id,

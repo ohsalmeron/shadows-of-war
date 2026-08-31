@@ -13,6 +13,17 @@
     var tempSelectedLeader = null;
     var browserSearchQuery = "";
     var settingsOpen = false;
+    var profileOpen = false;
+    var profilePublicId = null;
+    var profileTab = "overview";
+    var profileData = null;
+    var profileHistory = [];
+    var profileHistoryCursor = 0;
+    var profileRatings = null;
+    var profileMatchDetail = null;
+    var profileSearchResults = [];
+    var profileLoading = false;
+    var profileError = "";
     var createDraft = null;
     var createOffline = false;
     var createPrivate = false;
@@ -75,10 +86,95 @@
 
     function currentScreen() {
         if (!state) return "boot";
+        if (profileOpen) return "profile";
         if (state.waiting) return "queue";
         if (state.show_create) return "create";
         if (state.show_browser) return "browser";
         return "home";
+    }
+
+    function profileApi(path) {
+        var base = String(window.SOW_DATABASE_URL || "/api").replace(/\/$/, "");
+        return base + path;
+    }
+
+    function loadProfile(id) {
+        if (!id || profileLoading) return;
+        profileLoading = true;
+        profileError = "";
+        fetch(profileApi("/profiles/" + encodeURIComponent(id)), {
+            headers: { "Accept": "application/json" }
+        }).then(function (response) {
+            if (!response.ok) throw new Error("profile request failed");
+            return response.json();
+        }).then(function (data) {
+            if (!profileOpen || profilePublicId !== id) return;
+            profileData = data;
+            profileHistory = Array.isArray(data.recent_matches) ? data.recent_matches.slice() : [];
+            profileHistoryCursor = profileHistory.length;
+        }).catch(function () {
+            if (profileOpen && profilePublicId === id) {
+                profileError = "Profile unavailable.";
+            }
+        }).finally(function () {
+            profileLoading = false;
+            if (profileOpen && profilePublicId === id) render();
+        });
+    }
+
+    function loadMoreProfileHistory() {
+        if (!profilePublicId || profileLoading) return;
+        profileLoading = true;
+        fetch(profileApi("/profiles/" + encodeURIComponent(profilePublicId) + "/matches?cursor=" + profileHistoryCursor + "&limit=20"), {
+            headers: { "Accept": "application/json" }
+        }).then(function (response) {
+            if (!response.ok) throw new Error("history request failed");
+            return response.json();
+        }).then(function (data) {
+            var items = Array.isArray(data.items) ? data.items : [];
+            profileHistory = profileHistory.concat(items);
+            profileHistoryCursor = Number(data.next_cursor || profileHistoryCursor + items.length);
+        }).catch(function () {
+            profileError = "Match history unavailable.";
+        }).finally(function () {
+            profileLoading = false;
+            if (profileOpen) render();
+        });
+    }
+
+    function loadProfileRatings() {
+        if (!profilePublicId || profileLoading || profileRatings !== null) return;
+        profileLoading = true;
+        fetch(profileApi("/profiles/" + encodeURIComponent(profilePublicId) + "/seasons"), {
+            headers: { "Accept": "application/json" }
+        }).then(function (response) {
+            if (!response.ok) throw new Error("profile ratings failed");
+            return response.json();
+        }).then(function (data) {
+            if (profileOpen) profileRatings = Array.isArray(data.items) ? data.items : [];
+        }).catch(function () {
+            if (profileOpen) profileError = "Ranked records unavailable.";
+        }).finally(function () {
+            profileLoading = false;
+            if (profileOpen) render();
+        });
+    }
+
+    function openProfile(id) {
+        var targetId = id || (state && state.public_profile_id);
+        if (!targetId) return;
+        profileOpen = true;
+        profilePublicId = targetId;
+        profileTab = "overview";
+        profileData = null;
+        profileHistory = [];
+        profileHistoryCursor = 0;
+        profileRatings = null;
+        profileMatchDetail = null;
+        profileSearchResults = [];
+        profileError = "";
+        render();
+        loadProfile(targetId);
     }
 
     function send(type, extra) {
@@ -144,6 +240,7 @@
             level: state.level,
             xp: state.xp,
             laurels: state.laurels,
+            public_profile_id: state.public_profile_id,
             joined: state.joined_lobby_id,
             pending: state.pending_lobby_id,
             host: state.is_lobby_host,
@@ -169,6 +266,7 @@
         var leader = leaderById(state.selected_leader);
         var name = displayNameDraft != null ? displayNameDraft : (state.player_name || "ANONYMOUS");
         var signIn = state.name_locked ? "ACCOUNT" : "SIGN IN";
+        var accountXp = Math.max(0, Number(state.xp) || 0);
         return "" +
             "<header class='sow-menu__topbar'>" +
                 "<div class='sow-menu__identity'>" +
@@ -177,16 +275,14 @@
                     "<div class='sow-menu__profile'>" +
                         "<input data-role='display-name' name='display_name' value=\"" + esc(name) + "\" maxlength='20' " +
                             (state.name_locked ? "readonly" : "") + " aria-label='Display name'>" +
-                        "<small>" + esc(leader.name) + " · " + esc(leader.civilization) + "</small>" +
+                        "<button class='sow-menu__profile-link' type='button' data-command='open_profile'>" + esc(leader.name) + " · " + esc(leader.civilization) + "</button>" +
                     "</div>" +
                 "</div>" +
                 "<div class='sow-menu__top-actions'>" +
-                    "<div class='sow-menu__progress' data-progression title='Account Progression'>" +
-                        "<span class='sow-menu__level'><small>LV</small> " + esc(state.level) + "</span>" +
-                        "<span class='sow-menu__progress-sep'>·</span>" +
-                        "<span class='sow-menu__xp'>" + esc(state.xp) + " <small>XP</small></span>" +
-                        "<span class='sow-menu__progress-sep'>·</span>" +
-                        "<span class='sow-menu__laurels'>✦ " + esc(state.laurels) + "</span>" +
+                    "<div class='sow-menu__progress' data-progression data-command='open_profile' role='button' tabindex='0' title='Open profile' aria-label='Open profile'>" +
+                        "<span class='sow-menu__progress-cell sow-menu__level'><small>LV</small><strong data-progression-level-value>" + esc(state.level) + "</strong></span>" +
+                        "<span class='sow-menu__progress-cell sow-menu__xp'><span class='sow-menu__xp-value' data-progression-xp-value>" + esc(Math.floor(accountXp)) + " XP</span><span class='sow-menu__xp-track' aria-hidden='true'><i data-progression-xp-fill style='width:" + (accountXp % 100) + "%'></i></span></span>" +
+                        "<span class='sow-menu__progress-cell sow-menu__laurels'><svg class='sow-menu__laurel-icon' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M8 20c-3-2-5-5-5-9 3 1 5 3 6 6M16 20c3-2 5-5 5-9-3 1-5 3-6 6M9 22h6'/></svg><strong data-progression-laurels-value>" + esc(state.laurels) + "</strong></span>" +
                     "</div>" +
                     "<button class='sow-menu__signin' type='button' data-command='sign_in'>" + signIn + "</button>" +
                     "<button class='sow-menu__icon-button' type='button' data-command='toggle_settings' aria-label='Settings'>⚙</button>" +
@@ -273,8 +369,8 @@
 
     function renderFooter(label) {
         return "<footer class='sow-menu__footer'>" + (label ? "<span>" + esc(label) + "</span>" : "") + "<nav class='sow-menu__footer-links' aria-label='Game links'>" +
-            "<a href='/how-to-play/'>HOW TO PLAY</a><a href='/terms/'>TERMS</a><a href='/privacy/'>PRIVACY</a>" +
-            "<a href='https://discord.gg/eauHRf7zP' rel='noreferrer'>DISCORD</a><a href='https://github.com/worldofunreal/shadows-of-war' rel='noreferrer'>GITHUB</a>" +
+            "<a href='/how-to-play/'>HOW TO PLAY</a><a href='/support/'>SUPPORT</a><a href='/terms/'>TERMS</a><a href='/privacy/'>PRIVACY</a>" +
+            "<a href='https://discord.gg/d6ZDeChSE' target='_blank' rel='noopener noreferrer'>DISCORD</a><a href='https://t.me/shadowsofwario' target='_blank' rel='noopener noreferrer'>TELEGRAM</a><a href='https://github.com/worldofunreal/shadows-of-war' target='_blank' rel='noopener noreferrer'>GITHUB</a>" +
             "</nav><span>SHADOWSOFWAR.IO</span></footer>";
     }
 
@@ -348,7 +444,88 @@
                     "</section>" +
                 "</main>" +
                 renderFooter("LOBBY BROWSER") +
-            "</div>" + renderPasswordModal();
+                "</div>" + renderPasswordModal();
+    }
+
+    function profileLeaderCard(leader) {
+        var summary = leader || {};
+        var leaderInfo = leaderById(summary.leader);
+        return "<article class='sow-profile__leader'>" +
+            "<img src='" + esc(asset("gameplay/avatars/" + leaderInfo.slug + ".webp")) + "' alt='' loading='lazy'>" +
+            "<div><strong>" + esc(summary.leader || leaderInfo.name) + "</strong>" +
+            "<span>" + esc(summary.matches_played || 0) + " matches · " + esc(Math.round((summary.win_rate || 0) * 100)) + "% wins</span></div>" +
+            "<b>LV " + esc(1 + Math.floor((summary.xp || 0) / 100)) + "</b>" +
+            "</article>";
+    }
+
+    function profileMatchRow(match) {
+        var result = match.won ? "WIN" : "LOSS";
+        return "<button type='button' class='sow-profile__match' data-command='open_match' data-match-id='" + esc(match.match_id) + "'>" +
+            "<span class='sow-profile__match-result " + (match.won ? "is-win" : "is-loss") + "'>" + result + "</span>" +
+            "<span><strong>" + esc(match.mode || "FFA") + "</strong><small>" + esc(match.map_name || "WORLD") + " · " + esc(match.queue || "MATCHMAKING") + "</small></span>" +
+            "<span>" + esc(match.leader || "—") + "<small>" + esc(match.kills || 0) + " / " + esc(match.deaths || 0) + " / " + esc(match.assists || 0) + "</small></span>" +
+            "<span>" + (match.rating_delta == null ? "—" : (match.rating_delta >= 0 ? "+" : "") + esc(match.rating_delta) + " SR") + "</span>" +
+            "</button>";
+    }
+
+    function renderProfile() {
+        var data = profileData;
+        var own = state && state.public_profile_id === profilePublicId;
+        var header = data
+            ? "<div class='sow-profile__heading'><div><span class='sow-menu__panel-label'>PROFILE</span><h1>" + esc(data.display_name) + "</h1><p>" + esc(data.handle) + "</p></div><div class='sow-profile__level'><small>LEVEL</small><strong>" + esc(data.level) + "</strong></div></div>"
+            : "<div class='sow-profile__heading'><div><span class='sow-menu__panel-label'>PROFILE</span><h1>" + (profileLoading ? "Loading" : "Profile") + "</h1><p>" + esc(profileError || "No profile data") + "</p></div></div>";
+        var tabs = ["overview", "leaders", "history", "ranked"].map(function (tab) {
+            return "<button type='button' class='sow-profile__tab" + (profileTab === tab ? " is-active" : "") + "' data-command='profile_tab' data-profile-tab='" + tab + "'>" + tab.toUpperCase() + "</button>";
+        }).join("");
+        var content = "";
+        if (data && profileTab === "overview") {
+            content = "<div class='sow-profile__stats'>" +
+                "<div><b>" + esc(data.matches_played) + "</b><span>MATCHES</span></div>" +
+                "<div><b>" + esc(data.wins) + "</b><span>WINS</span></div>" +
+                "<div><b>" + esc(Math.round((data.win_rate || 0) * 100)) + "%</b><span>WIN RATE</span></div>" +
+                "<div><b>" + esc(data.kills) + " / " + esc(data.deaths) + " / " + esc(data.assists) + "</b><span>K / D / A</span></div>" +
+                "</div><div class='sow-profile__columns'><section><h2>Recent matches</h2>" +
+                (profileHistory.slice(0, 10).map(profileMatchRow).join("") || "<p class='sow-profile__empty'>No completed matches.</p>") +
+                "</section><section><h2>Leaders</h2>" +
+                ((data.leaders || []).slice(0, 4).map(profileLeaderCard).join("") || "<p class='sow-profile__empty'>No leader history.</p>") +
+                "</section></div>";
+        } else if (data && profileTab === "leaders") {
+            content = "<section class='sow-profile__section'><h2>Leader mastery</h2><div class='sow-profile__leaders'>" +
+                ((data.leaders || []).map(profileLeaderCard).join("") || "<p class='sow-profile__empty'>No leader history.</p>") +
+                "</div></section>";
+        } else if (profileTab === "history") {
+            content = "<section class='sow-profile__section'><h2>Match history</h2><div class='sow-profile__history'>" +
+                (profileHistory.map(profileMatchRow).join("") || "<p class='sow-profile__empty'>No completed matches.</p>") +
+                "</div>" +
+                (profilePublicId ? "<button type='button' class='sow-menu__secondary' data-command='load_profile_more'>" + (profileLoading ? "LOADING..." : "LOAD MORE") + "</button>" : "") +
+                "</section>";
+        } else if (data && profileTab === "ranked") {
+            var ratings = profileRatings === null
+                ? "<p class='sow-profile__empty'>" + (profileLoading ? "Loading ranked records…" : "No ranked records.") + "</p>"
+                : (profileRatings.map(function (rating) {
+                    return "<article class='sow-profile__rating'><div><strong>" + esc(rating.season_name) + "</strong><span>" + esc(rating.queue) + " · " + esc(rating.mode) + "</span></div><b>" + esc(rating.tier) + (rating.division ? " " + esc(rating.division) : "") + "</b><strong>" + esc(rating.score) + " SR</strong><small>" + esc(rating.games_played) + " games · " + esc(rating.wins) + " wins · peak " + esc(rating.peak_score) + "</small></article>";
+                }).join("") || "<p class='sow-profile__empty'>No ranked records.</p>");
+            content = "<section class='sow-profile__section'><h2>Ranked</h2><div class='sow-profile__ratings'>" + ratings + "</div></section>";
+        } else if (!data) {
+            content = "<p class='sow-profile__empty'>" + esc(profileError || "Loading profile…") + "</p>";
+        }
+        var search = "<form class='sow-profile__search' data-form='profile-search'><input name='q' type='search' placeholder='Search players' aria-label='Search players'><button type='submit'>SEARCH</button></form>";
+        var searchResults = profileSearchResults.length
+            ? "<div class='sow-profile__search-results'>" + profileSearchResults.map(function (summary) {
+                return "<button type='button' class='sow-profile__search-result' data-command='open_public_profile' data-profile-id='" + esc(summary.public_id) + "'><strong>" + esc(summary.display_name) + "</strong><span>" + esc(summary.handle) + " · LV " + esc(summary.level) + "</span></button>";
+            }).join("") + "</div>"
+            : "";
+        var detail = profileMatchDetail
+            ? "<div class='sow-profile__detail-backdrop'><section class='sow-profile__detail' role='dialog' aria-modal='true' aria-label='Match details'><button type='button' class='sow-menu__secondary sow-profile__detail-close' data-command='close_match'>CLOSE</button><h2>" + esc(profileMatchDetail.mode || "MATCH") + "</h2><p>" + esc(profileMatchDetail.map_name || "WORLD") + " · " + esc(profileMatchDetail.queue || "MATCHMAKING") + "</p><div class='sow-profile__detail-players'>" + (profileMatchDetail.participants || []).map(function (participant) {
+                return "<div><strong>" + esc(participant.handle || participant.public_id) + "</strong><span>" + esc(participant.leader || "—") + " · " + esc(participant.kills || 0) + " / " + esc(participant.deaths || 0) + " / " + esc(participant.assists || 0) + "</span><b>" + (participant.won ? "WIN" : "LOSS") + "</b></div>";
+            }).join("") + "</div></section></div>"
+            : "";
+        return "<div class='sow-menu__backdrop'></div><div class='sow-menu__shell sow-profile'>" +
+            renderTopbar() +
+            "<main class='sow-menu__main'><section class='sow-menu__profile-page'>" + header +
+            "<div class='sow-profile__tabs'>" + tabs + "</div>" + content + search + searchResults +
+            "</section></main><button type='button' class='sow-menu__secondary sow-profile__back' data-command='close_profile'>← BACK</button>" +
+            renderFooter("PROFILE") + detail + "</div>";
     }
 
     function cloneConfig() {
@@ -780,6 +957,7 @@
         else if (screen === "browser") root.innerHTML = renderBrowser();
         else if (screen === "create") root.innerHTML = renderCreate();
         else if (screen === "queue") root.innerHTML = renderQueue();
+        else if (screen === "profile") root.innerHTML = renderProfile();
         else root.innerHTML = "";
 
         if (isTyping) {
@@ -810,7 +988,18 @@
             connection.textContent = state.connected ? "ONLINE" : (state.connecting ? "CONNECTING..." : "OFFLINE · RETRYING");
         }
         var progression = root.querySelector("[data-progression]");
-        if (progression) progression.textContent = "LV " + state.level + " · " + state.xp + " XP · ✦ " + state.laurels;
+        if (progression) {
+            var progressionXp = Math.max(0, Number(state.xp) || 0);
+            var progressionLevel = Math.max(1, Number(state.level) || 1);
+            var levelValue = progression.querySelector("[data-progression-level-value]");
+            var xpValue = progression.querySelector("[data-progression-xp-value]");
+            var xpFill = progression.querySelector("[data-progression-xp-fill]");
+            var laurelsValue = progression.querySelector("[data-progression-laurels-value]");
+            if (levelValue) levelValue.textContent = progressionLevel;
+            if (xpValue) xpValue.textContent = Math.floor(progressionXp) + " XP";
+            if (xpFill) xpFill.style.width = (progressionXp % 100) + "%";
+            if (laurelsValue) laurelsValue.textContent = Math.max(0, Number(state.laurels) || 0);
+        }
         var timer = root.querySelector("[data-live-countdown]");
         var lobby = joinedLobby();
         if (timer && lobby) timer.textContent = lobby.is_counting_down ? "STARTING IN " + Math.ceil(lobby.timer_secs) + "s" : "WAITING FOR PLAYERS";
@@ -830,6 +1019,59 @@
         var target = event.target.closest("[data-command]");
         if (!target || !root.contains(target)) return;
         var command = target.dataset.command;
+        if (command === "open_profile" || command === "open_public_profile") {
+            openProfile(target.dataset.profileId || null);
+            return;
+        }
+        if (command === "close_profile") {
+            profileOpen = false;
+            profilePublicId = null;
+            profileData = null;
+            profileSearchResults = [];
+            profileRatings = null;
+            profileMatchDetail = null;
+            render();
+            return;
+        }
+        if (command === "profile_tab") {
+            profileTab = target.dataset.profileTab || "overview";
+            if (profileTab === "history" && profileHistory.length === 0) {
+                loadMoreProfileHistory();
+            } else if (profileTab === "ranked") {
+                loadProfileRatings();
+            } else {
+                render();
+            }
+            return;
+        }
+        if (command === "load_profile_more") {
+            loadMoreProfileHistory();
+            return;
+        }
+        if (command === "open_match") {
+            var matchId = target.dataset.matchId;
+            if (!matchId || profileLoading) return;
+            profileLoading = true;
+            fetch(profileApi("/matches/" + encodeURIComponent(matchId)), {
+                headers: { "Accept": "application/json" }
+            }).then(function (response) {
+                if (!response.ok) throw new Error("match detail failed");
+                return response.json();
+            }).then(function (detail) {
+                profileMatchDetail = detail;
+            }).catch(function () {
+                profileError = "Match details unavailable.";
+            }).finally(function () {
+                profileLoading = false;
+                render();
+            });
+            return;
+        }
+        if (command === "close_match") {
+            profileMatchDetail = null;
+            render();
+            return;
+        }
         if (command === "open_leader_picker") {
             leaderPickerOpen = true;
             tempSelectedLeader = state ? state.selected_leader : "Caesar";
@@ -978,6 +1220,25 @@
 
     root.addEventListener("submit", function (event) {
         var form = event.target;
+        if (form.dataset.form === "profile-search") {
+            event.preventDefault();
+            var query = form.elements.q.value.trim();
+            fetch(profileApi("/profiles/search?q=" + encodeURIComponent(query) + "&limit=20"), {
+                headers: { "Accept": "application/json" }
+            }).then(function (response) {
+                if (!response.ok) throw new Error("profile search failed");
+                return response.json();
+            }).then(function (data) {
+                profileSearchResults = Array.isArray(data.items) ? data.items : [];
+                profileError = "";
+            }).catch(function () {
+                profileSearchResults = [];
+                profileError = "Profile search unavailable.";
+            }).finally(function () {
+                render();
+            });
+            return;
+        }
         if (form.dataset.form === "join") {
             event.preventDefault();
             var code = form.elements.code.value.trim();
@@ -1144,11 +1405,6 @@
             + '</div>'
             + '<footer class="sow-hud__dock" id="sow-hud-dock">'
             + '  <div class="sow-hud__dock-inner">'
-            + '    <div class="sow-hud__dock-tabs" role="tablist" aria-label="Match panels">'
-            + '      <button type="button" class="sow-hud__dock-tab active" data-command="set_bottom_tab" data-tab="controls">⚔</button>'
-            + '      <button type="button" class="sow-hud__dock-tab" data-command="set_bottom_tab" data-tab="battle_log">📜</button>'
-            + '      <button type="button" class="sow-hud__dock-tab" data-command="set_bottom_tab" data-tab="event_log">📋</button>'
-            + '    </div>'
             + '    <button type="button" class="sow-hud__deploy-btn" data-command="spawn_troops" id="sow-hud-deploy-btn">'
             + '      <span>DEPLOY REINFORCEMENTS</span>'
             + '      <small id="sow-hud-deploy-timer">READY</small>'
@@ -1189,11 +1445,6 @@
             + '  <div class="sow-hud__panel-header"><h3>INBOX</h3><button class="sow-hud__close-btn" type="button" data-command="toggle_inbox">✕</button></div>'
             + '  <div class="sow-hud__panel-rows" id="sow-hud-inbox-rows"></div>'
             + '</aside>'
-            + '<aside class="sow-hud__panel sow-hud__log-panel hidden" id="sow-hud-log-panel">'
-            + '  <div class="sow-hud__panel-header"><h3 id="sow-hud-log-title">BATTLE LOG</h3><button class="sow-hud__close-btn" type="button" data-command="set_bottom_tab" data-tab="controls">✕</button></div>'
-            + '  <div class="sow-hud__panel-rows" id="sow-hud-log-rows"></div>'
-            + '  <button class="sow-hud__clear-log hidden" id="sow-hud-clear-log" type="button" data-command="clear_event_log">CLEAR EVENT LOG</button>'
-            + '</aside>'
             + '<aside class="sow-hud__panel sow-hud__transfer hidden" id="sow-hud-transfer">'
             + '  <div class="sow-hud__panel-header"><h3>RESOURCE TRANSFER</h3><button class="sow-hud__close-btn" type="button" data-command="close_transfer">✕</button></div>'
             + '  <p id="sow-hud-transfer-target"></p>'
@@ -1215,13 +1466,27 @@
             + '  </div>'
             + '</div>'
             + '<div class="sow-hud__endgame-backdrop hidden" id="sow-hud-endgame-modal">'
-            + '  <div class="sow-hud__endgame-card">'
-            + '    <div class="sow-hud__endgame-banner" id="sow-hud-endgame-banner">VICTORY</div>'
-            + '    <h2 style="margin:0 0 12px;font-size:24px;" id="sow-hud-endgame-title">MATCH COMPLETE</h2>'
-            + '    <p style="color:var(--sow-muted);font-size:14px;margin-bottom:24px;" id="sow-hud-endgame-desc">Your conquest is complete.</p>'
-            + '    <div class="sow-hud__endgame-stats" id="sow-hud-endgame-stats"></div>'
-            + '    <button class="sow-hud__btn" type="button" data-command="confirm_endgame_leave" style="background:var(--sow-gold);color:#0d0f13;font-weight:800;padding:12px 28px;">BACK TO MENU</button>'
-            + '  </div>'
+            + '  <section class="sow-hud__endgame-card" role="dialog" aria-modal="true" aria-labelledby="sow-hud-endgame-title">'
+            + '    <div class="sow-hud__endgame-kicker"><span class="sow-hud__endgame-icon" id="sow-hud-endgame-icon" aria-hidden="true">⚔</span><span>MATCH RESULT</span></div>'
+            + '    <h2 class="sow-hud__endgame-banner" id="sow-hud-endgame-banner">DEFEAT</h2>'
+            + '    <h3 class="sow-hud__endgame-title" id="sow-hud-endgame-title">MATCH LOST</h3>'
+            + '    <p class="sow-hud__endgame-desc" id="sow-hud-endgame-desc">The match has ended.</p>'
+            + '    <div class="sow-hud__endgame-stats" id="sow-hud-endgame-stats">'
+            + '      <div class="sow-hud__endgame-stat"><span class="sow-hud__endgame-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l14 14M18 4L4 18M5 5l3 3M19 5l-3 3M5 19l3-3M19 19l-3-3"/></svg></span><span class="sow-hud__endgame-stat-label">K / D / A</span><b id="sow-hud-endgame-kda">0 / 0 / 0</b></div>'
+            + '      <div class="sow-hud__endgame-stat"><span class="sow-hud__endgame-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.1 5.1L19 10l-4.9 1.9L12 17l-2.1-5.1L5 10l4.9-1.9z"/></svg></span><span class="sow-hud__endgame-stat-label">XP</span><b id="sow-hud-endgame-xp">+0</b></div>'
+            + '      <div class="sow-hud__endgame-stat"><span class="sow-hud__endgame-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m4 7 4 4 4-6 4 6 4-4-2 10H6zM6 20h12"/></svg></span><span class="sow-hud__endgame-stat-label">LEADER XP</span><b id="sow-hud-endgame-leader-xp">+0</b></div>'
+            + '      <div class="sow-hud__endgame-stat"><span class="sow-hud__endgame-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 20c-3-2-5-5-5-9 3 1 5 3 6 6M16 20c3-2 5-5 5-9-3 1-5 3-6 6M9 22h6"/></svg></span><span class="sow-hud__endgame-stat-label">LAURELS</span><b id="sow-hud-endgame-laurels">+0</b></div>'
+            + '    </div>'
+            + '    <div class="sow-hud__endgame-store" aria-label="Commander store coming soon">'
+            + '      <span class="sow-hud__endgame-store-icon" aria-hidden="true">✦</span>'
+            + '      <span class="sow-hud__endgame-store-copy"><b>COMMANDER STORE</b><small>COSMETICS &amp; EMOTES</small></span>'
+            + '      <span class="sow-hud__endgame-store-state">SOON</span>'
+            + '    </div>'
+            + '    <div class="sow-hud__endgame-actions">'
+            + '      <button class="sow-hud__endgame-secondary hidden" type="button" data-command="continue_observing" id="sow-hud-endgame-observe"><span aria-hidden="true">◉</span> CONTINUE AS OBSERVER</button>'
+            + '      <button class="sow-hud__endgame-primary" type="button" data-command="confirm_endgame_leave"><span aria-hidden="true">⌂</span> BACK TO MENU</button>'
+            + '    </div>'
+            + '  </section>'
             + '</div>';
 
         var emojiGrid = document.getElementById("sow-hud-emoji-grid");
@@ -1257,8 +1522,6 @@
             rightRail: document.getElementById("sow-hud-right-rail"),
             emojiPopout: document.getElementById("sow-hud-emoji-popout"),
             pinEmoji: hudRoot.querySelector("[data-command='toggle_pin_emoji']"),
-            dockTabs: Array.prototype.slice.call(hudRoot.querySelectorAll(".sow-hud__dock-tab")),
-            dockTabsWrap: hudRoot.querySelector(".sow-hud__dock-tabs"),
             deployBtn: document.getElementById("sow-hud-deploy-btn"),
             deployTimer: document.getElementById("sow-hud-deploy-timer"),
             bldStrip: document.getElementById("sow-hud-buildings-strip"),
@@ -1275,10 +1538,6 @@
             rows: document.getElementById("sow-hud-lb-rows"),
             inbox: document.getElementById("sow-hud-inbox"),
             inboxRows: document.getElementById("sow-hud-inbox-rows"),
-            logPanel: document.getElementById("sow-hud-log-panel"),
-            logTitle: document.getElementById("sow-hud-log-title"),
-            logRows: document.getElementById("sow-hud-log-rows"),
-            clearLog: document.getElementById("sow-hud-clear-log"),
             transfer: document.getElementById("sow-hud-transfer"),
             transferTarget: document.getElementById("sow-hud-transfer-target"),
             transferGold: document.getElementById("sow-hud-transfer-gold"),
@@ -1287,10 +1546,17 @@
             betrayalCopy: document.getElementById("sow-hud-betrayal-copy"),
             surrender: document.getElementById("sow-hud-surrender-modal"),
             endgame: document.getElementById("sow-hud-endgame-modal"),
+            endgameCard: document.querySelector("#sow-hud-endgame-modal .sow-hud__endgame-card"),
+            endgameIcon: document.getElementById("sow-hud-endgame-icon"),
             endgameBanner: document.getElementById("sow-hud-endgame-banner"),
             endgameTitle: document.getElementById("sow-hud-endgame-title"),
             endgameDesc: document.getElementById("sow-hud-endgame-desc"),
             endgameStats: document.getElementById("sow-hud-endgame-stats"),
+            endgameKda: document.getElementById("sow-hud-endgame-kda"),
+            endgameXp: document.getElementById("sow-hud-endgame-xp"),
+            endgameLeaderXp: document.getElementById("sow-hud-endgame-leader-xp"),
+            endgameLaurels: document.getElementById("sow-hud-endgame-laurels"),
+            endgameObserve: document.getElementById("sow-hud-endgame-observe"),
             notifications: document.createElement("div")
         };
 
@@ -1404,30 +1670,6 @@
         appendPanelRows(hudRefs.inboxRows, rows);
     }
 
-    function renderBattleLog(entries) {
-        if (!hudRefs || !Array.isArray(entries)) return;
-        var rows = entries.map(function (entry) {
-            var row = panelRow((entry.kind === "incoming" ? "⚔ INCOMING" : entry.kind === "navy" ? "⛴ NAVY" : "🛡 OUTGOING") + " · " + Math.floor(entry.troops || 0) + " troops");
-            var button = document.createElement("button");
-            button.type = "button";
-            button.textContent = entry.retreating ? "" : (entry.kind === "navy" ? "RECALL" : "CANCEL");
-            button.dataset.command = entry.kind === "navy" ? "recall_fleet" : "cancel_attack";
-            button.dataset[entry.kind === "navy" ? "fleetId" : "attackId"] = String(entry.id);
-            button.disabled = Boolean(entry.retreating);
-            row.appendChild(button);
-            return row;
-        });
-        if (!rows.length) rows.push(panelRow("No active dispatches."));
-        appendPanelRows(hudRefs.logRows, rows);
-    }
-
-    function renderEventLog(entries) {
-        if (!hudRefs || !Array.isArray(entries)) return;
-        var rows = entries.map(function (entry) { return panelRow(entry.message || "Event"); });
-        if (!rows.length) rows.push(panelRow("No events yet."));
-        appendPanelRows(hudRefs.logRows, rows);
-    }
-
     function renderNotifications(entries) {
         if (!hudRefs || !hudRefs.notifications || !Array.isArray(entries)) return;
         var visible = entries.slice(-3);
@@ -1472,7 +1714,6 @@
         var currentRatio = hud.attack_ratio || 0.5;
         var spawnSecs = hud.spawn_timer_secs;
         var isDeploying = spawnSecs != null && spawnSecs > 0;
-        var bottomTab = hud.bottom_tab || "controls";
 
         if (hudRefs.gold && hudRefs.gold.dataset.val !== String(gold)) {
             hudRefs.gold.textContent = gold.toLocaleString();
@@ -1533,7 +1774,6 @@
                 hudRefs.deployTimer.textContent = spawnSecs.toFixed(1) + 's';
             }
         }
-        if (hudRefs.dockTabsWrap) hudRefs.dockTabsWrap.style.display = "flex";
         if (hudRefs.bldStrip) {
             hudRefs.bldStrip.style.display = isDeploying ? "none" : "flex";
             var selBld = hud.selected_building;
@@ -1563,23 +1803,9 @@
             hudRefs.pinEmoji.classList.toggle("active", pinEmoji);
             hudRefs.pinEmoji.setAttribute("aria-pressed", String(pinEmoji));
         }
-        if (hudRefs.dockTabs) {
-            hudRefs.dockTabs.forEach(function (tab) {
-                tab.classList.toggle("active", tab.dataset.tab === bottomTab);
-            });
-        }
         if (hudRefs.inbox) {
             hudRefs.inbox.classList.toggle("hidden", !inboxOpen);
             if (inboxOpen) renderInbox(hud.inbox);
-        }
-        if (hudRefs.logPanel) {
-            var showBattleLog = bottomTab === "battle_log";
-            var showEventLog = bottomTab === "event_log";
-            hudRefs.logPanel.classList.toggle("hidden", !showBattleLog && !showEventLog);
-            if (hudRefs.logTitle) hudRefs.logTitle.textContent = showEventLog ? "EVENT LOG" : "BATTLE LOG";
-            if (hudRefs.clearLog) hudRefs.clearLog.classList.toggle("hidden", !showEventLog);
-            if (showBattleLog) renderBattleLog(hud.battle_log);
-            if (showEventLog) renderEventLog(hud.event_log);
         }
         if (hudRefs.transfer) {
             transferOpen = Boolean(hud.transfer) || transferOpen;
@@ -1618,20 +1844,25 @@
         if (hudRefs.endgame) {
             hudRefs.endgame.classList.toggle("hidden", !isOver);
             if (isOver) {
-                if (hudRefs.endgameBanner) hudRefs.endgameBanner.textContent = isWinner ? 'VICTORY' : 'DEFEAT';
-                if (hudRefs.endgameTitle) hudRefs.endgameTitle.textContent = isWinner ? 'MATCH WON' : 'MATCH LOST';
-                if (hudRefs.endgameDesc) hudRefs.endgameDesc.textContent = isWinner ? 'You reached the map-control victory threshold.' : (hud.winner_name ? 'Winner: ' + hud.winner_name : 'The match has ended.');
-                if (hudRefs.endgameStats) {
-                    var kda = hud.player_kda || {};
-                    var rewards = hud.rewards || {};
-                    hudRefs.endgameStats.textContent = 'K/D/A ' + [kda.kills || 0, kda.deaths || 0, kda.assists || 0].join(' / ') +
-                        '   ·   +' + (rewards.xp || 0) + ' XP   ·   +' + (rewards.leader_xp || 0) + ' LEADER XP   ·   +' + (rewards.laurels || 0) + ' LAURELS';
-                }
+                var kda = hud.player_kda || {};
+                var rewards = hud.rewards || {};
+                var result = isWinner ? "victory" : "defeat";
+                var kdaText = [kda.kills || 0, kda.deaths || 0, kda.assists || 0].join(" / ");
+                if (hudRefs.endgameCard) hudRefs.endgameCard.dataset.result = result;
+                if (hudRefs.endgameIcon) hudRefs.endgameIcon.textContent = isWinner ? "♛" : "⚔";
+                if (hudRefs.endgameBanner) hudRefs.endgameBanner.textContent = isWinner ? "VICTORY" : "DEFEAT";
+                if (hudRefs.endgameTitle) hudRefs.endgameTitle.textContent = isWinner ? "MATCH WON" : "MATCH LOST";
+                if (hudRefs.endgameDesc) hudRefs.endgameDesc.textContent = isWinner ? "Map control secured." : (hud.winner_name ? "Winner: " + hud.winner_name : "Your empire was eliminated.");
+                if (hudRefs.endgameKda) hudRefs.endgameKda.textContent = kdaText;
+                if (hudRefs.endgameXp) hudRefs.endgameXp.textContent = "+" + (rewards.xp || 0);
+                if (hudRefs.endgameLeaderXp) hudRefs.endgameLeaderXp.textContent = "+" + (rewards.leader_xp || 0);
+                if (hudRefs.endgameLaurels) hudRefs.endgameLaurels.textContent = "+" + (rewards.laurels || 0);
+                if (hudRefs.endgameObserve) hudRefs.endgameObserve.classList.toggle("hidden", isWinner || Boolean(hud.winner_name));
             }
         }
         hudRoot.dataset.overlayOpen = String(Boolean(
             leaderboardOpen || inboxOpen || transferOpen || betrayalOpen ||
-            surrenderModalOpen || emojiPickerOpen || bottomTab !== "controls" || isOver
+            surrenderModalOpen || emojiPickerOpen || isOver
         ));
     }
 
@@ -1657,10 +1888,6 @@
                 pinEmoji = !pinEmoji;
                 send("set_emoji_pinned", { pinned: pinEmoji });
                 renderHud();
-            } else if (cmd === "set_bottom_tab") {
-                utilitiesOpen = false;
-                send("set_bottom_tab", { tab: btn.dataset.tab || "controls" });
-                renderHud();
             } else if (cmd === "open_transfer") {
                 if (leaderboardOpen) {
                     leaderboardOpen = false;
@@ -1684,8 +1911,6 @@
             } else if (cmd === "accept_alliance" || cmd === "reject_alliance" || cmd === "accept_resource_request" || cmd === "reject_resource_request") {
                 var requesterId = Number(btn.dataset.playerId);
                 if (requesterId > 0) send(cmd, { target_player_id: requesterId });
-            } else if (cmd === "clear_event_log") {
-                send("clear_event_log");
             } else if (cmd === "cancel_betrayal") {
                 betrayalOpen = false;
                 send("cancel_betrayal");
@@ -1737,6 +1962,8 @@
                 send("build_structure", { kind: kind });
             } else if (cmd === "confirm_endgame_leave") {
                 send("leave_lobby");
+            } else if (cmd === "continue_observing") {
+                send("continue_observing");
             }
         });
     }
