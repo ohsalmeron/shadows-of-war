@@ -1,0 +1,4 @@
+-keep class com.google.androidbrowserhelper.** { *; }
+-dontwarn com.google.androidbrowserhelper.**
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile

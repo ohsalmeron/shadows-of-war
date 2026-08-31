@@ -199,6 +199,7 @@ struct MyPlayerSummary {
     alive: bool,
     has_spawned: bool,
     team: Option<sow_core::protocol::Team>,
+    leader: sow_core::player::Leader,
     kills: u32,
     deaths: u32,
     assists: u32,
@@ -225,6 +226,7 @@ fn my_player_summary(app: &SowApp, snapshot_tick: u64, my_pid: u16) -> Option<My
                 alive: player.alive,
                 has_spawned: player.has_spawned,
                 team: player.team,
+                leader: player.leader,
                 kills: player.kills,
                 deaths: player.deaths,
                 assists: player.assists,
@@ -904,6 +906,7 @@ fn build_hud_payload(app: &SowApp) -> serde_json::Value {
         "is_spectating": app.ui.is_spectating,
         "is_winner": is_winner,
         "winner_name": winner_name,
+        "player_leader": me.map(|player| leader_id(player.leader)),
         "player_kda": {
             "kills": me.map(|player| player.kills).unwrap_or(0),
             "deaths": me.map(|player| player.deaths).unwrap_or(0),

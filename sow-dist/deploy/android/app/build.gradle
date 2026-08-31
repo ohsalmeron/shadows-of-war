@@ -1,0 +1,70 @@
+plugins {
+    id 'com.android.application'
+}
+
+def keystorePropertiesFile = rootProject.file("key.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+def sowVersionCode = (project.findProperty("sowVersionCode") ?: "3").toString().toInteger()
+def sowVersionName = (project.findProperty("sowVersionName") ?: "0.2.0").toString()
+
+android {
+    namespace = 'com.shadowsofwar'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "com.shadowsofwar"
+        minSdk 21
+        targetSdk 36
+        versionCode sowVersionCode
+        versionName sowVersionName
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        
+        manifestPlaceholders = [
+            hostName: "shadowsofwar.io",
+            defaultUrl: "https://shadowsofwar.io/play/",
+            launcherName: "Shadows of War",
+            enableNotification: "false"
+        ]
+    }
+
+    signingConfigs {
+        release {
+            if (keystoreProperties['storeFile']) {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources = true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (keystoreProperties['storeFile']) {
+                signingConfig = signingConfigs.release
+            }
+        }
+        debug {
+            applicationIdSuffix ".debug"
+            debuggable true
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.11.0'
+}

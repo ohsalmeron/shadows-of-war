@@ -46,7 +46,12 @@ result
 result-*
 .direnv/
 shadows-of-war-*.zip
-sow-dist/deploy/android/
+sow-dist/deploy/android/.gradle/
+sow-dist/deploy/android/build/
+sow-dist/deploy/android/app/build/
+sow-dist/deploy/android/key.properties
+sow-dist/deploy/android/local.properties
+sow-dist/deploy/android/*.keystore
 shadows-of-war*/
 ponytail/
 .rustup/

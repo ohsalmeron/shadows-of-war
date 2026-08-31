@@ -1467,10 +1467,17 @@
             + '</div>'
             + '<div class="sow-hud__endgame-backdrop hidden" id="sow-hud-endgame-modal">'
             + '  <section class="sow-hud__endgame-card" role="dialog" aria-modal="true" aria-labelledby="sow-hud-endgame-title">'
-            + '    <div class="sow-hud__endgame-kicker"><span class="sow-hud__endgame-icon" id="sow-hud-endgame-icon" aria-hidden="true">⚔</span><span>MATCH RESULT</span></div>'
-            + '    <h2 class="sow-hud__endgame-banner" id="sow-hud-endgame-banner">DEFEAT</h2>'
-            + '    <h3 class="sow-hud__endgame-title" id="sow-hud-endgame-title">MATCH LOST</h3>'
-            + '    <p class="sow-hud__endgame-desc" id="sow-hud-endgame-desc">The match has ended.</p>'
+            + '    <div class="sow-hud__endgame-hero">'
+            + '      <div class="sow-hud__endgame-hero-copy">'
+            + '        <div class="sow-hud__endgame-kicker"><span class="sow-hud__endgame-icon" id="sow-hud-endgame-icon" aria-hidden="true">⚔</span><span>MATCH RESULT</span></div>'
+            + '        <h2 class="sow-hud__endgame-banner" id="sow-hud-endgame-banner">DEFEAT</h2>'
+            + '        <h3 class="sow-hud__endgame-title" id="sow-hud-endgame-title">MATCH LOST</h3>'
+            + '        <p class="sow-hud__endgame-desc" id="sow-hud-endgame-desc">The match has ended.</p>'
+            + '      </div>'
+            + '      <div class="sow-hud__endgame-portrait-wrap">'
+            + '        <img class="sow-hud__endgame-portrait" id="sow-hud-endgame-portrait" src="" alt="Leader Portrait" />'
+            + '      </div>'
+            + '    </div>'
             + '    <div class="sow-hud__endgame-stats" id="sow-hud-endgame-stats">'
             + '      <div class="sow-hud__endgame-stat"><span class="sow-hud__endgame-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l14 14M18 4L4 18M5 5l3 3M19 5l-3 3M5 19l3-3M19 19l-3-3"/></svg></span><span class="sow-hud__endgame-stat-label">K / D / A</span><b id="sow-hud-endgame-kda">0 / 0 / 0</b></div>'
             + '      <div class="sow-hud__endgame-stat"><span class="sow-hud__endgame-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.1 5.1L19 10l-4.9 1.9L12 17l-2.1-5.1L5 10l4.9-1.9z"/></svg></span><span class="sow-hud__endgame-stat-label">XP</span><b id="sow-hud-endgame-xp">+0</b></div>'
@@ -1551,6 +1558,7 @@
             endgameBanner: document.getElementById("sow-hud-endgame-banner"),
             endgameTitle: document.getElementById("sow-hud-endgame-title"),
             endgameDesc: document.getElementById("sow-hud-endgame-desc"),
+            endgamePortrait: document.getElementById("sow-hud-endgame-portrait"),
             endgameStats: document.getElementById("sow-hud-endgame-stats"),
             endgameKda: document.getElementById("sow-hud-endgame-kda"),
             endgameXp: document.getElementById("sow-hud-endgame-xp"),
@@ -1853,6 +1861,12 @@
                 if (hudRefs.endgameBanner) hudRefs.endgameBanner.textContent = isWinner ? "VICTORY" : "DEFEAT";
                 if (hudRefs.endgameTitle) hudRefs.endgameTitle.textContent = isWinner ? "MATCH WON" : "MATCH LOST";
                 if (hudRefs.endgameDesc) hudRefs.endgameDesc.textContent = isWinner ? "Map control secured." : (hud.winner_name ? "Winner: " + hud.winner_name : "Your empire was eliminated.");
+                var activeLeaderId = (hud && hud.player_leader) || (state && state.selected_leader);
+                var activeLeader = leaderById(activeLeaderId);
+                if (hudRefs.endgamePortrait) {
+                    hudRefs.endgamePortrait.src = asset("shell/leaders/" + activeLeader.slug + "_desktop.webp");
+                    hudRefs.endgamePortrait.alt = activeLeader.name || "Leader Portrait";
+                }
                 if (hudRefs.endgameKda) hudRefs.endgameKda.textContent = kdaText;
                 if (hudRefs.endgameXp) hudRefs.endgameXp.textContent = "+" + (rewards.xp || 0);
                 if (hudRefs.endgameLeaderXp) hudRefs.endgameLeaderXp.textContent = "+" + (rewards.leader_xp || 0);

@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">Shadows of War</string>
+    <string name="asset_statements">
+        [{\n
+            \"relation\": [\"delegate_permission/common.handle_all_urls\"],\n
+            \"target\": {\n
+                \"namespace\": \"web\",\n
+                \"site\": \"https://shadowsofwar.io\"\n
+            }\n
+        }]
+    </string>
+</resources>

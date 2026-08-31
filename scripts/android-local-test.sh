@@ -10,8 +10,8 @@ OUT="$ROOT/dist/android/local-test"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 LOG="$OUT/logcat-$STAMP.txt"
 START="$OUT/start-$STAMP.txt"
-VERSION_NAME="$(tr -d '[:space:]' <"$ROOT/.version")"
-VERSION_CODE="$(tr -d '[:space:]' <"$ROOT/.android-version-code")"
+VERSION_NAME="${SOW_ANDROID_TEST_VERSION_NAME:-$(tr -d '[:space:]' <"$ROOT/.version")}"
+VERSION_CODE="${SOW_ANDROID_TEST_VERSION_CODE:-$(tr -d '[:space:]' <"$ROOT/.android-version-code")}"
 
 case "$VARIANT" in
     release)
