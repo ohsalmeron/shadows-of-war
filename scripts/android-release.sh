@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Android-only release pipeline. It deliberately does not call ./sow p:
-# the TWA AAB is a Play container for the live /play/ web client.
+# Android publication phase invoked automatically by ./sow p after the AAB
+# has passed the local device smoke test.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT="$ROOT/sow-dist/deploy/android"
@@ -39,7 +39,7 @@ fi
 [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "invalid Android version name: $VERSION_NAME"
 
 highest_play_code=0
-for play_track in internal alpha beta production; do
+for play_track in internal alpha beta open production; do
     track_output="$(fastlane run google_play_track_version_codes \
         package_name:"$PACKAGE" track:"$play_track" json_key:"$PLAY_KEY" 2>&1)" \
         || die "could not read Google Play track: $play_track"
@@ -59,6 +59,11 @@ LOCAL_COUNTER="$(tr -d '[:space:]' <"$ROOT/.android-version-code")"
 [[ "$LOCAL_COUNTER" =~ ^[1-9][0-9]*$ ]] || die "invalid local Android version counter"
 (( LOCAL_COUNTER > highest_play_code )) && highest_play_code="$LOCAL_COUNTER"
 VERSION_CODE=$((highest_play_code + 1))
+if [[ -n "${SOW_ANDROID_EXPECTED_VERSION_CODE:-}" ]]; then
+    [[ "$SOW_ANDROID_EXPECTED_VERSION_CODE" =~ ^[1-9][0-9]*$ ]] \
+        || die "invalid SOW_ANDROID_EXPECTED_VERSION_CODE"
+    VERSION_CODE="$SOW_ANDROID_EXPECTED_VERSION_CODE"
+fi
 (( VERSION_CODE > 0 && VERSION_CODE < 2100000000 )) || die "Android versionCode exhausted"
 echo "==> Android $PACKAGE"
 echo "==> Play track: $TRACK"
@@ -78,7 +83,7 @@ else
     echo "==> Build release AAB"
     (
         cd "$PROJECT"
-        ./gradlew --no-daemon --no-configuration-cache :app:bundleRelease \
+        ./gradlew --warning-mode fail --no-daemon --no-configuration-cache :app:bundleRelease \
             "-PsowVersionName=$VERSION_NAME" \
             "-PsowVersionCode=$VERSION_CODE"
     )

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Local Android smoke test only. This is intentionally not called by ./sow p.
+# Local Android smoke test. ./sow p calls this before publishing the AAB.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PROJECT="$ROOT/sow-dist/deploy/android"
-VARIANT="${SOW_ANDROID_TEST_VARIANT:-release}"
+VARIANT="${SOW_ANDROID_TEST_VARIANT:-debug}"
 ACTIVITY="com.google.androidbrowserhelper.trusted.LauncherActivity"
 OUT="$ROOT/dist/android/local-test"
 STAMP="$(date +%Y%m%d-%H%M%S)"
@@ -12,6 +12,7 @@ LOG="$OUT/logcat-$STAMP.txt"
 START="$OUT/start-$STAMP.txt"
 VERSION_NAME="${SOW_ANDROID_TEST_VERSION_NAME:-$(tr -d '[:space:]' <"$ROOT/.version")}"
 VERSION_CODE="${SOW_ANDROID_TEST_VERSION_CODE:-$(tr -d '[:space:]' <"$ROOT/.android-version-code")}"
+SKIP_BUILD="${SOW_ANDROID_SKIP_BUILD:-0}"
 
 case "$VARIANT" in
     release)
@@ -43,11 +44,18 @@ if ! adb get-state 2>/dev/null | grep -qx device; then
     exit 1
 fi
 
-(
-    cd "$PROJECT"
-    ./gradlew --no-daemon --no-configuration-cache "$TASK" \
-        "-PsowVersionName=$VERSION_NAME" "-PsowVersionCode=$VERSION_CODE"
-)
+if [[ "$SKIP_BUILD" != "1" ]]; then
+    (
+        cd "$PROJECT"
+        ./gradlew --warning-mode fail --no-daemon --no-configuration-cache "$TASK" \
+            "-PsowVersionName=$VERSION_NAME" "-PsowVersionCode=$VERSION_CODE"
+    )
+fi
+
+[[ -s "$APK" ]] || {
+    echo "Android test APK missing: $APK" >&2
+    exit 1
+}
 
 adb install -r "$APK" >"$OUT/install-$STAMP.txt"
 adb shell am force-stop "$PACKAGE"

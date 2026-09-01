@@ -33,7 +33,6 @@ struct Config {
     fstack_repo: String,
     remote_stage: String,
     public_origin: String,
-    require_public: bool,
 }
 
 impl Config {
@@ -48,7 +47,6 @@ impl Config {
             public_origin: env_or("SOW_PUBLIC_ORIGIN", PUBLIC_ORIGIN)
                 .trim_end_matches('/')
                 .to_string(),
-            require_public: env::var("SOW_REQUIRE_PUBLIC").is_ok_and(|v| v == "1"),
         }
     }
 }
@@ -79,12 +77,11 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
     let config = Config::load();
     require_secret("SOW_DB_SECRET")?;
     require_secret("SOW_RELAY_CONTROL_SECRET")?;
-    let version = version(paths, bump)?;
-    let android_code = android_version_code(paths, &version, bump)?;
-
-    println!("==> Production {version}");
     println!("==> 1/8 Preflight (read-only)");
     preflight(paths, &config)?;
+    let version = version(paths, bump)?;
+    println!("==> Production {version}");
+    let android_code = android_version_code(paths, &version, bump)?;
 
     println!("==> 2/8 Build candidates");
     let (_web, backend, _relay, _android) = std::thread::scope(|scope| {
@@ -137,6 +134,8 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
         verify_relay_identity(&config, &release)?;
         retain_releases(&config)?;
         verify_public(paths, &config, &release)?;
+        test_android(paths, &version, android_code)?;
+        publish_android(paths, android_code)?;
         println!("✅ Production already serves the requested content");
         return Ok(());
     }
@@ -166,6 +165,8 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
 
     println!("==> 8/8 Public verification");
     verify_public(paths, &config, &release)?;
+    test_android(paths, &version, android_code)?;
+    publish_android(paths, android_code)?;
     println!("✅ Production {} ready as {}", release.version, release.id);
     Ok(())
 }
@@ -239,17 +240,48 @@ fn android_fingerprint(paths: &Paths, version: &str, version_code: u32) -> Resul
     )
 }
 
-fn android_needs_build(paths: &Paths, version: &str, version_code: u32) -> Result<bool> {
-    let bundle = paths.root.join(ANDROID_BUNDLE);
-    let cache = paths.root.join("dist/.sow-state/android-build");
-    if !bundle.is_file() || !cache.is_file() {
-        return Ok(true);
+fn play_highest_android_version_code() -> Result<u32> {
+    let play_key = env::var_os("SOW_PLAY_KEY")
+        .map(PathBuf::from)
+        .context("SOW_PLAY_KEY must point to the Google Play service-account key")?;
+    require_file(&play_key, "Google Play service-account key")?;
+    let play_key = play_key
+        .to_str()
+        .context("SOW_PLAY_KEY path is not UTF-8")?;
+    let mut highest = 0;
+    for track in ["internal", "alpha", "beta", "open", "production"] {
+        let track_arg = format!("track:{track}");
+        let key_arg = format!("json_key:{play_key}");
+        let output = output(
+            "fastlane",
+            &[
+                "run",
+                "google_play_track_version_codes",
+                "package_name:com.shadowsofwar",
+                &track_arg,
+                &key_arg,
+            ],
+        )?;
+        let result = output
+            .lines()
+            .rev()
+            .find_map(|line| line.split_once("Result:").map(|(_, value)| value.trim()))
+            .with_context(|| format!("Google Play returned no version list for track {track}"))?;
+        let result = result
+            .strip_prefix('[')
+            .and_then(|value| value.strip_suffix(']'))
+            .context("Google Play returned malformed version list")?;
+        for value in result.split(',').map(str::trim).filter(|value| !value.is_empty()) {
+            let code = value
+                .parse::<u32>()
+                .with_context(|| format!("Google Play returned invalid version code: {value}"))?;
+            highest = highest.max(code);
+        }
     }
-    let fingerprint = android_fingerprint(paths, version, version_code)?;
-    Ok(fs::read_to_string(cache)?.trim() != fingerprint)
+    Ok(highest)
 }
 
-fn android_version_code(paths: &Paths, version: &str, bump: bool) -> Result<u32> {
+fn android_version_code(paths: &Paths, _version: &str, _bump: bool) -> Result<u32> {
     let path = paths.root.join(ANDROID_VERSION_CODE);
     let current = fs::read_to_string(&path)
         .with_context(|| format!("read {}", path.display()))?
@@ -259,14 +291,15 @@ fn android_version_code(paths: &Paths, version: &str, bump: bool) -> Result<u32>
     if current == 0 {
         bail!("{ANDROID_VERSION_CODE} must contain a positive integer");
     }
-    if !bump && !android_needs_build(paths, version, current)? {
-        return Ok(current);
-    }
+    let highest_play_code = play_highest_android_version_code()?;
     let next = current
+        .max(highest_play_code)
         .checked_add(1)
         .context("Android versionCode exhausted")?;
     fs::write(&path, format!("{next}\n"))?;
-    println!("  Android versionCode {current} -> {next}");
+    println!(
+        "  Android versionCode local={current} play_max={highest_play_code} -> {next}"
+    );
     Ok(next)
 }
 
@@ -281,19 +314,17 @@ fn build_android(paths: &Paths, version: &str, version_code: u32) -> Result<()> 
     require_file(&gradlew, "Android Gradle wrapper")?;
     require_file(&key_properties, "Android signing properties")?;
     let fingerprint = android_fingerprint(paths, version, version_code)?;
-    if output.is_file() && cache.is_file() && fs::read_to_string(&cache)?.trim() == fingerprint {
-        println!("  Android AAB unchanged; reusing {}", output.display());
-        return Ok(());
-    }
-
     let version_name_arg = format!("-PsowVersionName={version}");
     let version_code_arg = format!("-PsowVersionCode={version_code}");
     run(
         "./gradlew",
         &[
+            "--warning-mode",
+            "fail",
             "--no-daemon",
             "--no-configuration-cache",
             ":app:bundleRelease",
+            ":app:assembleDebug",
             &version_name_arg,
             &version_code_arg,
         ],
@@ -352,6 +383,43 @@ fn build_android(paths: &Paths, version: &str, version_code: u32) -> Result<()> 
     Ok(())
 }
 
+fn test_android(paths: &Paths, version: &str, version_code: u32) -> Result<()> {
+    let test_script = paths.root.join("scripts/android-local-test.sh");
+    require_file(&test_script, "Android local test script")?;
+    println!(
+        "==> Android local smoke test (captured logcat): {}",
+        test_script.display()
+    );
+    let test_status = Command::new(&test_script)
+        .env("SOW_ANDROID_SKIP_BUILD", "1")
+        .env("SOW_ANDROID_TEST_VARIANT", "debug")
+        .env("SOW_ANDROID_TEST_VERSION_NAME", version)
+        .env("SOW_ANDROID_TEST_VERSION_CODE", version_code.to_string())
+        .status()?;
+    if !test_status.success() {
+        bail!("Android local device test failed");
+    }
+    Ok(())
+}
+
+fn publish_android(paths: &Paths, version_code: u32) -> Result<()> {
+    let script = paths.root.join("scripts/android-release.sh");
+    require_file(&script, "Android Play publication script")?;
+    println!("==> Publish Android AAB to Google Play Alpha");
+    let status = Command::new(&script)
+        .arg("--publish-existing")
+        .env(
+            "SOW_ANDROID_EXPECTED_VERSION_CODE",
+            version_code.to_string(),
+        )
+        .status()
+        .context("start Android Play publication")?;
+    if !status.success() {
+        bail!("Android Play publication failed");
+    }
+    Ok(())
+}
+
 fn preflight(paths: &Paths, config: &Config) -> Result<()> {
     let dirty_files = workspace_dirty_files(paths)?;
     if dirty_files.is_empty() {
@@ -366,7 +434,7 @@ fn preflight(paths: &Paths, config: &Config) -> Result<()> {
         }
     }
     for command in [
-        "cargo", "curl", "java", "rsync", "rustc", "scp", "ssh", "wasm-opt",
+        "adb", "cargo", "curl", "fastlane", "java", "rsync", "rustc", "scp", "ssh", "wasm-opt",
     ] {
         if !Command::new("/bin/sh")
             .args(["-c", &format!("command -v {command} >/dev/null")])
@@ -376,6 +444,15 @@ fn preflight(paths: &Paths, config: &Config) -> Result<()> {
             bail!("{command} is required");
         }
     }
+    let adb_state = Command::new("adb").args(["get-state"]).output()?;
+    if !adb_state.status.success() || String::from_utf8_lossy(&adb_state.stdout).trim() != "device" {
+        let devices = Command::new("adb").args(["devices", "-l"]).output()?;
+        bail!(
+            "Android device required before ./sow p can build or publish; adb devices:\n{}",
+            String::from_utf8_lossy(&devices.stdout).trim()
+        );
+    }
+    validate_android_release_inputs(paths)?;
     if !Command::new("rustc")
         .args([
             "--print",
@@ -423,6 +500,66 @@ fn preflight(paths: &Paths, config: &Config) -> Result<()> {
         None,
     )
     .context("relay host preflight failed")
+}
+
+fn validate_android_release_inputs(paths: &Paths) -> Result<()> {
+    let project = paths.root.join(ANDROID_PROJECT);
+    let build_gradle = fs::read_to_string(project.join("app/build.gradle"))?;
+    if !build_gradle.contains("compileSdk 36") || !build_gradle.contains("targetSdk 36") {
+        bail!("Android build must compile and target API 36");
+    }
+    if build_gradle.contains("suppressUnsupportedCompileSdk") {
+        bail!("Android build contains a suppressed/unsupported compile SDK");
+    }
+
+    let strings = fs::read_to_string(project.join("app/src/main/res/values/strings.xml"))?;
+    if !strings.contains("\\\"namespace\\\": \\\"web\\\"")
+        || !strings.contains("\\\"site\\\": \\\"https://shadowsofwar.io\\\"")
+    {
+        bail!("Android asset_statements must delegate to https://shadowsofwar.io");
+    }
+
+    let assetlinks_path = paths
+        .root
+        .join("sow-web/site/.well-known/assetlinks.json");
+    let assetlinks: serde_json::Value = serde_json::from_slice(&fs::read(&assetlinks_path)?)
+        .with_context(|| format!("invalid {}", assetlinks_path.display()))?;
+    let statements = assetlinks
+        .as_array()
+        .context("assetlinks.json must contain an array")?;
+    for package in ["com.shadowsofwar", "com.shadowsofwar.debug"] {
+        let found = statements.iter().any(|statement| {
+            statement
+                .get("relation")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|relations| {
+                    relations.iter().any(|relation| {
+                        relation.as_str()
+                            == Some("delegate_permission/common.handle_all_urls")
+                    })
+                })
+                && statement
+                    .get("target")
+                    .and_then(|target| target.get("namespace"))
+                    .and_then(serde_json::Value::as_str)
+                    == Some("android_app")
+                && statement
+                    .get("target")
+                    .and_then(|target| target.get("package_name"))
+                    .and_then(serde_json::Value::as_str)
+                    == Some(package)
+                && statement
+                    .get("target")
+                    .and_then(|target| target.get("sha256_cert_fingerprints"))
+                    .and_then(serde_json::Value::as_array)
+                    .is_some_and(|fingerprints| !fingerprints.is_empty())
+        });
+        if !found {
+            bail!("assetlinks.json has no valid association for {package}");
+        }
+    }
+    println!("  Android build, TWA statement, and assetlinks inputs audited");
+    Ok(())
 }
 
 fn workspace_dirty_files(paths: &Paths) -> Result<Vec<String>> {
@@ -1887,27 +2024,56 @@ fn retain_releases(config: &Config) -> Result<()> {
 fn verify_public(paths: &Paths, config: &Config, release: &Release) -> Result<()> {
     let local_manifest = fs::read_to_string(release.dir.join("web/game-manifest.json"))?;
     let url = format!("{}/game-manifest.json", config.public_origin);
-    match output("curl", &["-fsS", "--max-time", "20", &url]) {
-        Ok(manifest) if manifest.trim() == local_manifest.trim() => {
-            for url in [
-                format!("{}/", config.public_origin),
-                format!("{}/play/", config.public_origin),
-            ] {
-                run(
-                    "curl",
-                    &["-fsS", "--max-time", "20", "-o", "/dev/null", &url],
-                    Some(&paths.root),
-                )
-                .with_context(|| format!("public origin check failed for {url}"))?;
-            }
-            println!("  public origin verified for {}", release.id);
-            Ok(())
-        }
-        Ok(_) | Err(_) if !config.require_public => {
-            println!("  public verification skipped (SOW_REQUIRE_PUBLIC != 1)");
-            Ok(())
-        }
-        Ok(_) => bail!("public domain does not serve {}", release.id),
-        Err(error) => Err(error).context("public verification failed"),
+    let manifest = output("curl", &["-fsS", "--max-time", "20", &url])
+        .context("public game manifest request failed")?;
+    if manifest.trim() != local_manifest.trim() {
+        bail!("public domain does not serve {}", release.id);
     }
+
+    let local_assetlinks_path = release.dir.join("web/.well-known/assetlinks.json");
+    let local_assetlinks = fs::read_to_string(&local_assetlinks_path)
+        .with_context(|| format!("read {}", local_assetlinks_path.display()))?;
+    serde_json::from_str::<serde_json::Value>(&local_assetlinks)
+        .context("release assetlinks.json is not valid JSON")?;
+    let assetlinks_url = format!("{}/.well-known/assetlinks.json", config.public_origin);
+    let headers = output(
+        "curl",
+        &[
+            "-fsS",
+            "--max-time",
+            "20",
+            "-D",
+            "-",
+            "-o",
+            "/dev/null",
+            &assetlinks_url,
+        ],
+    )?;
+    let content_type = headers
+        .lines()
+        .find(|line| line.to_ascii_lowercase().starts_with("content-type:"))
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if !content_type.contains("application/json") {
+        bail!("public assetlinks.json must be served as application/json");
+    }
+    let public_assetlinks = output("curl", &["-fsS", "--max-time", "20", &assetlinks_url])
+        .context("public assetlinks.json request failed")?;
+    if public_assetlinks.trim() != local_assetlinks.trim() {
+        bail!("public assetlinks.json does not match release {}", release.id);
+    }
+
+    for url in [
+        format!("{}/", config.public_origin),
+        format!("{}/play/", config.public_origin),
+    ] {
+        run(
+            "curl",
+            &["-fsS", "--max-time", "20", "-o", "/dev/null", &url],
+            Some(&paths.root),
+        )
+        .with_context(|| format!("public origin check failed for {url}"))?;
+    }
+    println!("  public origin and assetlinks verified for {}", release.id);
+    Ok(())
 }

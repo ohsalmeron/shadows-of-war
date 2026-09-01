@@ -55,11 +55,30 @@ case "${CMD}" in
     if [[ -f "${ROOT}/sow-dist/.env" ]]; then
       set -a; source "${ROOT}/sow-dist/.env"; set +a
     fi
+    SOW_USER_HOME="$(getent passwd "$(id -u)" | cut -d: -f6)"
+    SOW_RUBY_BIN="${SOW_USER_HOME}/.local/share/gem/ruby/3.4.0/bin"
+    export PATH="${SOW_RUBY_BIN}:${PATH}"
+    export SOW_PLAY_KEY="${SOW_PLAY_KEY:-${SOW_USER_HOME}/.config/shadows-of-war/google-play-service-account.json}"
+    export FASTLANE_OPT_OUT_USAGE=1
+    export FASTLANE_SKIP_UPDATE_CHECK=1
+    export FASTLANE_DISABLE_COLORS=1
     export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-${ROOT}/target}"
     mkdir -p "${CARGO_TARGET_DIR}"
     BIN="${CARGO_TARGET_DIR}/debug/sow"
-    cargo build -p sow-dist
-    exec "${BIN}" "$@"
+    SOW_LOG_DIR="${ROOT}/dist/logs"
+    SOW_LOG_FILE="${SOW_LOG_DIR}/prod-$(date +%Y%m%d-%H%M%S).log"
+    mkdir -p "${SOW_LOG_DIR}"
+    : >"${SOW_LOG_FILE}"
+    chmod 600 "${SOW_LOG_FILE}"
+    set +e
+    (
+      cargo build -p sow-dist || exit $?
+      exec "${BIN}" "$@"
+    ) 2>&1 | tee "${SOW_LOG_FILE}"
+    SOW_STATUS=${PIPESTATUS[0]}
+    set -e
+    echo "Production log: ${SOW_LOG_FILE}"
+    exit "${SOW_STATUS}"
     ;;
   *)
     echo "Unknown command: ${CMD}" >&2
