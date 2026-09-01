@@ -67,4 +67,6 @@ getrandom = { workspace = true }
 open = { workspace = true }
 env_logger = { workspace = true }
 tokio = { workspace = true }
+
+[target.'cfg(all(not(target_arch = "wasm32"), not(target_os = "ios")))'.dependencies]
 arboard = { workspace = true }

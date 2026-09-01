@@ -68,7 +68,7 @@ fn legacy_copy(text: &str) {
     input.remove();
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "ios")))]
 fn copy_text(text: &str) {
     let res = arboard::Clipboard::new().and_then(|mut c| c.set_text(text.to_string()));
     if let Err(e) = res {
