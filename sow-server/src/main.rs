@@ -359,12 +359,17 @@ async fn send_relay_handoff_frame(
 /// Register the account-backed match before the relay is exposed to clients.
 /// This ordering prevents a fast match from finalizing before Valkey contains
 /// its player list, which otherwise loses statistics as `Match not registered`.
-/// Resolve a `JoinWithAuth` identity proof to a canonical account id via
-/// sow-data's /internal/verify. Ok(id) means the join may bind to that
-/// account; Err means the join proceeds as an unverified guest.
+/// Resolve a `JoinWithAuth` identity proof and server-authorized leader via
+/// sow-data's /internal/verify.
+struct VerifiedIdentity {
+    account_id: String,
+    leader: sow_core::player::Leader,
+}
+
 async fn verify_identity(
     auth: &sow_core::protocol::AuthProof,
-) -> Result<String, String> {
+    requested_leader: sow_core::player::Leader,
+) -> Result<VerifiedIdentity, String> {
     let db_base_url = std::env::var("SOW_DB_URL")
         .unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
     let secret_token = std::env::var("SOW_DB_SECRET")
@@ -374,6 +379,7 @@ async fn verify_identity(
         "provider": auth.provider.trim(),
         "account_id": auth.account_id.as_deref(),
         "token": auth.token,
+        "requested_leader": sow_core::commerce::leader_wire_id(requested_leader),
     });
     let client = reqwest::Client::new();
     let res = client
@@ -391,11 +397,17 @@ async fn verify_identity(
         .json()
         .await
         .map_err(|e| format!("verify response unreadable: {e}"))?;
-    value
+    let account_id = value
         .get("account_id")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
-        .ok_or_else(|| "verify response missing account_id".to_string())
+        .ok_or_else(|| "verify response missing account_id".to_string())?;
+    let leader = value
+        .get("leader")
+        .and_then(|v| v.as_str())
+        .and_then(sow_core::commerce::leader_from_id)
+        .ok_or_else(|| "verify response missing authorized leader".to_string())?;
+    Ok(VerifiedIdentity { account_id, leader })
 }
 
 async fn register_match_start(rc: &RelayCandidate) -> Result<(), String> {
@@ -1276,6 +1288,13 @@ async fn main() {
                                                     );
                                                 }
 
+                                                let free_leaders = sow_core::commerce::current_leader_rotation();
+                                                let leader = if free_leaders.contains(&leader) {
+                                                    leader
+                                                } else {
+                                                    free_leaders[0]
+                                                };
+
                                                 let _ = ev_tx.send(ServerEvent::Join {
                                                     name,
                                                     clan_tag,
@@ -1305,22 +1324,30 @@ async fn main() {
                                                     continue;
                                                 }
 
-                                                let database_account_id = match verify_identity(&auth).await {
-                                                    Ok(id) => {
+                                                let (database_account_id, leader) = match verify_identity(&auth, payload.leader).await {
+                                                    Ok(identity) => {
                                                         log::info!(
                                                             "[AUTH] join verified provider={} account={}",
                                                             auth.provider,
-                                                            id
+                                                            identity.account_id
                                                         );
-                                                        Some(id)
+                                                        (Some(identity.account_id), identity.leader)
                                                     }
                                                     Err(e) => {
                                                         log::warn!(
-                                                            "[AUTH] join verification failed provider={}: {} — binding as guest",
+                                                            "[AUTH] join verification failed provider={}: {}",
                                                             auth.provider,
                                                             e
                                                         );
-                                                        None
+                                                        let fail = sow_core::protocol::ServerJoinFailedMessage {
+                                                            reason: "IDENTITY_OR_LEADER_UNAVAILABLE".to_string(),
+                                                        };
+                                                        if let Ok(json) = bincode::serialize(
+                                                            &sow_core::protocol::ServerMessage::JoinFailed(fail),
+                                                        ) {
+                                                            let _ = direct_tx.try_send(json);
+                                                        }
+                                                        continue;
                                                     }
                                                 };
 
@@ -1328,7 +1355,7 @@ async fn main() {
                                                     name: payload.name,
                                                     clan_tag: payload.clan_tag,
                                                     civilization: payload.civilization,
-                                                    leader: payload.leader,
+                                                    leader,
                                                     client_tx: direct_tx.clone(),
                                                     target_lobby_id: payload.target_lobby_id,
                                                     host_private: payload.host_private,

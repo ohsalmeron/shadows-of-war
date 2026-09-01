@@ -316,6 +316,10 @@ fn build_android(paths: &Paths, version: &str, version_code: u32) -> Result<()> 
     let fingerprint = android_fingerprint(paths, version, version_code)?;
     let version_name_arg = format!("-PsowVersionName={version}");
     let version_code_arg = format!("-PsowVersionCode={version_code}");
+    let revenuecat_key_arg = format!(
+        "-PrevenueCatAndroidPublicKey={}",
+        env::var("SOW_REVENUECAT_ANDROID_PUBLIC_KEY").unwrap_or_default()
+    );
     run(
         "./gradlew",
         &[
@@ -327,6 +331,7 @@ fn build_android(paths: &Paths, version: &str, version_code: u32) -> Result<()> 
             ":app:assembleDebug",
             &version_name_arg,
             &version_code_arg,
+            &revenuecat_key_arg,
         ],
         Some(&project),
     )?;
@@ -1808,6 +1813,18 @@ fn activate_control_host(
     } else {
         (None, None)
     };
+    let revenuecat_webhook_file = if runtime_env {
+        env::var("SOW_REVENUECAT_WEBHOOK_SECRET")
+            .ok()
+            .filter(|secret| !secret.trim().is_empty())
+            .map(|secret| {
+                let path = format!("/tmp/sow-revenuecat-webhook-{}", std::process::id());
+                stage_secret(&config.control_host, &secret, &path).map(|_| path)
+            })
+            .transpose()?
+    } else {
+        None
+    };
     let relay_host = env_or("SOW_RELAY_HOST", "relay.shadowsofwar.io");
     let relay_workers = env::var("SOW_RELAY_WORKERS").unwrap_or_default();
     let relay_worker_count = env_or("SOW_RELAY_WORKER_COUNT", "4");
@@ -1839,12 +1856,25 @@ fn activate_control_host(
     } else {
         ":".to_string()
     };
-    let secret_cleanup = if runtime_env {
+    let revenuecat_update = if let Some(secret_file) = revenuecat_webhook_file.as_deref() {
         format!(
-            "rm -f {} {}",
-            shell_quote(db_secret_file.as_deref().unwrap()),
-            shell_quote(control_secret_file.as_deref().unwrap())
+            "for f in /usr/local/etc/sow/sow.env /zroot/jails/sow-server/usr/local/etc/sow/sow.env /zroot/jails/sow-database/usr/local/etc/sow/sow.env; do if sudo test -f \"$f\"; then sudo cp -p \"$f\" \"$f.bak_$(date +%s)\"; fi; t=$(mktemp /tmp/sow.env.XXXXXX); if sudo test -f \"$f\"; then sudo grep -v '^SOW_REVENUECAT_WEBHOOK_SECRET=' \"$f\" > \"$t\" || true; else : > \"$t\"; fi; printf '%s' 'SOW_REVENUECAT_WEBHOOK_SECRET=' | sudo tee -a \"$t\" >/dev/null; sudo cat {secret_file} | sudo tee -a \"$t\" >/dev/null; printf '\\n' | sudo tee -a \"$t\" >/dev/null; sudo install -o root -g wheel -m 0600 \"$t\" \"$f\"; rm -f \"$t\"; done; rm -f {secret_file}",
+            secret_file = shell_quote(secret_file),
         )
+    } else {
+        ":".to_string()
+    };
+    let secret_files = [
+        db_secret_file.as_deref(),
+        control_secret_file.as_deref(),
+        revenuecat_webhook_file.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .map(shell_quote)
+    .collect::<Vec<_>>();
+    let secret_cleanup = if runtime_env {
+        format!("rm -f {}", secret_files.join(" "))
     } else {
         ":".to_string()
     };
@@ -1891,6 +1921,7 @@ if __NGINX_RELOAD__; then
     sudo service nginx reload || rollback
 fi
 __ENV_UPDATE__
+__REVENUECAT_UPDATE__
 if __DB_RESTART__; then
     sudo jexec sow-database service sow_database restart || rollback
     i=0
@@ -1936,14 +1967,11 @@ __SECRET_CLEANUP__
             },
         ),
         ("__ENV_UPDATE__", env_update),
+        ("__REVENUECAT_UPDATE__", revenuecat_update),
         (
             "__SECRET_TRAP__",
             if runtime_env {
-                format!(
-                    "trap 'rm -f {} {}' EXIT",
-                    shell_quote(db_secret_file.as_deref().unwrap()),
-                    shell_quote(control_secret_file.as_deref().unwrap())
-                )
+                format!("trap 'rm -f {}' EXIT", secret_files.join(" "))
             } else {
                 ":".to_string()
             },

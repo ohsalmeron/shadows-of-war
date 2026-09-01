@@ -50,6 +50,12 @@ pub struct PlayerColors {
     pub colors: [[f32; 4]; 256],
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+pub struct PlayerSkinStyles {
+    pub styles: [[f32; 4]; 256],
+}
+
 pub(crate) fn get_neighbors(idx: u32, width: u32, height: u32) -> [Option<u32>; 4] {
     let x = idx % width;
     let y = idx / width;

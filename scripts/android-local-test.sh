@@ -13,6 +13,7 @@ START="$OUT/start-$STAMP.txt"
 VERSION_NAME="${SOW_ANDROID_TEST_VERSION_NAME:-$(tr -d '[:space:]' <"$ROOT/.version")}"
 VERSION_CODE="${SOW_ANDROID_TEST_VERSION_CODE:-$(tr -d '[:space:]' <"$ROOT/.android-version-code")}"
 SKIP_BUILD="${SOW_ANDROID_SKIP_BUILD:-0}"
+REVENUECAT_KEY_ARG="-PrevenueCatAndroidPublicKey=${SOW_REVENUECAT_ANDROID_PUBLIC_KEY:-}"
 
 case "$VARIANT" in
     release)
@@ -48,7 +49,7 @@ if [[ "$SKIP_BUILD" != "1" ]]; then
     (
         cd "$PROJECT"
         ./gradlew --warning-mode fail --no-daemon --no-configuration-cache "$TASK" \
-            "-PsowVersionName=$VERSION_NAME" "-PsowVersionCode=$VERSION_CODE"
+            "-PsowVersionName=$VERSION_NAME" "-PsowVersionCode=$VERSION_CODE" "$REVENUECAT_KEY_ARG"
     )
 fi
 

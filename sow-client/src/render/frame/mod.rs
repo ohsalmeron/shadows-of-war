@@ -229,6 +229,7 @@ impl SowApp {
                     }
 
                     let mut player_colors = [[0.5, 0.5, 0.5, 1.0]; 256];
+                    let mut player_skin_styles = [[0.0f32; 4]; 256];
                     if let Some(snap) = &self.sim.current_snapshot {
                         for p in &snap.players {
                             if (p.id as usize) < 256 {
@@ -238,6 +239,12 @@ impl SowApp {
                                     .team
                                     .map_or(p.color, sow_core::player::team_territory_rgb);
                                 player_colors[p.id as usize] = [rgb[0], rgb[1], rgb[2], 1.0];
+                                if Some(p.id) == self.sim.my_player_id {
+                                    player_skin_styles[p.id as usize][0] =
+                                        sow_data::commerce::skin_style_for_id(
+                                            self.progress.selected_skin.as_deref(),
+                                        ) as f32;
+                                }
                             }
                         }
                     }
@@ -472,11 +479,15 @@ impl SowApp {
                     let colors_struct = crate::render::gpu::PlayerColors {
                         colors: player_colors,
                     };
+                    let skin_styles_struct = crate::render::gpu::PlayerSkinStyles {
+                        styles: player_skin_styles,
+                    };
                     mr.draw(
                         &mut render_ctx.command_encoder,
                         frame.texture_view(),
                         globals,
                         colors_struct,
+                        skin_styles_struct,
                     );
                     map_drawn = true;
 

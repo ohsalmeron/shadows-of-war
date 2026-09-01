@@ -21,6 +21,7 @@ const MAX_REPLAY_REQUEST_BYTES: usize = 32 * 1024 * 1024;
 struct AppState {
     db: PlayerDb,
     secret_token: String,
+    revenuecat_webhook_secret: Option<String>,
     redb_path: String,
     events: std::sync::Mutex<sow_data::events::EventSink>,
 }
@@ -111,11 +112,286 @@ struct VerifyRequest {
     #[serde(default)]
     account_id: Option<String>,
     token: String,
+    #[serde(default)]
+    requested_leader: Option<String>,
 }
 
 #[derive(Serialize)]
 struct VerifyResponse {
     account_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    leader: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct UnlockLeaderRequest {
+    public_id: String,
+    auth_secret: String,
+    leader_id: String,
+}
+
+#[derive(Deserialize)]
+struct UnlockSkinRequest {
+    public_id: String,
+    auth_secret: String,
+    skin_id: String,
+}
+
+#[derive(Deserialize)]
+struct EquipSkinRequest {
+    public_id: String,
+    auth_secret: String,
+    #[serde(default)]
+    skin_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct RevenueCatWebhookRequest {
+    event: RevenueCatWebhookEvent,
+}
+
+#[derive(Deserialize)]
+struct RevenueCatWebhookEvent {
+    id: String,
+    #[serde(rename = "type")]
+    event_type: String,
+    app_user_id: String,
+    #[serde(default)]
+    product_id: Option<String>,
+}
+
+async fn handle_store_catalog() -> Json<sow_data::commerce::StoreCatalog> {
+    Json(sow_data::commerce::catalog_for_profile(
+        &Default::default(),
+        &Default::default(),
+        0,
+        0,
+        sow_data::commerce::current_rotation_period(),
+    ))
+}
+
+/// POST /store/leaders/unlock — spend authoritative laurels on a leader.
+async fn handle_unlock_leader(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<UnlockLeaderRequest>,
+) -> impl IntoResponse {
+    let account_id = match state.db.account_id_for_public_id(&payload.public_id) {
+        Ok(Some(account_id)) => account_id,
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "profile not found".to_string(),
+                }),
+            )
+                .into_response();
+        }
+        Err(error) => {
+            error!("leader unlock profile lookup failed: {error}");
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ErrorResponse {
+                    error: "profile unavailable".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+    if let Err(error) = state
+        .db
+        .verify_anonymous_secret(&account_id, &payload.auth_secret)
+        .await
+    {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse { error }),
+        )
+            .into_response();
+    }
+    match state
+        .db
+        .unlock_leader_with_laurels(&account_id, &payload.leader_id)
+        .await
+    {
+        Ok(account) => (StatusCode::OK, Json(account.without_auth_secret())).into_response(),
+        Err(error) => (
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                error: error.to_string(),
+            }),
+        )
+            .into_response(),
+    }
+}
+
+async fn handle_unlock_skin(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<UnlockSkinRequest>,
+) -> impl IntoResponse {
+    let account_id = match state.db.account_id_for_public_id(&payload.public_id) {
+        Ok(Some(account_id)) => account_id,
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse { error: "profile not found".to_string() }),
+            )
+                .into_response();
+        }
+        Err(error) => {
+            error!("skin unlock profile lookup failed: {error}");
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ErrorResponse { error: "profile unavailable".to_string() }),
+            )
+                .into_response();
+        }
+    };
+    if let Err(error) = state
+        .db
+        .verify_anonymous_secret(&account_id, &payload.auth_secret)
+        .await
+    {
+        return (StatusCode::UNAUTHORIZED, Json(ErrorResponse { error })).into_response();
+    }
+    match state.db.unlock_skin_with_gems(&account_id, &payload.skin_id).await {
+        Ok(account) => (StatusCode::OK, Json(account.without_auth_secret())).into_response(),
+        Err(error) => (
+            StatusCode::CONFLICT,
+            Json(ErrorResponse { error: error.to_string() }),
+        )
+            .into_response(),
+    }
+}
+
+async fn handle_equip_skin(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<EquipSkinRequest>,
+) -> impl IntoResponse {
+    let account_id = match state.db.account_id_for_public_id(&payload.public_id) {
+        Ok(Some(account_id)) => account_id,
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse { error: "profile not found".to_string() }),
+            )
+                .into_response();
+        }
+        Err(error) => {
+            error!("skin equip profile lookup failed: {error}");
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ErrorResponse { error: "profile unavailable".to_string() }),
+            )
+                .into_response();
+        }
+    };
+    if let Err(error) = state
+        .db
+        .verify_anonymous_secret(&account_id, &payload.auth_secret)
+        .await
+    {
+        return (StatusCode::UNAUTHORIZED, Json(ErrorResponse { error })).into_response();
+    }
+    match state
+        .db
+        .equip_skin(&account_id, payload.skin_id.as_deref())
+        .await
+    {
+        Ok(account) => (StatusCode::OK, Json(account.without_auth_secret())).into_response(),
+        Err(error) => (
+            StatusCode::CONFLICT,
+            Json(ErrorResponse { error: error.to_string() }),
+        )
+            .into_response(),
+    }
+}
+
+async fn handle_revenuecat_webhook(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(payload): Json<RevenueCatWebhookRequest>,
+) -> impl IntoResponse {
+    let Some(webhook_secret) = state.revenuecat_webhook_secret.as_deref() else {
+        error!("RevenueCat webhook rejected: webhook secret is not configured");
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorResponse {
+                error: "RevenueCat webhook is not configured".to_string(),
+            }),
+        )
+            .into_response();
+    };
+    let authorized = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value == webhook_secret);
+    if !authorized {
+        warn!("Unauthorized RevenueCat webhook request");
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
+    let event = payload.event;
+    if event.event_type != "NON_RENEWING_PURCHASE" {
+        info!(
+            "RevenueCat event ignored type={} event={}",
+            event.event_type, event.id
+        );
+        return (
+            StatusCode::OK,
+            Json(serde_json::json!({ "status": "ignored" })),
+        )
+            .into_response();
+    }
+    let Some(product_id) = event.product_id.as_deref() else {
+        warn!("RevenueCat purchase event {} has no product_id", event.id);
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "RevenueCat event missing product_id".to_string(),
+            }),
+        )
+            .into_response();
+    };
+    match state
+        .db
+        .grant_revenuecat_gems(&event.id, &event.app_user_id, product_id)
+        .await
+    {
+        Ok((account, true)) => {
+            info!(
+                "RevenueCat gems granted account={} product={} gems={}",
+                account_hint(Some(&account.id)),
+                product_id,
+                account.profile.gems
+            );
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({ "status": "granted" })),
+            )
+                .into_response()
+        }
+        Ok((_account, false)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "status": "duplicate" })),
+        )
+            .into_response(),
+        Err(error) => {
+            error!("RevenueCat gem grant failed: {error}");
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ErrorResponse {
+                    error: "purchase grant unavailable".to_string(),
+                }),
+            )
+                .into_response()
+        }
+    }
 }
 
 /// /profile/anonymous response: the account plus (only when just minted) the
@@ -177,11 +453,36 @@ async fn handle_internal_verify(
     };
     match result {
         Ok(account_id) => {
+            let leader = match payload.requested_leader.as_deref() {
+                Some(requested) => match state
+                    .db
+                    .resolve_leader_for_account(&account_id, Some(requested))
+                    .await
+                {
+                    Ok(resolution) => {
+                        Some(sow_data::commerce::leader_wire_id(resolution.resolved).to_string())
+                    }
+                    Err(error) => {
+                        error!(
+                            "[identity] leader resolution failed account={} error={error}",
+                            account_hint(Some(&account_id))
+                        );
+                        return (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(ErrorResponse {
+                                error: "leader resolution unavailable".to_string(),
+                            }),
+                        )
+                            .into_response();
+                    }
+                },
+                None => None,
+            };
             info!(
                 "[identity] verify ok provider={provider} account={}",
                 account_hint(Some(&account_id))
             );
-            (StatusCode::OK, Json(VerifyResponse { account_id })).into_response()
+            (StatusCode::OK, Json(VerifyResponse { account_id, leader })).into_response()
         }
         Err(e) => {
             warn!("[identity] verify failed provider={provider}: {e}");
@@ -242,6 +543,10 @@ async fn main() {
         .filter(|value| !value.trim().is_empty())
         .expect("SOW_DB_SECRET must be set; refusing insecure default");
 
+    let revenuecat_webhook_secret = std::env::var("SOW_REVENUECAT_WEBHOOK_SECRET")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+
     let crazygames_api_key = std::env::var("CRAZYGAMES_API_KEY").ok();
 
     let sanitized_valkey = if let Some(pos) = valkey_url.find('@') {
@@ -259,10 +564,11 @@ async fn main() {
     };
 
     info!(
-        "Config - Port: {}, Valkey: {}, Secret: [REDACTED], CG API Key Configured: {}",
+        "Config - Port: {}, Valkey: {}, Secret: [REDACTED], CG API Key Configured: {}, RevenueCat Webhook Configured: {}",
         port,
         sanitized_valkey,
-        crazygames_api_key.is_some()
+        crazygames_api_key.is_some(),
+        revenuecat_webhook_secret.is_some()
     );
 
     // Open REDB persistent database
@@ -312,6 +618,7 @@ async fn main() {
     let state = Arc::new(AppState {
         db: player_db,
         secret_token,
+        revenuecat_webhook_secret,
         redb_path: redb_path.clone(),
         events: std::sync::Mutex::new(event_sink),
     });
@@ -333,6 +640,14 @@ async fn main() {
         .route("/event", post(handle_event))
         .route("/internal/analytics", get(handle_internal_analytics))
         .route("/profile", get(handle_get_profile))
+        .route("/store/catalog", get(handle_store_catalog))
+        .route("/store/leaders/unlock", post(handle_unlock_leader))
+        .route("/store/skins/unlock", post(handle_unlock_skin))
+        .route("/store/skins/equip", post(handle_equip_skin))
+        .route(
+            "/internal/revenuecat/webhook",
+            post(handle_revenuecat_webhook),
+        )
         .route("/profiles/search", get(handle_public_profile_search))
         .route("/profiles/{public_id}", get(handle_public_profile))
         .route(

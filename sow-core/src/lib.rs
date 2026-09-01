@@ -32,6 +32,8 @@ pub mod protocol;
 pub mod tribes;
 pub mod water_components;
 
+pub use sow_data::commerce;
+
 #[macro_export]
 macro_rules! repo_asset_bytes {
     ($path:expr) => {

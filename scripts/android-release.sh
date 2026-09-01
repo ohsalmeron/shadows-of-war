@@ -71,7 +71,7 @@ echo "==> versionName=$VERSION_NAME versionCode=$VERSION_CODE"
 
 AAB="$PROJECT/app/build/outputs/bundle/release/app-release.aab"
 if [[ "$PUBLISH" == "--publish-existing" ]]; then
-    (( VERSION_CODE > highest_play_code )) || die "existing AAB versionCode is already used in Google Play"
+    (( VERSION_CODE >= highest_play_code )) || die "existing AAB versionCode is already used in Google Play"
     [[ -s "$AAB" ]] || die "existing release AAB missing: $AAB"
     echo "==> Reusing previously device-tested AAB"
 else
@@ -85,7 +85,8 @@ else
         cd "$PROJECT"
         ./gradlew --warning-mode fail --no-daemon --no-configuration-cache :app:bundleRelease \
             "-PsowVersionName=$VERSION_NAME" \
-            "-PsowVersionCode=$VERSION_CODE"
+            "-PsowVersionCode=$VERSION_CODE" \
+            "-PrevenueCatAndroidPublicKey=${SOW_REVENUECAT_ANDROID_PUBLIC_KEY:-}"
     )
 fi
 

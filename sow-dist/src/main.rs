@@ -284,6 +284,26 @@ fn minify_js(path: &Path) -> Result<()> {
     Ok(())
 }
 
+fn read_shell_bundle(shell: &Path, manifest: &str, parts: &[&str]) -> Result<String> {
+    let manifest_source = fs::read_to_string(shell.join(manifest))?;
+    let mut bundle = String::new();
+    for part in parts {
+        if !manifest_source.contains(part) {
+            bail!("{manifest}: missing bundle part {part}");
+        }
+        let source = fs::read_to_string(shell.join(part))
+            .with_context(|| format!("read shell bundle part {part}"))?;
+        bundle.push_str("\n/* --- ");
+        bundle.push_str(part);
+        bundle.push_str(" --- */\n");
+        bundle.push_str(&source);
+        if !source.ends_with('\n') {
+            bundle.push('\n');
+        }
+    }
+    Ok(bundle)
+}
+
 fn build_index(
     paths: &Paths,
     out: &Path,
@@ -392,8 +412,16 @@ fn build_index(
     fs::write(&index, &html)?;
     let loader =
         fs::read_to_string(paths.shell.join("loader.js"))?.replace("</script>", "<\\/script>");
-    let menu_css = fs::read_to_string(paths.shell.join("main_menu.css"))?;
-    let menu_js = fs::read_to_string(paths.shell.join("main_menu.js"))?
+    let menu_css = read_shell_bundle(
+        &paths.shell,
+        "main_menu.css",
+        &["main_menu.base.css", "main_menu.hud.css", "main_menu.profile.css"],
+    )?;
+    let menu_js = read_shell_bundle(
+        &paths.shell,
+        "main_menu.js",
+        &["main_menu.core.js", "main_menu.screens.js", "main_menu.hud.js"],
+    )?
         .replace("</script>", "<\\/script>");
     let mut fh = fs::read_to_string(&index)?;
     let marker = "/* __INLINE_LOADER_JS__ */";
@@ -617,6 +645,10 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
     copy_dir(
         &paths.assets_gameplay.join("avatars"),
         &assets.join("gameplay/avatars"),
+    )?;
+    copy_dir(
+        &paths.assets_gameplay.join("skins"),
+        &assets.join("gameplay/skins"),
     )?;
     copy_dir(
         &paths.assets_site.join("media"),
@@ -1033,7 +1065,17 @@ mod tests {
                 "Required site source file missing: {required}"
             );
         }
-        for required in ["index.html.template", "main_menu.css", "main_menu.js"] {
+        for required in [
+            "index.html.template",
+            "main_menu.css",
+            "main_menu.js",
+            "main_menu.base.css",
+            "main_menu.hud.css",
+            "main_menu.profile.css",
+            "main_menu.core.js",
+            "main_menu.screens.js",
+            "main_menu.hud.js",
+        ] {
             assert!(
                 root.join("sow-web/shell").join(required).is_file(),
                 "Required game shell source file missing: {required}"
@@ -1060,6 +1102,8 @@ mod tests {
         assert!(!html.contains("__INLINE_MAIN_MENU_JS__"));
         assert!(html.contains("#sow-menu"));
         assert!(html.contains("SOW_menu_command"));
+        assert!(html.contains("SOW_onStateUpdate"));
+        assert!(html.contains("sow-hud__dock"));
         Ok(())
     }
 

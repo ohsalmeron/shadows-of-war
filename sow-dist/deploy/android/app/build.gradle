@@ -9,6 +9,8 @@ if (keystorePropertiesFile.exists()) {
 }
 def sowVersionCode = (project.findProperty("sowVersionCode") ?: "3").toString().toInteger()
 def sowVersionName = (project.findProperty("sowVersionName") ?: "0.2.0").toString()
+def revenueCatPublicKey = (project.findProperty("revenueCatAndroidPublicKey") ?: "").toString()
+def escapedRevenueCatPublicKey = revenueCatPublicKey.replace("\\", "\\\\").replace('"', '\\"')
 
 android {
     namespace = 'com.shadowsofwar'
@@ -16,10 +18,11 @@ android {
 
     defaultConfig {
         applicationId "com.shadowsofwar"
-        minSdk 21
+        minSdk 23
         targetSdk 36
         versionCode sowVersionCode
         versionName sowVersionName
+        buildConfigField "String", "REVENUECAT_ANDROID_PUBLIC_KEY", "\"${escapedRevenueCatPublicKey}\""
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -61,10 +64,16 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+
+    buildFeatures {
+        buildConfig = true
+    }
+
 }
 
 dependencies {
     implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+    implementation 'com.revenuecat.purchases:purchases:10.19.1'
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
 }

@@ -37,8 +37,13 @@ struct PlayerColors {
     colors: array<vec4<f32>, 256>,
 }
 
+struct PlayerSkinStyles {
+    styles: array<vec4<f32>, 256>,
+}
+
 var<uniform> globals: Globals;
 var<uniform> player_colors: PlayerColors;
+var<uniform> player_skin_styles: PlayerSkinStyles;
 var terrain_texture: texture_2d<f32>;
 var owner_texture: texture_2d<u32>;
 
@@ -116,6 +121,26 @@ fn owner_albedo(owner_id: u32) -> vec3<f32> {
         return player_colors.colors[owner_id].rgb;
     }
     return vec3<f32>(0.5, 0.5, 0.5); // Fallback if out of bounds
+}
+
+fn apply_skin(base: vec3<f32>, owner_id: u32, world_pos: vec2<f32>) -> vec3<f32> {
+    if owner_id >= 256u {
+        return base;
+    }
+    let style = u32(round(player_skin_styles.styles[owner_id].x));
+    if style == 1u {
+        let stripe = smoothstep(0.42, 0.50, abs(fract((world_pos.x + world_pos.y) * 0.22) - 0.5));
+        return mix(base, min(base * vec3<f32>(1.45, 0.78, 0.38), vec3<f32>(1.0)), stripe * 0.35);
+    } else if style == 2u {
+        let grid_x = smoothstep(0.43, 0.50, abs(fract(world_pos.x * 0.20) - 0.5));
+        let grid_y = smoothstep(0.43, 0.50, abs(fract(world_pos.y * 0.20) - 0.5));
+        return mix(base, vec3<f32>(0.45, 0.85, 0.95), max(grid_x, grid_y) * 0.24);
+    } else if style == 3u {
+        let diamond = abs(fract((world_pos.x - world_pos.y) * 0.16) - 0.5);
+        let lattice = 1.0 - smoothstep(0.0, 0.08, abs(diamond - 0.20));
+        return mix(base, vec3<f32>(1.0, 0.78, 0.30), lattice * 0.28);
+    }
+    return base;
 }
 
 fn blend_channel_overlay(base: f32, blend: f32) -> f32 {
@@ -253,6 +278,9 @@ fn shade_map(in: VertexOutput) -> vec3<f32> {
         } else {
             base_color = mix(base_color, blended_color, opacity);
         }
+
+        // Cosmetic territory pattern for the local player's equipped skin.
+        base_color = apply_skin(base_color, owner_id, vec2<f32>(world_x, world_y));
 
         // ── Territory Heartbeat Pulse (living empire breathe) ──
         if (globals.effect_heartbeat > 0.0) {

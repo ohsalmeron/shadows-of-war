@@ -97,6 +97,16 @@ pub struct PlayerProfile {
     #[serde(default)]
     pub laurels: u64,
     #[serde(default)]
+    pub gems: u64,
+    #[serde(default)]
+    pub owned_leaders: std::collections::BTreeSet<String>,
+    #[serde(default)]
+    pub owned_skins: std::collections::BTreeSet<String>,
+    #[serde(default)]
+    pub selected_skin: Option<String>,
+    #[serde(default)]
+    pub processed_revenuecat_events: std::collections::BTreeSet<String>,
+    #[serde(default)]
     pub intro_completed: bool,
 }
 
@@ -117,12 +127,27 @@ impl Default for PlayerProfile {
             leader_xp: std::collections::BTreeMap::new(),
             leader_stats: std::collections::BTreeMap::new(),
             laurels: 0,
+            gems: 0,
+            owned_leaders: std::collections::BTreeSet::new(),
+            owned_skins: std::collections::BTreeSet::new(),
+            selected_skin: None,
+            processed_revenuecat_events: std::collections::BTreeSet::new(),
             intro_completed: false,
         }
     }
 }
 
 impl PlayerProfile {
+    pub fn for_account(account_id: &str) -> Self {
+        let mut profile = Self::default();
+        let leader = crate::commerce::assigned_leader_for_account(
+            account_id,
+            crate::commerce::current_rotation_period(),
+        );
+        profile.preferred_leader = Some(crate::commerce::leader_wire_id(leader).to_string());
+        profile
+    }
+
     pub fn sync_level(&mut self) {
         self.level = 1 + self.xp / 100;
     }
@@ -187,7 +212,11 @@ impl PlayerProfile {
         });
         let leader = leader
             .and_then(crate::rewards::canonical_leader_name)
-            .or_else(|| self.preferred_leader.clone())
+            .or_else(|| {
+                self.preferred_leader
+                    .as_deref()
+                    .and_then(crate::rewards::canonical_leader_name)
+            })
             .unwrap_or_else(|| "Caesar".to_string());
         let leader_stats = self.leader_stats.entry(leader.clone()).or_default();
         leader_stats.matches_played = leader_stats.matches_played.saturating_add(1);
@@ -1060,6 +1089,37 @@ impl PlayerDb {
         Ok(updated)
     }
 
+    async fn ensure_starting_leader(
+        &self,
+        account: PlayerAccount,
+    ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
+        if account.profile.preferred_leader.is_some() {
+            return Ok(account);
+        }
+        let assigned = crate::commerce::leader_wire_id(crate::commerce::assigned_leader_for_account(
+            &account.id,
+            crate::commerce::current_rotation_period(),
+        ))
+        .to_string();
+        let mut con = self.get_connection().await?;
+        let updated = Self::update_account_atomic(
+            &mut con,
+            &Self::account_key(&account.id),
+            |account| {
+                if account.profile.preferred_leader.is_none() {
+                    account.profile.preferred_leader = Some(assigned.clone());
+                    account.updated_at = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+                }
+            },
+        )
+        .await?;
+        self.save_player_account_to_redb(&updated);
+        Ok(updated)
+    }
+
     /// Replace one account only if the JSON read by this request is still the
     /// value in Valkey. This closes the rename/stats lost-update race without
     /// introducing another state store or a process-local lock.
@@ -1376,7 +1436,8 @@ impl PlayerDb {
             && let Ok(account) = Self::load_account(&mut con, &account_id).await
         {
             let _: () = Self::record_analytics(&mut con, &account.id, false).await?;
-            return self.ensure_public_id(account).await;
+            let account = self.ensure_public_id(account).await?;
+            return self.ensure_starting_leader(account).await;
         }
 
         // 2. Not found, create new stable account ID and register
@@ -1403,7 +1464,7 @@ impl PlayerDb {
             id: random_id.clone(),
             public_id: public_profile_id(&random_id),
             display_name: generated_display_name(),
-            profile: PlayerProfile::default(),
+            profile: PlayerProfile::for_account(&random_id),
             linked_identities: vec![identity.clone()],
             kind,
             auth_secret_hash: None,
@@ -1527,7 +1588,7 @@ impl PlayerDb {
             {
                 return Err("invalid secret".into());
             }
-            let account = self.ensure_public_id(account).await?;
+            let account = self.ensure_starting_leader(self.ensure_public_id(account).await?).await?;
             if account.display_name.trim().is_empty() || account.display_name == "ANON" {
                 let migrated_name = requested_display_name
                     .map(normalize_display_name)
@@ -1548,7 +1609,7 @@ impl PlayerDb {
                 self.save_player_account_to_redb(&account);
                 return Ok(account);
             }
-            return self.ensure_public_id(account).await;
+            return Ok(account);
         }
 
         let display_name = requested_display_name
@@ -1568,7 +1629,7 @@ impl PlayerDb {
                 id: random_id.clone(),
                 public_id: public_profile_id(&random_id),
                 display_name: display_name.clone(),
-                profile: PlayerProfile::default(),
+                profile: PlayerProfile::for_account(&random_id),
                 linked_identities: Vec::new(),
                 kind: AccountKind::Human,
                 auth_secret_hash: None,
@@ -1645,6 +1706,197 @@ impl PlayerDb {
         }
     }
 
+    pub async fn resolve_leader_for_account(
+        &self,
+        account_id: &str,
+        requested_leader: Option<&str>,
+    ) -> Result<crate::commerce::LeaderResolution, Box<dyn std::error::Error + Send + Sync>> {
+        let mut con = self.get_connection().await?;
+        let account = Self::load_account(&mut con, account_id).await?;
+        Ok(crate::commerce::resolve_leader(
+            requested_leader,
+            account_id,
+            &account.profile.owned_leaders,
+            crate::commerce::current_rotation_period(),
+        ))
+    }
+
+    pub fn account_id_for_public_id(
+        &self,
+        public_id: &str,
+    ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
+        self.public_index(public_id)
+            .map(|index| index.map(|index| index.account_id))
+    }
+
+    pub async fn unlock_leader_with_laurels(
+        &self,
+        account_id: &str,
+        requested_leader: &str,
+    ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
+        let leader = crate::commerce::leader_from_id(requested_leader)
+            .ok_or("unknown leader")?;
+        let leader_id = crate::commerce::leader_id(leader).to_string();
+        let period = crate::commerce::current_rotation_period();
+        let mut con = self.get_connection().await?;
+        let mut failure = None;
+        let account = Self::update_account_atomic(
+            &mut con,
+            &Self::account_key(account_id),
+            |account| {
+                if account.profile.owned_leaders.contains(&leader_id) {
+                    failure = Some("leader already owned");
+                } else if crate::commerce::leader_available(
+                    leader,
+                    &account.profile.owned_leaders,
+                    period,
+                ) {
+                    failure = Some("leader is currently free in rotation");
+                } else if account.profile.laurels < crate::commerce::LEADER_UNLOCK_COST_LAURELS {
+                    failure = Some("insufficient laurels");
+                } else {
+                    account.profile.laurels -= crate::commerce::LEADER_UNLOCK_COST_LAURELS;
+                    account.profile.owned_leaders.insert(leader_id.clone());
+                    account.updated_at = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+                }
+            },
+        )
+        .await?;
+        if let Some(error) = failure {
+            return Err(error.into());
+        }
+        self.save_player_account_to_redb(&account);
+        Ok(account)
+    }
+
+    pub async fn unlock_skin_with_gems(
+        &self,
+        account_id: &str,
+        requested_skin: &str,
+    ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
+        let skin = crate::commerce::skin_by_id(requested_skin).ok_or("unknown skin")?;
+        let mut failure = None;
+        let mut con = self.get_connection().await?;
+        let account = Self::update_account_atomic(
+            &mut con,
+            &Self::account_key(account_id),
+            |account| {
+                if account.profile.owned_skins.contains(&skin.id) {
+                    failure = Some("skin already owned");
+                } else if account.profile.gems < skin.cost_gems {
+                    failure = Some("insufficient gems");
+                } else {
+                    account.profile.gems -= skin.cost_gems;
+                    account.profile.owned_skins.insert(skin.id.clone());
+                    account.updated_at = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+                }
+            },
+        )
+        .await?;
+        if let Some(error) = failure {
+            return Err(error.into());
+        }
+        self.save_player_account_to_redb(&account);
+        Ok(account)
+    }
+
+    pub async fn equip_skin(
+        &self,
+        account_id: &str,
+        requested_skin: Option<&str>,
+    ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
+        let requested_skin = requested_skin.map(str::trim).filter(|id| !id.is_empty());
+        if let Some(skin_id) = requested_skin {
+            if crate::commerce::skin_by_id(skin_id).is_none() {
+                return Err("unknown skin".into());
+            }
+        }
+        let mut failure = None;
+        let mut con = self.get_connection().await?;
+        let account = Self::update_account_atomic(
+            &mut con,
+            &Self::account_key(account_id),
+            |account| {
+                if let Some(skin_id) = requested_skin {
+                    if !account.profile.owned_skins.contains(skin_id) {
+                        failure = Some("skin is not owned");
+                        return;
+                    }
+                    account.profile.selected_skin = Some(skin_id.to_string());
+                } else {
+                    account.profile.selected_skin = None;
+                }
+                account.updated_at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+            },
+        )
+        .await?;
+        if let Some(error) = failure {
+            return Err(error.into());
+        }
+        self.save_player_account_to_redb(&account);
+        Ok(account)
+    }
+
+    pub async fn grant_revenuecat_gems(
+        &self,
+        event_id: &str,
+        purchase_user_id: &str,
+        product_id: &str,
+    ) -> Result<(PlayerAccount, bool), Box<dyn std::error::Error + Send + Sync>> {
+        let account_id = if is_valid_account_id(purchase_user_id) {
+            purchase_user_id.to_string()
+        } else {
+            self.account_id_for_public_id(purchase_user_id)?
+                .ok_or("app_user_id must be a known public profile ID")?
+        };
+        let event_id = event_id.trim();
+        if event_id.is_empty() || event_id.len() > 256 {
+            return Err("RevenueCat event id is invalid".into());
+        }
+        let product_id = product_id.trim();
+        let gems = crate::commerce::gem_amount_for_product(product_id)
+            .ok_or("unknown RevenueCat product")?;
+        let mut con = self.get_connection().await?;
+        let mut granted = false;
+        let account = Self::update_account_atomic(
+            &mut con,
+            &Self::account_key(&account_id),
+            |account| {
+                if account
+                    .profile
+                    .processed_revenuecat_events
+                    .contains(event_id)
+                {
+                    return;
+                }
+                account
+                    .profile
+                    .processed_revenuecat_events
+                    .insert(event_id.to_string());
+                account.profile.gems = account.profile.gems.saturating_add(gems);
+                account.updated_at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                granted = true;
+            },
+        )
+        .await?;
+        if granted {
+            self.save_player_account_to_redb(&account);
+        }
+        Ok((account, granted))
+    }
+
     /// Seed the persistent bot-account pool. For each external_id, performs
     /// a get-or-create with `provider = "bot"` (so created accounts carry
     /// `kind = Bot`). Idempotent — re-running with the same external_ids
@@ -1684,7 +1936,7 @@ impl PlayerDb {
                 id: random_id.clone(),
                 public_id: public_profile_id(&random_id),
                 display_name: generated_display_name(),
-                profile: PlayerProfile::default(),
+                profile: PlayerProfile::for_account(&random_id),
                 linked_identities: vec![identity.clone()],
                 kind: AccountKind::Bot,
                 auth_secret_hash: None,
@@ -1798,11 +2050,9 @@ impl PlayerDb {
                     kda.assists,
                     leader.as_deref(),
                 );
-                if let Some(leader) = leader
-                    .as_deref()
-                    .and_then(crate::rewards::canonical_leader_name)
-                {
-                    account.profile.preferred_leader = Some(leader);
+                if let Some(leader) = leader.as_deref().and_then(crate::commerce::leader_from_id) {
+                    account.profile.preferred_leader =
+                        Some(crate::commerce::leader_wire_id(leader).to_string());
                 }
                 account.updated_at = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -1830,9 +2080,16 @@ impl PlayerDb {
                 return;
             }
             account.profile.intro_completed = true;
-            account.profile.preferred_leader = Some("Boudica".to_string());
+            let leader = account
+                .profile
+                .preferred_leader
+                .as_deref()
+                .and_then(crate::commerce::leader_from_id)
+                .unwrap_or(crate::leaders::Leader::Boudica);
+            account.profile.preferred_leader =
+                Some(crate::commerce::leader_wire_id(leader).to_string());
             account.profile.apply_reward(
-                "Boudica",
+                leader.name(),
                 crate::rewards::calculate(crate::rewards::RewardInput {
                     tutorial: true,
                     ..Default::default()

@@ -881,6 +881,24 @@ fn build_hud_payload(app: &SowApp) -> serde_json::Value {
         sow_core::game::BuildingKind::Bunker => "Bunker",
     });
     let costs = &hud.building_costs;
+    // The store is only shown after a match. Keep its catalog out of the hot HUD path,
+    // and use the browser clock because SystemTime::now() panics on wasm32.
+    let featured_skin = if match_over {
+        let rotation_period = ((js_sys::Date::now().max(0.0) / 1000.0) as u64)
+            / sow_data::commerce::ROTATION_PERIOD_SECS;
+        sow_data::commerce::catalog_for_profile(
+            &app.progress.owned_leaders,
+            &app.progress.owned_skins,
+            app.progress.laurels,
+            app.progress.gems,
+            rotation_period,
+        )
+        .skins
+        .into_iter()
+        .find(|skin| !skin.owned)
+    } else {
+        None
+    };
     let mut payload = serde_json::json!({
         "gold": me.map(|player| player.gold).unwrap_or(hud.gold),
         "troops": me.map(|player| player.troops).unwrap_or(hud.troops),
@@ -906,6 +924,12 @@ fn build_hud_payload(app: &SowApp) -> serde_json::Value {
         "is_spectating": app.ui.is_spectating,
         "is_winner": is_winner,
         "winner_name": winner_name,
+        "featured_skin": featured_skin.map(|skin| serde_json::json!({
+            "id": skin.id,
+            "name": skin.name,
+            "asset_path": skin.asset_path,
+            "cost_gems": skin.cost_gems,
+        })).unwrap_or(serde_json::Value::Null),
         "player_leader": me.map(|player| leader_id(player.leader)),
         "player_kda": {
             "kills": me.map(|player| player.kills).unwrap_or(0),
@@ -1048,15 +1072,31 @@ pub(crate) fn publish_state(app: &mut SowApp) {
         LAST_MY_PLAYER.with(|cache| *cache.borrow_mut() = None);
         LAST_WEB_RANKINGS_TICK.with(|tick| tick.set(None));
         app.ui.leaderboard_rankings.clear();
+        let rotation_period = ((js_sys::Date::now().max(0.0) / 1000.0) as u64)
+            / sow_data::commerce::ROTATION_PERIOD_SECS;
+        let store_catalog = sow_data::commerce::catalog_for_profile(
+            &progress.owned_leaders,
+            &progress.owned_skins,
+            progress.laurels,
+            progress.gems,
+            rotation_period,
+        );
         let leaders: Vec<serde_json::Value> = sow_core::player::Leader::ALL
             .into_iter()
             .map(|leader| {
+                let slug = sow_data::commerce::leader_id(leader);
+                let free_rotation = store_catalog.free_leaders.iter().any(|id| id == slug);
+                let owned = progress.owned_leaders.contains(slug);
                 serde_json::json!({
                     "id": leader_id(leader),
                     "name": leader.name(),
                     "civilization": leader.civilization().name(),
                     "perk": leader.perk_description(),
-                    "slug": leader.name().to_lowercase().replace(' ', "_"),
+                    "slug": slug,
+                    "free_rotation": free_rotation,
+                    "owned": owned,
+                    "available": free_rotation || owned,
+                    "cost_laurels": sow_data::commerce::LEADER_UNLOCK_COST_LAURELS,
                 })
             })
             .collect();
@@ -1116,6 +1156,12 @@ pub(crate) fn publish_state(app: &mut SowApp) {
             "level": progress.level,
             "xp": progress.xp,
             "laurels": progress.laurels,
+            "gems": progress.gems,
+            "selected_skin": progress.selected_skin,
+            "store": store_catalog,
+            "native_purchase_scheme": "sow://purchase",
+            "native_restore_scheme": "sow://restore",
+            "purchase_user_id": app.profile_public_id,
             "public_profile_id": app.profile_public_id,
             "profile_stats": {
                 "wins": progress.wins,

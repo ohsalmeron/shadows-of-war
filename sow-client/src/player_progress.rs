@@ -1,6 +1,7 @@
 //! Lifetime player stats persisted via the CrazyGames SDK Data module and sow-database.
 
 use sow_core::player::Leader;
+use serde::Deserialize;
 
 pub const STORAGE_KEY: &str = "sow_player_progress";
 
@@ -23,6 +24,7 @@ pub struct PlayerProgress {
     pub empires_defeated: u32,
     #[serde(alias = "tribes_killed")]
     pub tribes_defeated: u32,
+    #[serde(default, deserialize_with = "deserialize_leader")]
     pub preferred_leader: Option<Leader>,
     pub intro_completed: Option<bool>,
     #[serde(default)]
@@ -35,6 +37,28 @@ pub struct PlayerProgress {
     pub leader_xp: std::collections::BTreeMap<String, u32>,
     #[serde(default)]
     pub laurels: u64,
+    #[serde(default)]
+    pub gems: u64,
+    #[serde(default)]
+    pub owned_leaders: std::collections::BTreeSet<String>,
+    #[serde(default)]
+    pub owned_skins: std::collections::BTreeSet<String>,
+    #[serde(default)]
+    pub selected_skin: Option<String>,
+}
+
+fn deserialize_leader<'de, D>(deserializer: D) -> Result<Option<Leader>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<String>::deserialize(deserializer)?;
+    value
+        .as_deref()
+        .map(|value| {
+            sow_data::commerce::leader_from_id(value)
+                .ok_or_else(|| serde::de::Error::custom("unknown leader"))
+        })
+        .transpose()
 }
 
 #[derive(Clone, Debug)]
@@ -111,6 +135,9 @@ impl PlayerProgress {
             || self.preferred_leader.is_some()
             || self.intro_completed.unwrap_or(false)
             || self.laurels > 0
+            || self.gems > 0
+            || !self.owned_leaders.is_empty()
+            || !self.owned_skins.is_empty()
             || !self.leader_xp.is_empty()
     }
 

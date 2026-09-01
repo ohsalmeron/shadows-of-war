@@ -1,0 +1,8 @@
+Contact: mailto:security@shadowsofwar.io
+Contact: mailto:oshalmeron@gmail.com
+Expires: 2027-08-30T00:00:00.000Z
+Acknowledgments: https://shadowsofwar.io/.well-known/security.txt
+Preferred-Languages: en, es
+Canonical: https://shadowsofwar.io/.well-known/security.txt
+Policy: https://shadowsofwar.io/privacy
+Hiring: https://shadowsofwar.io/support

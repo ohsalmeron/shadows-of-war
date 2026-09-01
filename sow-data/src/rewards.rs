@@ -68,13 +68,8 @@ pub fn calculate(input: RewardInput) -> MatchReward {
 }
 
 pub fn canonical_leader_name(value: &str) -> Option<String> {
-    Leader::ALL
-        .iter()
-        .find(|leader| leader.name() == value)
-        .map(|leader| leader.name().to_string())
+    crate::commerce::leader_from_id(value).map(|leader| leader.name().to_string())
 }
-
-use crate::Leader;
 
 #[cfg(test)]
 mod tests {

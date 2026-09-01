@@ -1,5 +1,6 @@
 use super::cpu_prep::{
-    MapGlobals, PlayerColors, compute_has_border, fill_terrain_buffer, get_neighbors,
+    MapGlobals, PlayerColors, PlayerSkinStyles, compute_has_border, fill_terrain_buffer,
+    get_neighbors,
 };
 use crate::context::RenderContext;
 use blade_graphics as gpu;
@@ -9,6 +10,7 @@ use blade_macros::ShaderData;
 struct MapShaderData {
     globals: MapGlobals,
     player_colors: PlayerColors,
+    player_skin_styles: PlayerSkinStyles,
     terrain_texture: gpu::TextureView,
     owner_texture: gpu::TextureView,
 }
@@ -172,6 +174,11 @@ impl MapRenderer {
             std::mem::size_of::<PlayerColors>(),
             shader.get_struct_size("PlayerColors") as usize,
             "PlayerColors must match WGSL `struct PlayerColors` uniform layout"
+        );
+        assert_eq!(
+            std::mem::size_of::<PlayerSkinStyles>(),
+            shader.get_struct_size("PlayerSkinStyles") as usize,
+            "PlayerSkinStyles must match WGSL `struct PlayerSkinStyles` uniform layout"
         );
 
         let layout = <MapShaderData as gpu::ShaderData>::layout();
@@ -628,6 +635,7 @@ impl MapRenderer {
         target_view: gpu::TextureView,
         globals: MapGlobals,
         player_colors: PlayerColors,
+        player_skin_styles: PlayerSkinStyles,
     ) {
         let mut pass = encoder.render(
             "map_pass",
@@ -646,6 +654,7 @@ impl MapRenderer {
             &MapShaderData {
                 globals,
                 player_colors,
+                player_skin_styles,
                 terrain_texture: self.terrain_view,
                 owner_texture: self.owner_view,
             },

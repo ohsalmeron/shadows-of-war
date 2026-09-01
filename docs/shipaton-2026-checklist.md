@@ -32,9 +32,9 @@ El FAQ de Shipaton permite que un proyecto que existía solamente en web publiqu
 | Primera publicación pública | ⚠️ Por confirmar | Revisar historial de releases; Internal no cuenta como publicación pública |
 | Acceso a Production | 🔒 Bloqueado por Google Play | Closed testing está en 3/5; falta enviar la release a revisión y conseguir 12 testers durante 14 días |
 | App publicada antes del deadline | ⏳ Pendiente | Primero completar Closed testing y solicitar acceso a Production |
-| RevenueCat SDK | ❌ Pendiente | Integrar SDK y ejecutar una compra real de prueba |
+| RevenueCat SDK | 🟡 Código integrado | Falta configurar key/productos y ejecutar compra real de prueba |
 | Producto digital en Google Play | ❌/⏳ Pendiente | Crear y activar un producto in-app |
-| Entitlement y Offering | ❌/⏳ Pendiente | Configurarlos en RevenueCat |
+| Entitlement y Offering | 🟡 Pendiente de configurar | Para gems se usa offering/productos; la concesión la hace el webhook |
 | Video público | ❌ Pendiente | Video de menos de 2 minutos, en dispositivo real |
 | Promo/free trial para judges | ❌ Pendiente | Crear una forma de probar el contenido premium |
 | Submission de Devpost | ❌ Pendiente | Completarla antes del deadline |
@@ -43,24 +43,13 @@ El FAQ de Shipaton permite que un proyecto que existía solamente en web publiqu
 
 ./sow p publica los componentes web, servidor, base de datos y relay de Shadows of War. Actualmente no es el botón que publica el AAB Android en Google Play. La publicación Android se termina en Play Console.
 
-### Artefacto Android verificado
+### Artefacto Android
 
-El AAB que debe usarse para la release actual está en:
+El AAB se genera únicamente por el pipeline en:
 
     /home/bizkit/Github/shadows-of-war/dist/android/com.shadowsofwar.aab
 
-Verificación local del 28 de agosto de 2026:
-
-- Package: com.shadowsofwar.
-- versionCode: 3.
-- versionName: 0.2.0.
-- targetSdk: 35.
-- URL que abre el wrapper: https://shadowsofwar.io/play/.
-- Tamaño: 1,993,237 bytes.
-- SHA-256: 4bcc8e9ff36de86e4d2b892945873f60c091c33824e3276025c509671cd279cb.
-- El archivo es idéntico a sow-dist/deploy/android/app/build/outputs/bundle/release/app-release.aab.
-
-Para el release de Closed testing que ya aparece creado en Play Console, usar este AAB versionCode 3. Si Play Console ya tiene una versión superior publicada o cargada, será necesario subir un AAB nuevo con un versionCode mayor; no incrementar la versión solo por rutina.
+El pipeline consulta el versionCode más alto de todos los tracks de Play y genera el siguiente. No reutilizar un AAB viejo ni editar JSON de metadata junto al AAB. La configuración vigente del wrapper es `compileSdk 36`, `targetSdk 36` y `applicationId com.shadowsofwar`.
 
 Si después hacemos cambios de código para RevenueCat, el pipeline oficial sigue siendo la validación de producción del proyecto según las reglas de este repositorio. No se deben hacer despliegues manuales de infraestructura.
 
@@ -143,7 +132,7 @@ Cuando Production esté habilitado:
 1. Ir a **Test and release → Production**.
 2. Pulsar **Create new release**.
 3. Subir el AAB firmado con la misma upload key de la aplicación.
-4. Confirmar el número de versión. El proyecto local tiene versionCode 3; si ese es también el número más alto en Play Console, la siguiente release debe usar versionCode 4.
+4. Confirmar el número de versión. Debe ser mayor que cualquier versionCode ya usado en Play Console.
 5. Usar un release name claro, por ejemplo 0.2.1-shipaton.
 6. Agregar release notes en inglés.
 7. Confirmar países/regiones y verificar que United States esté incluido.
@@ -173,32 +162,30 @@ La integración mínima real es:
 9. Identidad consistente del jugador para que el entitlement no se pierda al cambiar de dispositivo.
 10. Compra de prueba verificada en un track de prueba.
 
-### Producto propuesto
+### Productos Android propuestos
 
 | Campo | Propuesta |
 |---|---|
-| Tipo | One-time, non-consumable |
-| Product ID Google Play | sow_war_chronicle_v1 |
-| Nombre visible | War Chronicle Founder Pack |
-| Precio inicial de referencia | USD 9.99, con precios localizados por Google |
-| RevenueCat entitlement | war_chronicle |
+| Tipo | One-time, consumable |
+| Product IDs Google Play | sow_gems_500, sow_gems_1200, sow_gems_2600 |
+| Nombre visible | Gem bundles |
 | RevenueCat offering | default |
-| Qué desbloquea | Banners, colores, títulos, marco de perfil y battle cards cosméticas |
-| Pay-to-win | No: no entregar tropas, recursos ni ventaja competitiva comprada |
+| Qué entrega | Gems para skins y contenido premium del juego |
+| Concesión | El servidor entrega las gems; nunca se confía en el cliente |
 
-El Product ID de Google Play debe elegirse con cuidado: según la documentación de RevenueCat, un Product ID usado no se puede reutilizar en otra app aunque se borre.
+El Product ID de Google Play debe elegirse con cuidado: un Product ID usado no se debe reutilizar en otra app aunque se borre.
 
 ### Orden correcto en RevenueCat y Google Play
 
 1. En Google Play Console, abrir **Monetize → Products → In-app products**.
-2. Crear el producto sow_war_chronicle_v1, definir nombre y precio, y activarlo.
+2. Crear los productos `sow_gems_500`, `sow_gems_1200` y `sow_gems_2600`, definir nombre y precio, y activarlos.
 3. En RevenueCat, crear/seleccionar el proyecto y agregar la app Android con package com.shadowsofwar.
 4. Conectar Google Play con RevenueCat siguiendo el flujo oficial de permisos/service account.
 5. Importar el producto de Google Play.
-6. Crear el entitlement war_chronicle.
-7. Adjuntar el producto al entitlement.
-8. Crear el offering default y agregar el producto.
-9. Obtener la **public SDK key** de Android.
+6. Para gem bundles, RevenueCat registra la compra; el webhook entrega las gems al account ID estable. No usar un entitlement para representar consumibles.
+7. Crear el offering `default` y agregar los tres productos.
+8. Obtener la **public SDK key** de Android.
+9. Configurar el webhook con `SOW_REVENUECAT_WEBHOOK_SECRET`.
 10. No compartir la secret API key ni archivos JSON de Google Play.
 
 ### Particularidad del Android actual
@@ -210,7 +197,7 @@ Hay dos caminos:
 - **Recomendado para Shipaton:** agregar la compra nativa de RevenueCat en Android y comunicar el resultado al juego web mediante un puente nativo. Es el camino más claro para Google Play Billing.
 - **Web Billing:** requiere Stripe/Paddle/Stripe Billing y tiene que revisarse cuidadosamente contra las reglas de pagos de Google Play. No usarlo como atajo dentro de una app Play si el usuario puede comprar bienes digitales desde la app.
 
-La implementación técnica debe incluir, como mínimo, el SDK Android, una acción de compra, consulta de CustomerInfo/entitlement, restore purchases y comunicación con la sesión del jugador. La public SDK key sí puede estar en la app; las claves privadas nunca.
+La implementación técnica debe incluir, como mínimo, el SDK Android, una acción de compra, identidad estable, comunicación del resultado con la sesión del jugador y el webhook de concesión. La public SDK key sí puede estar en la app; las claves privadas nunca.
 
 ## 4. Qué haces tú manualmente y qué puede hacer Codex
 
@@ -223,9 +210,9 @@ La implementación técnica debe incluir, como mínimo, el SDK Android, una acci
 - Completar Store listing, Data safety, Content rating, App access, Ads y Privacy policy.
 - Crear el producto de Google Play y activarlo.
 - Crear/conectar el proyecto y la app en RevenueCat.
-- Crear entitlement, offering y producto.
+- Crear productos y offering; el webhook entrega las gems.
 - Proporcionar al desarrollo solamente la public SDK key de Android.
-- Crear licencia/test access o promo code para que los jueces puedan probar premium.
+- Crear acceso de prueba o promo code para que los jueces puedan probar premium.
 - Subir el AAB a la track que corresponda y publicar Production.
 - Confirmar que la ficha esté publicada y disponible en Estados Unidos.
 - Grabar y publicar el video en YouTube o Vimeo.
@@ -237,12 +224,26 @@ La implementación técnica debe incluir, como mínimo, el SDK Android, una acci
 - Implementar la acción de compra y el flujo de restore.
 - Asociar RevenueCat al usuario autenticado del juego.
 - Mostrar el contenido premium únicamente cuando el entitlement esté activo.
-- Mantener el producto cosmético y sin pay-to-win.
+- Mantener la tienda universal: líderes por rotación/laurels; skins por gems cuando existan assets originales.
 - Preparar el AAB con un versionCode superior al ya subido.
 - Preparar release notes, instrucciones de prueba y el guion técnico del video.
 - Ejecutar el pipeline oficial del repositorio si se modifican web/backend/relay.
 
-## 5. Estrategia para Best Game Award
+## 5. Modelo universal de tienda
+
+La tienda vive dentro del juego y no depende de CrazyGames, Poki ni de un portal específico:
+
+1. El jugador abre **Store** desde el menú.
+2. Los líderes de la rotación semanal se pueden usar gratis; los demás se desbloquean con laurels.
+3. Las gems se compran con Google Play + RevenueCat en Android.
+4. Las skins originales de SOW se compran con gems.
+5. El servidor valida ownership, saldo y concesiones.
+
+La rotación, los líderes, las skins originales y los gem bundles están implementados en el contrato de catálogo. El bridge nativo Android y el webhook están en código; falta configurar claves/productos y validarlos con una compra real.
+
+CrazyGames/Poki son canales de distribución, no la arquitectura de monetización.
+
+## 6. Estrategia para Best Game Award
 
 ### Posicionamiento
 
@@ -261,11 +262,9 @@ La idea que debe entender un juez en los primeros segundos: no es solamente un m
 
 ### Monetización
 
-El juego base debe ser gratuito y jugable. El War Chronicle Founder Pack debe vender identidad y personalización, no poder. Esa relación es fácil de explicar:
+El juego base debe ser gratuito y jugable. Los líderes rotan gratis y los demás se desbloquean con laurels; las gems compran skins originales y contenido premium cuando esté disponible. El servidor valida cada concesión.
 
-> Players pay to commemorate their wars, not to win them.
-
-Después del primer match completado, mostrar un paywall breve con una vista clara de las personalizaciones. No interrumpir el onboarding ni bloquear el primer momento divertido.
+Después del primer match completado, mostrar una oferta breve con una vista clara de la personalización. No interrumpir el onboarding ni bloquear el primer momento divertido.
 
 ### Métricas que conviene registrar
 
@@ -276,7 +275,7 @@ Después del primer match completado, mostrar un paywall breve con una vista cla
 - Paywall views.
 - Purchases y conversion rate.
 - Revenue reportado por RevenueCat.
-- Restore purchases exitosos.
+- Concesiones de compra y reintentos idempotentes.
 - Bugs/crashes y feedback de testers.
 - Invitaciones o shares en Discord/redes.
 
@@ -292,19 +291,19 @@ We wanted to make strategy games feel personal again. In Shadows of War, a match
 
 ### What it does — borrador
 
-Shadows of War is a real-time multiplayer strategy game about conquering and defending territory on a living world map. Players choose a leader, build an economy, expand their borders, form alliances, and fight for control. The core game is free to play and designed so that the most important advantages come from decisions and cooperation, not spending.
+Shadows of War is a real-time multiplayer strategy game about conquering and defending territory on a living world map. Players choose a leader, build an economy, expand their borders, form alliances, and fight for control. Eight leaders rotate free each week, while the others can be unlocked with earned laurels; gems are reserved for skins and premium identity.
 
 ### How we built it — borrador para actualizar después de la integración
 
-The game client runs through a web/WASM experience backed by a real-time game server. The Android release packages the mobile experience for Google Play. For monetization, we integrated RevenueCat with Google Play Billing to manage the War Chronicle Founder Pack, customer entitlements, purchases, and restoration. The product is cosmetic-first so monetization supports player identity without creating pay-to-win advantages.
+The game client runs through a web/WASM experience backed by a real-time game server. The Android release packages the mobile experience for Google Play. For monetization, the game uses a universal in-game store: leaders rotate for free, other leaders unlock with laurels, and RevenueCat with Google Play Billing sells gem bundles for original skins and premium content. The server validates every grant.
 
 ### Challenges we ran into — borrador
 
-The hardest part was connecting a real-time strategy game with a mobile distribution and monetization flow without compromising the game loop. We had to keep the first match accessible, make the purchase state reliable across sessions, handle restoration, and make sure the Android wrapper behaved like a real mobile app rather than simply displaying a website.
+The hardest part was connecting a real-time strategy game with a mobile distribution and monetization flow without compromising the game loop. We had to keep the first match accessible, make purchase grants reliable across sessions, and make sure the Android wrapper behaved like a real mobile app rather than simply displaying a website.
 
 ### Accomplishments that we're proud of — borrador
 
-We are proud of turning a persistent multiplayer world into a compact mobile experience while preserving the tension of territory control. We are also proud of choosing a monetization model that celebrates a player’s history and identity instead of selling competitive power.
+We are proud of turning a persistent multiplayer world into a compact mobile experience while preserving the tension of territory control. We are also proud of building a universal store that works independently of any web portal and keeps purchase grants under server control.
 
 ### What we learned — borrador para completar con datos reales
 
@@ -332,7 +331,7 @@ Next we want to improve the first-match experience, add more ways to share war s
 | 8–25 s | Selección de líder y mapa mundial |
 | 25–65 s | Economía, expansión, combate y defensa |
 | 65–90 s | Alianza, traición y resultado de la partida |
-| 90–108 s | Personalización War Chronicle |
+| 90–108 s | Store universal: líderes, gems y skins originales |
 | 108–120 s | Compra/restauración RevenueCat, app publicada y CTA “Play your first war.” |
 
 ## 7. Registro de evidencias

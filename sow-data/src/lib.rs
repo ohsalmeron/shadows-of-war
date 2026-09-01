@@ -1,6 +1,7 @@
 //! Static game data, player database, and embedded REDB metadata.
 
 pub mod colors;
+pub mod commerce;
 #[cfg(feature = "server")]
 pub mod crazygames;
 #[cfg(feature = "server")]
@@ -20,6 +21,7 @@ pub mod time_util;
 pub mod tribes;
 
 pub use colors::{NamedColor, PREMIUM_COLORS};
+pub use commerce::{LeaderResolution, StoreCatalog};
 #[cfg(feature = "server")]
 pub use db::{LinkedIdentity, PlayerAccount, PlayerDb, PlayerProfile};
 pub use emoji::{ATLAS_HEIGHT, ATLAS_WIDTH, AtlasRect, lookup};
