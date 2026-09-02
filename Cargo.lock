@@ -391,7 +391,6 @@ checksum = "b4388bee8683e3d04af747c73422af53102d2bd24d9eadb6cbc100baef4b43f8"
 [[package]]
 name = "blade-egui"
 version = "0.8.1"
-source = "git+https://github.com/ohsalmeron/blade?rev=0223b8faaee1f03f7566a7ea13d239b60391359d#0223b8faaee1f03f7566a7ea13d239b60391359d"
 dependencies = [
  "blade-graphics",
  "blade-macros",
@@ -404,7 +403,6 @@ dependencies = [
 [[package]]
 name = "blade-graphics"
 version = "0.8.4"
-source = "git+https://github.com/ohsalmeron/blade?rev=0223b8faaee1f03f7566a7ea13d239b60391359d#0223b8faaee1f03f7566a7ea13d239b60391359d"
 dependencies = [
  "ash",
  "ash-window",
@@ -440,7 +438,6 @@ dependencies = [
 [[package]]
 name = "blade-macros"
 version = "0.3.0"
-source = "git+https://github.com/ohsalmeron/blade?rev=0223b8faaee1f03f7566a7ea13d239b60391359d#0223b8faaee1f03f7566a7ea13d239b60391359d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -450,7 +447,6 @@ dependencies = [
 [[package]]
 name = "blade-util"
 version = "0.4.1"
-source = "git+https://github.com/ohsalmeron/blade?rev=0223b8faaee1f03f7566a7ea13d239b60391359d#0223b8faaee1f03f7566a7ea13d239b60391359d"
 dependencies = [
  "blade-graphics",
  "bytemuck",

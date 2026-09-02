@@ -76,6 +76,11 @@ fn copy_text(text: &str) {
     }
 }
 
+#[cfg(target_os = "ios")]
+fn copy_text(_text: &str) {
+    log::warn!("clipboard copy is not implemented on iOS");
+}
+
 fn open_url(url: &str, new_tab: bool) {
     #[cfg(target_arch = "wasm32")]
     {

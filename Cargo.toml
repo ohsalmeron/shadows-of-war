@@ -97,6 +97,12 @@ path = "sow-render"
 [workspace.dependencies.sow-net]
 path = "sow-net"
 
+[patch."https://github.com/ohsalmeron/blade"]
+blade-egui = { path = "blade/blade-egui" }
+blade-graphics = { path = "blade/blade-graphics" }
+blade-macros = { path = "blade/blade-macros" }
+blade-util = { path = "blade/blade-util" }
+
 
 
 [profile.dev]

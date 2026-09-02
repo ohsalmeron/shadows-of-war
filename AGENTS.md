@@ -13,7 +13,9 @@ hostnames, paths and compatibility behavior are not production instructions.
 - The deploy pipeline is the only deployment interface. Never activate a
   release, copy artifacts, restart services, or edit production configuration
   manually.
-- If `./sow p` fails, fix the pipeline and rerun it. Do not bypass it.
+- If `./sow p` is intentionally run and fails in a pipeline step, fix the
+  pipeline and rerun it. Do not bypass it. Do not invoke it merely to validate
+  an unrelated platform-specific change.
 - Do not commit or push unless explicitly requested.
 
 ## Current production topology
@@ -60,13 +62,52 @@ There is no production backfill subcommand. `./sow p` is the only production
 deployment path; `./sow l` / `./sow local` is a local-only web/WASM preview;
 `./sow` without a subcommand runs the native client.
 
-## Mandatory validation gate
+## Platform-specific workflows
 
-- Every requested code, UI, backend, or pipeline change in this repository must be validated with `./sow p` from the repository root. The pipeline is the acceptance test and the only evidence that supports a final “done” claim.
-- `./sow l` / `./sow local` is for visual/client iteration only; it is not validation and does not replace `./sow p`.
-- The user has granted standing authorization for `./sow p` after requested changes. Do not ask for a second deploy confirmation, and do not substitute manual infrastructure commands.
-- Do not run `cargo check`, `cargo build`, `cargo test`, JavaScript syntax checks, or similar local substitutes as routine validation. Use them only to diagnose a specific failed `./sow p` step, then rerun `./sow p`; they never replace the pipeline. The internal build performed by `./sow l` is a preview operation, not a validation claim.
-- If `./sow p` fails or cannot complete its health/public verification, stop at the failure, report the exact output, and leave the task unclaimed rather than declaring victory.
+- iOS-only work on macOS uses `scripts/ios-testflight.sh`. Validate the iOS
+  archive/export there and upload only when the user requests an upload.
+- Do not run `./sow p` for iOS-only work on macOS. The Mac is not a production
+  control host unless it has the complete production prerequisites configured,
+  including the Linux-side tooling, FreeBSD builder/VM, SSH access, Android
+  tooling, and required release credentials.
+- Never create a FreeBSD VM, provision release keys, or configure production
+  access implicitly. Those are infrastructure changes requiring explicit user
+  approval.
+- App Store Connect evidence must be stated precisely: `Upload succeeded` from
+  `xcodebuild -exportArchive` proves only that Apple accepted the upload. It
+  does not prove that the build is processed, available to testers, or in
+  TestFlight.
+- Treat an App Store Connect build marked `Missing Compliance` as blocked and
+  unavailable for testing until export compliance is completed. `Ready to Test`
+  or `Testing` is the evidence required before claiming TestFlight readiness.
+- Apple has an App Store Connect API for app-encryption declarations, but it
+  requires an authenticated JWT signed with an App Store Connect API key. Do
+  not claim API automation unless the current environment has a working
+  connector or verified credentials.
+- Agent-Reach is an internet research/access layer for web and listed upstream
+  channels; it is not an App Store Connect, TestFlight, Apple Developer, or
+  Xcode connector. Use it to verify public documentation, never as evidence of
+  private App Store Connect state.
+
+## Production pipeline validation gate
+
+- Changes intended for the production web/backend/Android/FreeBSD release must
+  be validated with `./sow p` from the configured production control host. The
+  pipeline is the acceptance test for that scope and the only evidence that
+  supports a production “done” claim.
+- `./sow l` / `./sow local` is for local web/WASM preview only. It does not
+  validate production deployment and does not replace `./sow p` when that
+  pipeline is in scope.
+- The user has granted standing authorization for `./sow p` after a requested
+  production change. Do not ask for a second deploy confirmation, and do not
+  substitute manual infrastructure commands.
+- Do not run `cargo check`, `cargo build`, `cargo test`, JavaScript syntax
+  checks, or similar local substitutes as routine validation for a production
+  pipeline change. Use them only to diagnose a specific failed `./sow p` step,
+  then rerun `./sow p`; they never replace the pipeline.
+- If an in-scope `./sow p` run fails or cannot complete its health/public
+  verification, stop at the failure, report the exact output, and leave the
+  production task unclaimed rather than declaring victory.
 
 ## Read-only debugging
 

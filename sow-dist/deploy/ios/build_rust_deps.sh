@@ -19,6 +19,7 @@ set -euvx
 export PATH="$PATH:/opt/homebrew/bin"
 
 export CARGO_TARGET_DIR="$DERIVED_FILE_DIR/cargo"
+export CARGO_HOME="${SOW_IOS_CARGO_HOME:-${CARGO_HOME:-$HOME/.cargo}}"
 
 # Avoid Rust + Xcode toolchain `ld: library 'System' not found` (rust#80817).
 export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
@@ -51,7 +52,7 @@ for arch in $ARCHS; do
       ;;
   esac
 
-  cargo build $RELFLAG --target "$TARGET" -p sow-client --manifest-path "$REPO_ROOT/Cargo.toml"
+  cargo build --locked $RELFLAG --target "$TARGET" -p sow-client --manifest-path "$REPO_ROOT/Cargo.toml"
 
   EXECUTABLES="$EXECUTABLES $DERIVED_FILE_DIR/cargo/$TARGET/$PROFILE/client"
 done
