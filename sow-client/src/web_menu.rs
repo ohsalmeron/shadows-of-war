@@ -122,6 +122,13 @@ enum WebMenuCommand {
     },
     Surrender,
     ToggleLeaderboard,
+    ToggleTutorialObjectives,
+    ToggleDevSidebar,
+    SetDevConfig {
+        field: WebDevConfigField,
+        value: f32,
+    },
+    ResetDevConfig,
     ReturnToMenu,
     ContinueObserving,
     ZoomIn,
@@ -138,6 +145,16 @@ enum WebMenuCommand {
     FocusPlayer {
         player_id: u16,
     },
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum WebDevConfigField {
+    Thickness,
+    Darkness,
+    ShoreThickness,
+    ConquestDuration,
+    TerritoryOpacity,
 }
 
 thread_local! {
@@ -159,6 +176,13 @@ thread_local! {
     /// WASM nameplates need the same rank cache as native egui for the top-three crown/medals.
     /// Refreshing is keyed by the authoritative snapshot tick, not the render/publish cadence.
     static LAST_WEB_RANKINGS_TICK: Cell<Option<u64>> = const { Cell::new(None) };
+    /// Cold panel JSON is rebuilt only when its snapshot input changes. Hot HUD updates reuse it.
+    static LAST_WEB_LEADERBOARD_PAYLOAD:
+        RefCell<Option<(u64, u16, serde_json::Value)>> = const { RefCell::new(None) };
+    static LAST_WEB_HOVER_PAYLOAD:
+        RefCell<Option<(u64, u32, u16, u16, serde_json::Value)>> = const { RefCell::new(None) };
+    static LAST_WEB_INBOX_PAYLOAD:
+        RefCell<Option<(u64, u16, serde_json::Value)>> = const { RefCell::new(None) };
 }
 
 /// Minimum gap between state-publish attempts, matching the JS poll cadence.
@@ -179,6 +203,14 @@ struct HudPublishKey {
     settings_music_volume: u32,
     settings_reduced_motion: bool,
     leaderboard_open: bool,
+    tutorial_active: bool,
+    tutorial_objectives_open: bool,
+    dev_sidebar_open: bool,
+    dev_thickness: u32,
+    dev_darkness: u32,
+    dev_shore_thickness: u32,
+    dev_conquest_duration: u32,
+    dev_territory_opacity: u32,
     inbox_open: bool,
     transfer_target: Option<u16>,
     betrayal_open: bool,
@@ -606,6 +638,13 @@ impl SowApp {
                 }
                 WebMenuCommand::ToggleLeaderboard => {
                     self.ui.show_leaderboard = !self.ui.show_leaderboard;
+                    if self.ui.show_leaderboard {
+                        self.ui.tutorial_objectives_open = false;
+                        #[cfg(any(feature = "dev", debug_assertions))]
+                        {
+                            self.ui.show_dev_sidebar = false;
+                        }
+                    }
                 }
                 WebMenuCommand::ReturnToMenu => {
                     self.process_ui_actions(
@@ -634,6 +673,73 @@ impl SowApp {
                         &self.ui.egui_ctx.clone(),
                         Some(UiAction::CenterCamera),
                     );
+                }
+                WebMenuCommand::ToggleTutorialObjectives => {
+                    if crate::hud::tutorial::tutorial_renders(
+                        self.ui.tutorial_active,
+                        self.net.is_offline,
+                    ) {
+                        self.ui.tutorial_objectives_open =
+                            !self.ui.tutorial_objectives_open;
+                        if self.ui.tutorial_objectives_open {
+                            self.ui.show_leaderboard = false;
+                            #[cfg(any(feature = "dev", debug_assertions))]
+                            {
+                                self.ui.show_dev_sidebar = false;
+                            }
+                        }
+                    }
+                }
+                WebMenuCommand::ToggleDevSidebar => {
+                    #[cfg(any(feature = "dev", debug_assertions))]
+                    {
+                        self.ui.show_dev_sidebar = !self.ui.show_dev_sidebar;
+                        if self.ui.show_dev_sidebar {
+                            self.ui.show_leaderboard = false;
+                            self.ui.tutorial_objectives_open = false;
+                        }
+                    }
+                }
+                WebMenuCommand::SetDevConfig { field, value } => {
+                    #[cfg(any(feature = "dev", debug_assertions))]
+                    {
+                        if self.ui.show_dev_sidebar && value.is_finite() {
+                            sow_ui_kit::theme::dev_config::DevConfig::update(|config| {
+                                match field {
+                                    WebDevConfigField::Thickness => {
+                                        config.thickness = value.clamp(0.0, 1.0)
+                                    }
+                                    WebDevConfigField::Darkness => {
+                                        config.darkness = value.clamp(0.0, 1.0)
+                                    }
+                                    WebDevConfigField::ShoreThickness => {
+                                        config.shore_thickness = value.clamp(0.0, 1.0)
+                                    }
+                                    WebDevConfigField::ConquestDuration => {
+                                        config.conquest_duration = value.clamp(0.1, 10.0)
+                                    }
+                                    WebDevConfigField::TerritoryOpacity => {
+                                        config.territory_opacity = value.clamp(0.0, 1.0)
+                                    }
+                                }
+                            });
+                        }
+                    }
+                    #[cfg(not(any(feature = "dev", debug_assertions)))]
+                    let _ = (field, value);
+                }
+                WebMenuCommand::ResetDevConfig => {
+                    #[cfg(any(feature = "dev", debug_assertions))]
+                    {
+                        let defaults = sow_ui_kit::theme::dev_config::DevConfig::default();
+                        let mut config = sow_ui_kit::theme::dev_config::DevConfig::get();
+                        config.thickness = defaults.thickness;
+                        config.darkness = defaults.darkness;
+                        config.shore_thickness = defaults.shore_thickness;
+                        config.conquest_duration = defaults.conquest_duration;
+                        config.territory_opacity = defaults.territory_opacity;
+                        sow_ui_kit::theme::dev_config::DevConfig::set(config);
+                    }
                 }
                 WebMenuCommand::ExpressEmoji { emoji, pinned } => {
                     self.send_intent(sow_core::protocol::GameplayIntent::ExpressEmoji {
@@ -692,6 +798,12 @@ fn hovered_tile_owner(app: &SowApp) -> (u32, u16) {
 fn hud_publish_key(app: &SowApp) -> HudPublishKey {
     let hud = &app.ui.app.hud_state;
     let (hovered_tile, hovered_owner) = hovered_tile_owner(app);
+    let tutorial_active = crate::hud::tutorial::tutorial_renders(
+        app.ui.tutorial_active,
+        app.net.is_offline,
+    );
+    let tutorial_objectives_open = tutorial_active && app.ui.tutorial_objectives_open;
+    let (dev_sidebar_open, dev_config_key) = dev_config_key(app);
     let snapshot_tick = app
         .sim
         .current_snapshot
@@ -703,7 +815,8 @@ fn hud_publish_key(app: &SowApp) -> HudPublishKey {
         || hud.show_alliance_inbox
         || hud.show_ask_panel.is_some()
         || hud.show_betrayal_warning.is_some()
-        || hud.sync_state.is_some();
+        || hud.sync_state.is_some()
+        || tutorial_objectives_open;
     let my_pid = app.sim.my_player_id.unwrap_or(hud.my_player_id);
     let inbox_count = my_player_summary(app, snapshot_tick, my_pid)
         .map(|player| player.inbox_count)
@@ -736,10 +849,69 @@ fn hud_publish_key(app: &SowApp) -> HudPublishKey {
         inbox_count,
         notification_len: hud.hud_notifications.len(),
         is_spectating: app.ui.is_spectating,
+        tutorial_active,
+        tutorial_objectives_open,
+        dev_sidebar_open,
+        dev_thickness: dev_config_key[0],
+        dev_darkness: dev_config_key[1],
+        dev_shore_thickness: dev_config_key[2],
+        dev_conquest_duration: dev_config_key[3],
+        dev_territory_opacity: dev_config_key[4],
         snapshot_tick: if cold_open { snapshot_tick } else { 0 },
         hovered_tile,
         hovered_owner,
     }
+}
+
+#[cfg(any(feature = "dev", debug_assertions))]
+fn dev_config_key(app: &SowApp) -> (bool, [u32; 5]) {
+    if !app.ui.show_dev_sidebar {
+        return (false, [0; 5]);
+    }
+    let config = sow_ui_kit::theme::dev_config::DevConfig::get();
+    (
+        true,
+        [
+            config.thickness.to_bits(),
+            config.darkness.to_bits(),
+            config.shore_thickness.to_bits(),
+            config.conquest_duration.to_bits(),
+            config.territory_opacity.to_bits(),
+        ],
+    )
+}
+
+#[cfg(not(any(feature = "dev", debug_assertions)))]
+fn dev_config_key(_app: &SowApp) -> (bool, [u32; 5]) {
+    (false, [0; 5])
+}
+
+#[cfg(any(feature = "dev", debug_assertions))]
+fn dev_tools_payload(app: &SowApp) -> serde_json::Value {
+    let open = app.ui.show_dev_sidebar;
+    let mut payload = serde_json::json!({
+        "available": true,
+        "open": open,
+    });
+    if open {
+        let config = sow_ui_kit::theme::dev_config::DevConfig::get();
+        payload["config"] = serde_json::json!({
+            "thickness": config.thickness,
+            "darkness": config.darkness,
+            "shore_thickness": config.shore_thickness,
+            "conquest_duration": config.conquest_duration,
+            "territory_opacity": config.territory_opacity,
+        });
+    }
+    payload
+}
+
+#[cfg(not(any(feature = "dev", debug_assertions)))]
+fn dev_tools_payload(_app: &SowApp) -> serde_json::Value {
+    serde_json::json!({
+        "available": false,
+        "open": false,
+    })
 }
 
 fn player_json(player: &sow_core::protocol::PlayerSnapshot, my_pid: u16, total_land_tiles: u32) -> serde_json::Value {
@@ -812,6 +984,72 @@ fn build_hover_payload(
     payload["ports"] = serde_json::json!(ports);
     payload["bunkers"] = serde_json::json!(bunkers);
     payload
+}
+
+fn cached_leaderboard_payload(
+    snapshot: &sow_core::protocol::SimSnapshot,
+    my_pid: u16,
+) -> serde_json::Value {
+    LAST_WEB_LEADERBOARD_PAYLOAD.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some((tick, cached_pid, payload)) = cache.as_ref() {
+            if *tick == snapshot.tick && *cached_pid == my_pid {
+                return payload.clone();
+            }
+        }
+        let payload = build_leaderboard(snapshot, my_pid);
+        *cache = Some((snapshot.tick, my_pid, payload.clone()));
+        payload
+    })
+}
+
+fn cached_hover_payload(
+    snapshot: &sow_core::protocol::SimSnapshot,
+    hovered_tile: u32,
+    owner_id: u16,
+    my_pid: u16,
+) -> serde_json::Value {
+    if owner_id == 0 {
+        return serde_json::Value::Null;
+    }
+    LAST_WEB_HOVER_PAYLOAD.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some((tick, cached_tile, cached_owner, cached_pid, payload)) = cache.as_ref() {
+            if *tick == snapshot.tick
+                && *cached_tile == hovered_tile
+                && *cached_owner == owner_id
+                && *cached_pid == my_pid
+            {
+                return payload.clone();
+            }
+        }
+        let payload = build_hover_payload(snapshot, owner_id, my_pid);
+        *cache = Some((
+            snapshot.tick,
+            hovered_tile,
+            owner_id,
+            my_pid,
+            payload.clone(),
+        ));
+        payload
+    })
+}
+
+fn cached_inbox_payload(
+    snapshot: &sow_core::protocol::SimSnapshot,
+    my_pid: u16,
+) -> serde_json::Value {
+    LAST_WEB_INBOX_PAYLOAD.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some((tick, cached_pid, payload)) = cache.as_ref() {
+            if *tick == snapshot.tick && *cached_pid == my_pid {
+                return payload.clone();
+            }
+        }
+        let payload = build_inbox(snapshot, my_pid);
+        *cache = Some((snapshot.tick, my_pid, payload.clone()));
+        payload
+    })
 }
 
 fn build_inbox(snapshot: &sow_core::protocol::SimSnapshot, my_pid: u16) -> serde_json::Value {
@@ -922,6 +1160,17 @@ fn build_hud_payload(app: &SowApp) -> serde_json::Value {
         "inbox_count": me.map(|player| player.inbox_count).unwrap_or(0),
         "match_over": match_over,
         "is_spectating": app.ui.is_spectating,
+        "quests": {
+            "available": crate::hud::tutorial::tutorial_renders(
+                app.ui.tutorial_active,
+                app.net.is_offline,
+            ),
+            "open": crate::hud::tutorial::tutorial_renders(
+                app.ui.tutorial_active,
+                app.net.is_offline,
+            ) && app.ui.tutorial_objectives_open,
+        },
+        "dev_tools": dev_tools_payload(app),
         "is_winner": is_winner,
         "winner_name": winner_name,
         "featured_skin": featured_skin.map(|skin| serde_json::json!({
@@ -940,13 +1189,13 @@ fn build_hud_payload(app: &SowApp) -> serde_json::Value {
 
     if let Some(snapshot) = snapshot {
         if hovered_owner != 0 {
-            payload["hovered"] = build_hover_payload(snapshot, hovered_owner, my_pid);
+            payload["hovered"] = cached_hover_payload(snapshot, hovered_tile, hovered_owner, my_pid);
         }
         if app.ui.show_leaderboard {
-            payload["leaderboard"] = build_leaderboard(snapshot, my_pid);
+            payload["leaderboard"] = cached_leaderboard_payload(snapshot, my_pid);
         }
         if hud.show_alliance_inbox {
-            payload["inbox"] = build_inbox(snapshot, my_pid);
+            payload["inbox"] = cached_inbox_payload(snapshot, my_pid);
         }
         if let Some(target_id) = hud.show_ask_panel {
             if let Some(target) = snapshot.players.iter().find(|player| player.id == target_id) {
@@ -1071,6 +1320,9 @@ pub(crate) fn publish_state(app: &mut SowApp) {
         LAST_HUD_KEY.with(|last| *last.borrow_mut() = None);
         LAST_MY_PLAYER.with(|cache| *cache.borrow_mut() = None);
         LAST_WEB_RANKINGS_TICK.with(|tick| tick.set(None));
+        LAST_WEB_LEADERBOARD_PAYLOAD.with(|cache| *cache.borrow_mut() = None);
+        LAST_WEB_HOVER_PAYLOAD.with(|cache| *cache.borrow_mut() = None);
+        LAST_WEB_INBOX_PAYLOAD.with(|cache| *cache.borrow_mut() = None);
         app.ui.leaderboard_rankings.clear();
         let rotation_period = ((js_sys::Date::now().max(0.0) / 1000.0) as u64)
             / sow_data::commerce::ROTATION_PERIOD_SECS;

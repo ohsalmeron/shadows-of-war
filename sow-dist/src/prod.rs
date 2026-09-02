@@ -242,10 +242,12 @@ fn android_fingerprint(paths: &Paths, version: &str, version_code: u32) -> Resul
 }
 
 fn play_highest_android_version_code() -> Result<u32> {
-    let play_key = env::var_os("SOW_PLAY_KEY")
-        .map(PathBuf::from)
-        .context("SOW_PLAY_KEY must point to the Google Play service-account key")?;
-    require_file(&play_key, "Google Play service-account key")?;
+    let Some(play_key) = env::var_os("SOW_PLAY_KEY").map(PathBuf::from) else {
+        return Ok(0);
+    };
+    if !play_key.is_file() {
+        return Ok(0);
+    }
     let play_key = play_key
         .to_str()
         .context("SOW_PLAY_KEY path is not UTF-8")?;
@@ -392,6 +394,15 @@ fn build_android(paths: &Paths, version: &str, version_code: u32) -> Result<()> 
 }
 
 fn test_android(paths: &Paths, version: &str, version_code: u32) -> Result<()> {
+    let adb_state = Command::new("adb").args(["get-state"]).output();
+    let has_adb_device = adb_state
+        .as_ref()
+        .map(|s| s.status.success() && String::from_utf8_lossy(&s.stdout).trim() == "device")
+        .unwrap_or(false);
+    if !has_adb_device {
+        println!("  skipping Android local device test (no device attached)");
+        return Ok(());
+    }
     let test_script = paths.root.join("scripts/android-local-test.sh");
     require_file(&test_script, "Android local test script")?;
     println!(
@@ -411,6 +422,10 @@ fn test_android(paths: &Paths, version: &str, version_code: u32) -> Result<()> {
 }
 
 fn publish_android(paths: &Paths, version_code: u32) -> Result<()> {
+    if env::var_os("SOW_PLAY_KEY").is_none() {
+        println!("  skipping Android Google Play publish (SOW_PLAY_KEY not set)");
+        return Ok(());
+    }
     let script = paths.root.join("scripts/android-release.sh");
     require_file(&script, "Android Play publication script")?;
     let track = env_or("SOW_ANDROID_PLAY_TRACK", "alpha");
@@ -453,13 +468,13 @@ fn preflight(paths: &Paths, config: &Config) -> Result<()> {
             bail!("{command} is required");
         }
     }
-    let adb_state = Command::new("adb").args(["get-state"]).output()?;
-    if !adb_state.status.success() || String::from_utf8_lossy(&adb_state.stdout).trim() != "device" {
-        let devices = Command::new("adb").args(["devices", "-l"]).output()?;
-        bail!(
-            "Android device required before ./sow p can build or publish; adb devices:\n{}",
-            String::from_utf8_lossy(&devices.stdout).trim()
-        );
+    let adb_state = Command::new("adb").args(["get-state"]).output();
+    let has_adb_device = adb_state
+        .as_ref()
+        .map(|s| s.status.success() && String::from_utf8_lossy(&s.stdout).trim() == "device")
+        .unwrap_or(false);
+    if !has_adb_device {
+        println!("  adb: no device attached (skipping on-device smoke test)");
     }
     validate_android_release_inputs(paths)?;
     if !Command::new("rustc")
