@@ -6,6 +6,7 @@ pub const FREE_ROTATION_SIZE: usize = 8;
 pub const ROTATION_PERIOD_SECS: u64 = 7 * 24 * 60 * 60;
 // ponytail: one balancing constant until real retention data exists; move pricing to live config then.
 pub const LEADER_UNLOCK_COST_LAURELS: u64 = 500;
+pub const LEADER_UNLOCK_COST_GEMS: u64 = 1_500;
 
 const GEM_BUNDLES: [(&str, u64); 3] = [
     ("sow_gems_500", 500),
@@ -16,9 +17,9 @@ const GEM_BUNDLES: [(&str, u64); 3] = [
 // Original SOW cosmetic catalog. The style id is an internal renderer hint;
 // the public id is the only value persisted in player ownership.
 const SKINS: [(&str, &str, &str, u64, u8); 3] = [
-    ("ember_vein", "Ember Vein", "gameplay/skins/ember_vein.svg", 300, 1),
-    ("storm_grid", "Storm Grid", "gameplay/skins/storm_grid.svg", 450, 2),
-    ("royal_lattice", "Royal Lattice", "gameplay/skins/royal_lattice.svg", 600, 3),
+    ("ember_vein", "Ember Vein", "gameplay/skins/ember_vein.svg", 500, 1),
+    ("storm_grid", "Storm Grid", "gameplay/skins/storm_grid.svg", 1_000, 2),
+    ("royal_lattice", "Royal Lattice", "gameplay/skins/royal_lattice.svg", 1_500, 3),
 ];
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -28,6 +29,7 @@ pub struct LeaderOffer {
     pub civilization: String,
     pub perk: String,
     pub cost_laurels: u64,
+    pub cost_gems: u64,
     pub free_rotation: bool,
     pub owned: bool,
     pub available: bool,
@@ -245,6 +247,7 @@ pub fn catalog_for_profile(
                 civilization: leader.civilization().name().to_string(),
                 perk: leader.perk_description().to_string(),
                 cost_laurels: LEADER_UNLOCK_COST_LAURELS,
+                cost_gems: LEADER_UNLOCK_COST_GEMS,
                 free_rotation,
                 owned,
                 available: free_rotation || owned,
@@ -302,8 +305,17 @@ mod tests {
     #[test]
     fn skins_are_original_and_have_stable_prices() {
         assert_eq!(skins().len(), 3);
-        assert_eq!(skin_by_id("storm_grid").map(|skin| skin.cost_gems), Some(450));
+        assert_eq!(skin_by_id("ember_vein").map(|skin| skin.cost_gems), Some(500));
+        assert_eq!(skin_by_id("storm_grid").map(|skin| skin.cost_gems), Some(1_000));
+        assert_eq!(skin_by_id("royal_lattice").map(|skin| skin.cost_gems), Some(1_500));
         assert_eq!(skin_style_for_id(Some("royal_lattice")), 3);
         assert_eq!(skin_style_for_id(Some("missing")), 0);
+    }
+
+    #[test]
+    fn leader_has_dual_currency_price() {
+        assert_eq!(LEADER_UNLOCK_COST_LAURELS, 500);
+        assert_eq!(LEADER_UNLOCK_COST_GEMS, 1_500);
+        assert!(skins().iter().map(|skin| skin.cost_gems).sum::<u64>() > GEM_BUNDLES[2].1);
     }
 }

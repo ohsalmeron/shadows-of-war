@@ -34,7 +34,6 @@
     var pendingCommands = [];
     var pendingHud = null;
     var lastHudRaw = "";
-    var pollTimer = null;
 
     var LEADER_REIGNS = {
         "Caesar": "Reigned 49 – 44 BC",

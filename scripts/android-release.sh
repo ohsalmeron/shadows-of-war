@@ -33,6 +33,8 @@ fi
 [[ -x "$PROJECT/gradlew" ]] || die "Android Gradle wrapper missing: $PROJECT/gradlew"
 [[ -f "$PROJECT/key.properties" ]] || die "Android signing properties missing"
 [[ -f "$PLAY_KEY" ]] || die "Google Play service-account key missing: $PLAY_KEY"
+[[ "${SOW_REVENUECAT_ANDROID_PUBLIC_KEY:-}" == goog_* ]] \
+    || die "SOW_REVENUECAT_ANDROID_PUBLIC_KEY must be a Google Play public key"
 [[ "$PLAY_KEY" != "$ROOT"/* ]] || die "Google Play key must stay outside the repository"
 [[ "$(stat -c '%a' "$PLAY_KEY")" == "600" ]] || die "Google Play key must have mode 600"
 [[ "$(stat -c '%a' "$PROJECT/key.properties")" == "600" ]] || die "Android signing properties must have mode 600"
@@ -128,6 +130,10 @@ PY
 UPLOAD_DIR="$ROOT/dist/android/upload"
 UPLOAD_AAB="$UPLOAD_DIR/$PACKAGE.aab"
 install -d "$UPLOAD_DIR"
+for artifact in "$UPLOAD_DIR"/*; do
+    [[ -f "$artifact" ]] || continue
+    [[ "$artifact" == "$UPLOAD_AAB" ]] || rm -f "$artifact"
+done
 install -m 0644 "$AAB" "$UPLOAD_AAB"
 echo "AAB ready: $UPLOAD_AAB"
 

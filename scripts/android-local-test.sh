@@ -13,7 +13,15 @@ START="$OUT/start-$STAMP.txt"
 VERSION_NAME="${SOW_ANDROID_TEST_VERSION_NAME:-$(tr -d '[:space:]' <"$ROOT/.version")}"
 VERSION_CODE="${SOW_ANDROID_TEST_VERSION_CODE:-$(tr -d '[:space:]' <"$ROOT/.android-version-code")}"
 SKIP_BUILD="${SOW_ANDROID_SKIP_BUILD:-0}"
-REVENUECAT_KEY_ARG="-PrevenueCatAndroidPublicKey=${SOW_REVENUECAT_ANDROID_PUBLIC_KEY:-}"
+
+die() {
+    echo "ERROR: $*" >&2
+    exit 1
+}
+
+[[ "${SOW_REVENUECAT_ANDROID_PUBLIC_KEY:-}" == goog_* ]] \
+    || die "SOW_REVENUECAT_ANDROID_PUBLIC_KEY must be a Google Play public key"
+REVENUECAT_KEY_ARG="-PrevenueCatAndroidPublicKey=$SOW_REVENUECAT_ANDROID_PUBLIC_KEY"
 
 case "$VARIANT" in
     release)
@@ -34,10 +42,7 @@ esac
 
 mkdir -p "$OUT"
 
-command -v adb >/dev/null || {
-    echo "adb is required; install android-tools first" >&2
-    exit 1
-}
+command -v adb >/dev/null || die "adb is required; install android-tools first"
 
 if ! adb get-state 2>/dev/null | grep -qx device; then
     echo "No Android device is connected or USB debugging is unavailable." >&2
@@ -84,7 +89,7 @@ APP_WARNINGS="$OUT/app-warnings-$STAMP.txt"
 if [ -n "$APP_PID" ]; then
     awk -v pid="$APP_PID" '$3 == pid {print}' "$LOG" >"$APP_LOG"
     # These are Android/Samsung graphics-runtime diagnostics, not app code.
-    awk -v pid="$APP_PID" '$3 == pid && $5 ~ /^[WE]$/ && $6 !~ /^(Zygote|Gralloc3|libEGL):?$/ && $0 !~ /Not starting debugger since process cannot load the jdwp agent/ {print}' "$LOG" >"$APP_WARNINGS"
+    awk -v pid="$APP_PID" '$3 == pid && $5 ~ /^[WE]$/ && $6 !~ /^(Zygote|Gralloc3|libEGL):?$/ && $0 !~ /Not starting debugger since process cannot load the jdwp agent/ && $0 !~ /Unknown bits set in runtime_flags/ {print}' "$LOG" >"$APP_WARNINGS"
 fi
 
 if [ -s "$APP_WARNINGS" ]; then

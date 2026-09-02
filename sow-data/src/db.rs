@@ -1729,14 +1729,20 @@ impl PlayerDb {
             .map(|index| index.map(|index| index.account_id))
     }
 
-    pub async fn unlock_leader_with_laurels(
+    pub async fn unlock_leader(
         &self,
         account_id: &str,
         requested_leader: &str,
+        currency: &str,
     ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
         let leader = crate::commerce::leader_from_id(requested_leader)
             .ok_or("unknown leader")?;
         let leader_id = crate::commerce::leader_id(leader).to_string();
+        let (cost, use_gems) = match currency {
+            "gems" => (crate::commerce::LEADER_UNLOCK_COST_GEMS, true),
+            "" | "laurels" => (crate::commerce::LEADER_UNLOCK_COST_LAURELS, false),
+            _ => return Err("invalid leader unlock currency".into()),
+        };
         let period = crate::commerce::current_rotation_period();
         let mut con = self.get_connection().await?;
         let mut failure = None;
@@ -1752,10 +1758,18 @@ impl PlayerDb {
                     period,
                 ) {
                     failure = Some("leader is currently free in rotation");
-                } else if account.profile.laurels < crate::commerce::LEADER_UNLOCK_COST_LAURELS {
-                    failure = Some("insufficient laurels");
+                } else if (if use_gems {
+                    account.profile.gems
                 } else {
-                    account.profile.laurels -= crate::commerce::LEADER_UNLOCK_COST_LAURELS;
+                    account.profile.laurels
+                }) < cost {
+                    failure = Some(if use_gems { "insufficient gems" } else { "insufficient laurels" });
+                } else {
+                    if use_gems {
+                        account.profile.gems -= cost;
+                    } else {
+                        account.profile.laurels -= cost;
+                    }
                     account.profile.owned_leaders.insert(leader_id.clone());
                     account.updated_at = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)

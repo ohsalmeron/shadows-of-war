@@ -648,6 +648,11 @@
   window.addEventListener(
     "wheel",
     function (e) {
+      // The menu owns its internal scrolling (Store, Profile, Browser, etc.).
+      // Only suppress wheel scrolling while the fullscreen game surface is active.
+      if (e.target && e.target.closest && e.target.closest("#sow-menu")) {
+        return;
+      }
       e.preventDefault();
     },
     { passive: false }

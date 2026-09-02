@@ -1097,6 +1097,7 @@ pub(crate) fn publish_state(app: &mut SowApp) {
                     "owned": owned,
                     "available": free_rotation || owned,
                     "cost_laurels": sow_data::commerce::LEADER_UNLOCK_COST_LAURELS,
+                    "cost_gems": sow_data::commerce::LEADER_UNLOCK_COST_GEMS,
                 })
             })
             .collect();

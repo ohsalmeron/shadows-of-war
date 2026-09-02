@@ -703,15 +703,12 @@
 
     window.SOW_onStateUpdate = handleStateUpdate;
 
-    function poll() {
-        // Rust calls SOW_onStateUpdate for every changed payload. The fallback poll is
-        // only useful for menu countdown text; it must not run during a match.
-        if (state && state.phase === "Playing") return;
+    function syncInitialState() {
         var raw = window.SOW_MENU_STATE;
         handleStateUpdate(raw);
     }
 
     root.hidden = true;
     if (hudRoot) hudRoot.hidden = true;
-    pollTimer = window.setInterval(poll, 80);
+    syncInitialState();
 })();

@@ -128,6 +128,8 @@ struct UnlockLeaderRequest {
     public_id: String,
     auth_secret: String,
     leader_id: String,
+    #[serde(default)]
+    currency: String,
 }
 
 #[derive(Deserialize)]
@@ -210,7 +212,7 @@ async fn handle_unlock_leader(
     }
     match state
         .db
-        .unlock_leader_with_laurels(&account_id, &payload.leader_id)
+        .unlock_leader(&account_id, &payload.leader_id, &payload.currency)
         .await
     {
         Ok(account) => (StatusCode::OK, Json(account.without_auth_secret())).into_response(),

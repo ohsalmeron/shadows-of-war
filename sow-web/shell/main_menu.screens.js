@@ -205,32 +205,44 @@
     }
 
     function renderStoreLeader(leader) {
+        var leaderSlug = leader.slug || leader.id || "null";
+        var avatarUrl = asset("gameplay/avatars/" + leaderSlug + ".webp");
+        var desktopArt = asset("shell/leaders/" + leaderSlug + "_desktop.webp");
+        var mobileArt = asset("shell/leaders/" + leaderSlug + "_mobile.webp");
         var status = leader.owned ? "OWNED" : (leader.free_rotation ? "FREE THIS WEEK" : "LOCKED");
         var action = leader.owned || leader.free_rotation
-            ? "<span style='color:var(--sow-gold);font-size:10px;font-weight:900;letter-spacing:.08em'>" + status + "</span>"
-            : "<button class='sow-menu__secondary' type='button' data-command='unlock_leader' data-leader-id='" + esc(leader.id) + "' style='margin:0;min-height:34px;font-size:9px'>UNLOCK " + esc(leader.cost_laurels) + " LAURELS</button>";
-        return "<article class='sow-menu__leader-card' style='cursor:default;align-items:flex-start'><div class='sow-menu__leader-card-avatar' style=\"background-image:url('" + esc(asset("gameplay/avatars/" + leader.slug + ".webp")) + "')\"></div><div class='sow-menu__leader-card-info' style='flex:1'><strong>" + esc(leader.name) + "</strong><small>" + esc(leader.civilization) + "</small><small style='margin-top:6px'>" + action + "</small></div></article>";
+            ? "<span class='sow-store__offer-state'>" + status + "</span>"
+            : "<div class='sow-store__buy-row'>" +
+              "<button class='sow-store__buy' type='button' data-command='unlock_leader' data-currency='laurels' data-leader-id='" + esc(leader.id) + "'>" + esc(leader.cost_laurels) + " LAURELS</button>" +
+              "<button class='sow-store__buy' type='button' data-command='unlock_leader' data-currency='gems' data-leader-id='" + esc(leader.id) + "'>" + esc(leader.cost_gems) + " GEMS</button>" +
+              "</div>";
+        return "<article class='sow-store__leader-card " + (leader.owned ? "is-owned" : "") + "'>" +
+            "<div class='sow-store__leader-visual'><picture><source media='(max-width: 700px)' srcset='" + esc(mobileArt) + "'><img src='" + esc(desktopArt) + "' alt='" + esc(leader.name) + "' width='640' height='360' loading='lazy'></picture>" +
+                "<span class='sow-store__leader-avatar'><img src='" + esc(avatarUrl) + "' alt='' width='64' height='64' loading='lazy'></span>" +
+                "<span class='sow-store__leader-status'>" + esc(status) + "</span>" +
+            "</div><div class='sow-store__leader-body'><div class='sow-store__leader-title'><h3>" + esc(leader.name) + "</h3><span>" + esc(leader.civilization) + "</span></div>" +
+            "<p class='sow-store__leader-perk'>" + esc(leader.perk) + "</p><div class='sow-store__leader-action'>" + action + "</div></div></article>";
     }
 
     function renderStoreBundle(bundle) {
         var href = nativePurchaseHref(bundle.product_id);
         var action = href
-            ? "<a class='sow-menu__primary' href='" + esc(href) + "' style='min-height:38px;font-size:10px;text-decoration:none'>BUY IN GOOGLE PLAY <span>↗</span></a>"
-            : "<button class='sow-menu__secondary' type='button' disabled style='min-height:38px;font-size:10px'>ACCOUNT REQUIRED</button>";
-        return "<article class='sow-menu__leader-card' style='display:flex;flex-direction:column;align-items:stretch;gap:10px'><strong>" + esc(bundle.gems) + " GEMS</strong><small>" + esc(bundle.product_id) + "</small>" + action + "</article>";
+            ? "<a class='sow-store__buy sow-store__buy--primary' href='" + esc(href) + "'>BUY GEMS <span aria-hidden='true'>↗</span></a>"
+            : "<button class='sow-store__buy' type='button' disabled>ACCOUNT REQUIRED</button>";
+        return "<article class='sow-store__bundle'><span class='sow-store__bundle-icon' aria-hidden='true'>✦</span><div><strong>" + esc(bundle.gems) + " GEMS</strong><small>One-time gem bundle</small></div>" + action + "</article>";
     }
 
     function renderStoreSkin(skin) {
         var equipped = state.selected_skin === skin.id;
         var action;
         if (equipped) {
-            action = "<span style='color:var(--sow-gold);font-size:10px;font-weight:900;letter-spacing:.08em'>EQUIPPED</span>";
+            action = "<span class='sow-store__offer-state'>EQUIPPED</span>";
         } else if (skin.owned) {
-            action = "<button class='sow-menu__secondary' type='button' data-command='equip_skin' data-skin-id='" + esc(skin.id) + "' style='margin:0;min-height:34px;font-size:9px'>EQUIP</button>";
+            action = "<button class='sow-store__buy' type='button' data-command='equip_skin' data-skin-id='" + esc(skin.id) + "'>EQUIP</button>";
         } else {
-            action = "<button class='sow-menu__secondary' type='button' data-command='unlock_skin' data-skin-id='" + esc(skin.id) + "' style='margin:0;min-height:34px;font-size:9px'>UNLOCK " + esc(skin.cost_gems) + " GEMS</button>";
+            action = "<button class='sow-store__buy' type='button' data-command='unlock_skin' data-skin-id='" + esc(skin.id) + "'>UNLOCK " + esc(skin.cost_gems) + " GEMS</button>";
         }
-        return "<article class='sow-menu__leader-card' style='cursor:default;align-items:flex-start'><div style=\"width:58px;height:58px;flex:none;border-radius:12px;background:#10131a url('" + esc(asset(skin.asset_path)) + "') center/cover no-repeat;border:1px solid rgba(255,255,255,.16)\"></div><div class='sow-menu__leader-card-info' style='flex:1'><strong>" + esc(skin.name) + "</strong><small>ALL LEADERS · ORIGINAL SOW SKIN</small><small style='margin-top:6px'>" + action + "</small></div></article>";
+        return "<article class='sow-store__skin'><div class='sow-store__skin-art'><img src='" + esc(asset(skin.asset_path)) + "' alt='' width='96' height='96' loading='lazy'></div><div class='sow-store__skin-body'><h3>" + esc(skin.name) + "</h3><p>All leaders</p>" + action + "</div></article>";
     }
 
     function renderStore() {
@@ -239,17 +251,15 @@
         var skins = Array.isArray(store.skins) ? store.skins : [];
         var bundles = Array.isArray(store.gem_bundles) ? store.gem_bundles : [];
         return "" +
-            "<div class='sow-menu__backdrop'></div>" +
+            "<div class='sow-menu__backdrop sow-store__backdrop'></div>" +
             "<div class='sow-menu__shell sow-menu__store'>" +
                 renderTopbar() +
                 "<main class='sow-menu__main sow-menu__main--store'><section class='sow-menu__store-slot' data-store-slot aria-label='Store'>" +
-                    "<p class='sow-menu__panel-label'>STORE · " + esc(store.gems || 0) + " GEMS · " + esc(store.laurels || 0) + " LAURELS</p>" +
-                    "<h1 style='margin:0 0 18px;color:#fff;font-size:clamp(28px,4vw,52px);line-height:.95'>BUILD YOUR<br><em style='color:var(--sow-gold);font-style:normal'>LEGACY</em></h1>" +
-                    "<p class='sow-menu__tagline' style='margin:0 0 18px;max-width:none'>Eight leaders rotate free every week. Unlock the others with laurels earned in battle. Gems are for original skins and premium identity.</p>" +
+                    "<header class='sow-store__heading'><div><p class='sow-store__eyebrow'>STORE</p><h1>Store</h1><p>Leaders, skins and gems.</p></div><div class='sow-store__balances'><span><b>✦</b> " + esc(store.gems || 0) + " <small>GEMS</small></span><span><b>◈</b> " + esc(store.laurels || 0) + " <small>LAURELS</small></span></div></header>" +
                     renderFeedback() +
-                    "<p class='sow-menu__panel-sublabel'>LEADERS</p><div class='sow-menu__leader-grid'>" + leaders.map(renderStoreLeader).join("") + "</div>" +
-                    "<p class='sow-menu__panel-sublabel' style='margin-top:22px'>ORIGINAL SKINS · GEMS</p><div class='sow-menu__leader-grid'>" + (skins.map(renderStoreSkin).join("") || "<p class='sow-menu__empty'>No skins available.</p>") + "</div>" +
-                    "<p class='sow-menu__panel-sublabel' style='margin-top:22px'>GEM BUNDLES · ANDROID</p><div class='sow-menu__leader-grid'>" + (bundles.map(renderStoreBundle).join("") || "<p class='sow-menu__empty'>Products are not configured yet.</p>") + "</div>" +
+                    "<section class='sow-store__section' aria-labelledby='sow-store-leaders'><div class='sow-store__section-head'><h2 id='sow-store-leaders'>Leaders</h2><span>Weekly rotation</span></div><div class='sow-store__leader-grid'>" + (leaders.map(renderStoreLeader).join("") || "<p class='sow-menu__empty'>No leaders available.</p>") + "</div></section>" +
+                    "<section class='sow-store__section' aria-labelledby='sow-store-skins'><div class='sow-store__section-head'><h2 id='sow-store-skins'>Skins</h2><span>Cosmetics</span></div><div class='sow-store__skin-grid'>" + (skins.map(renderStoreSkin).join("") || "<p class='sow-menu__empty'>No skins available.</p>") + "</div></section>" +
+                    "<section class='sow-store__section' aria-labelledby='sow-store-gems'><div class='sow-store__section-head'><h2 id='sow-store-gems'>Gem bundles</h2><span>Android</span></div><div class='sow-store__bundle-grid'>" + (bundles.map(renderStoreBundle).join("") || "<p class='sow-menu__empty'>Products are not configured yet.</p>") + "</div></section>" +
                 "</section></main>" +
                 renderFooter("STORE") + renderMobileNav("store") +
             "</div>";
@@ -759,6 +769,7 @@
             createPrivate = false;
             createPassword = "";
         }
+        var sameScreen = previousScreen === screen;
         previousScreen = screen;
         root.style.setProperty("--sow-hero", "url(\"" + heroImage() + "\")");
         root.dataset.screen = screen;
@@ -772,10 +783,10 @@
         var activeVal = isTyping ? activeEl.value : null;
         var selStart = isTyping && typeof activeEl.selectionStart === "number" ? activeEl.selectionStart : null;
         var selEnd = isTyping && typeof activeEl.selectionEnd === "number" ? activeEl.selectionEnd : null;
-        var profileScrollTop = null;
-        if (screen === "profile") {
-            var currentProfileMain = root.querySelector(".sow-profile__main");
-            if (currentProfileMain) profileScrollTop = currentProfileMain.scrollTop;
+        var scrollTop = null;
+        if (sameScreen) {
+            var currentMain = root.querySelector(".sow-menu__main");
+            if (currentMain) scrollTop = currentMain.scrollTop;
         }
 
         if (screen === "home") root.innerHTML = renderHome();
@@ -806,9 +817,9 @@
             }
         }
         updateDynamic();
-        if (profileScrollTop !== null) {
-            var nextProfileMain = root.querySelector(".sow-profile__main");
-            if (nextProfileMain) nextProfileMain.scrollTop = profileScrollTop;
+        if (sameScreen && scrollTop !== null) {
+            var nextMain = root.querySelector(".sow-menu__main");
+            if (nextMain) nextMain.scrollTop = scrollTop;
         }
     }
 
@@ -990,6 +1001,7 @@
         }
         if (command === "unlock_leader") {
             var unlockLeaderId = target.dataset.leaderId;
+            var unlockCurrency = target.dataset.currency || "laurels";
             var unlockAccountId = state && state.purchase_user_id;
             var unlockSecret = null;
             try { unlockSecret = window.localStorage.getItem("sow_account_secret"); } catch (e) {}
@@ -1005,7 +1017,8 @@
                 body: JSON.stringify({
                     public_id: unlockAccountId,
                     auth_secret: unlockSecret,
-                    leader_id: unlockLeaderId
+                    leader_id: unlockLeaderId,
+                    currency: unlockCurrency
                 })
             }).then(function (response) {
                 if (!response.ok) throw new Error("unlock failed");

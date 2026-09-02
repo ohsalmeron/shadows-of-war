@@ -7,7 +7,11 @@ def keystoreProperties = new Properties()
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
-def sowVersionCode = (project.findProperty("sowVersionCode") ?: "3").toString().toInteger()
+def sowVersionCodeProperty = project.findProperty("sowVersionCode")
+if (sowVersionCodeProperty == null) {
+    throw new GradleException("sowVersionCode is required; use ./sow p")
+}
+def sowVersionCode = sowVersionCodeProperty.toString().toInteger()
 def sowVersionName = (project.findProperty("sowVersionName") ?: "0.2.0").toString()
 def revenueCatPublicKey = (project.findProperty("revenueCatAndroidPublicKey") ?: "").toString()
 def escapedRevenueCatPublicKey = revenueCatPublicKey.replace("\\", "\\\\").replace('"', '\\"')

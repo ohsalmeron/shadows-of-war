@@ -37,86 +37,7 @@
     }).catch(() => {});
   }
 
-  // Tactical Web Audio Sound Engine (Cortiz-inspired UI soundscape)
-  class TacticalAudio {
-    constructor() {
-      this.ctx = null;
-      this.unlocked = false;
-    }
-
-    ensureContext() {
-      if (!this.ctx && typeof window !== 'undefined') {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (AudioContext) {
-          this.ctx = new AudioContext();
-        }
-      }
-      if (this.ctx && this.ctx.state === 'suspended') {
-        this.ctx.resume().catch(() => {});
-      }
-    }
-
-    playHover() {
-      this.ensureContext();
-      if (!this.ctx || this.ctx.state !== 'running') return;
-      try {
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(1100, this.ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(750, this.ctx.currentTime + 0.035);
-        gain.gain.setValueAtTime(0.025, this.ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.035);
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start();
-        osc.stop(this.ctx.currentTime + 0.035);
-      } catch (_) {}
-    }
-
-    playConfirm() {
-      this.ensureContext();
-      if (!this.ctx || this.ctx.state !== 'running') return;
-      try {
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(440, this.ctx.currentTime);
-        osc.frequency.setValueAtTime(880, this.ctx.currentTime + 0.04);
-        gain.gain.setValueAtTime(0.05, this.ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.09);
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start();
-        osc.stop(this.ctx.currentTime + 0.09);
-      } catch (_) {}
-    }
-  }
-
-  const audio = new TacticalAudio();
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-
-  // Kinetic Typewriter Effect
-  let typewriterTimer = null;
-  function typeText(element, text, speed = 14) {
-    if (!element) return;
-    if (prefersReducedMotion.matches) {
-      element.textContent = text;
-      return;
-    }
-    if (typewriterTimer) clearInterval(typewriterTimer);
-    element.textContent = '';
-    let i = 0;
-    typewriterTimer = setInterval(() => {
-      if (i < text.length) {
-        element.textContent += text.charAt(i);
-        i++;
-      } else {
-        clearInterval(typewriterTimer);
-        typewriterTimer = null;
-      }
-    }, speed);
-  }
 
   const cards = $$('.leader-card[data-leader-id]');
   const leaders = cards.map(c => ({
@@ -150,18 +71,13 @@
     const preferred = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
     setTheme(saved || preferred);
     $$('[data-theme-toggle]').forEach(toggle => toggle.addEventListener('click', () => {
-      audio.playConfirm();
       setTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
     }));
   }
 
-  function updateLeader(index, playAudio = false) {
+  function updateLeader(index) {
     const leader = leaders[index];
     if (!leader) return;
-
-    if (playAudio) {
-      audio.playConfirm();
-    }
 
     // Trigger subtle glitch burst on hero frame
     const glitch = $('.hologram-glitch');
@@ -201,7 +117,7 @@
     if (detailAbility) detailAbility.textContent = leader.ability;
     const detailDesc = $('[data-detail-description]');
     if (detailDesc) {
-      typeText(detailDesc, leader.description, 12);
+      detailDesc.textContent = leader.description;
     }
 
     $$('.leader-chip').forEach((item, itemIndex) => {
@@ -228,8 +144,7 @@
       button.title = leader.name;
       button.setAttribute('aria-label', `Select ${leader.name}`);
       button.innerHTML = `<span class="sheen" aria-hidden="true"></span><img src="${avatar(leader)}" alt=""><span>${String(index + 1).padStart(2, '0')}</span>`;
-      button.addEventListener('mouseenter', () => audio.playHover());
-      button.addEventListener('click', () => updateLeader(index, true));
+      button.addEventListener('click', () => updateLeader(index));
       rail.appendChild(button);
     });
   }
@@ -241,16 +156,10 @@
       sheen.setAttribute('aria-hidden', 'true');
       card.appendChild(sheen);
 
-      card.addEventListener('mouseenter', () => audio.playHover());
       card.addEventListener('click', () => {
-        updateLeader(index, true);
+        updateLeader(index);
         $('[data-leader-detail]')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       });
-    });
-
-    // Attach audio to all CTA buttons
-    $$('.button').forEach(btn => {
-      btn.addEventListener('mouseenter', () => audio.playHover());
     });
   }
 
@@ -267,7 +176,6 @@
     if (!menu || !toggle) return;
     menu.setAttribute('aria-hidden', 'true');
     toggle.addEventListener('click', () => {
-      audio.playConfirm();
       const open = menu.classList.toggle('is-open');
       toggle.setAttribute('aria-expanded', String(open));
       toggle.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation');
@@ -325,13 +233,11 @@
     }
 
     triggers.forEach(trigger => trigger.addEventListener('click', () => {
-      audio.playConfirm();
       updateAuthUi();
       window.wouAuth.openModal();
     }));
 
     closeBtn?.addEventListener('click', () => {
-      audio.playConfirm();
       window.wouAuth.closeModal();
     });
 
@@ -342,33 +248,27 @@
     });
 
     logoutBtn?.addEventListener('click', () => {
-      audio.playConfirm();
       window.wouAuth.logout();
     });
 
     // SSO buttons
     $('#wou-login-google')?.addEventListener('click', () => {
-      audio.playConfirm();
       window.wouAuth.loginWithOAuth('google');
     });
 
     $('#wou-login-discord')?.addEventListener('click', () => {
-      audio.playConfirm();
       window.wouAuth.loginWithOAuth('discord');
     });
 
     $('#wou-login-twitter')?.addEventListener('click', () => {
-      audio.playConfirm();
       window.wouAuth.loginWithOAuth('twitter');
     });
 
     $('#wou-login-meta')?.addEventListener('click', () => {
-      audio.playConfirm();
       window.wouAuth.loginWithOAuth('meta');
     });
 
     $('#wou-login-eth')?.addEventListener('click', async () => {
-      audio.playConfirm();
       try {
         await window.wouAuth.loginWithEthereum();
       } catch (err) {
@@ -377,7 +277,6 @@
     });
 
     $('#wou-login-sol')?.addEventListener('click', async () => {
-      audio.playConfirm();
       try {
         await window.wouAuth.loginWithSolana();
       } catch (err) {
@@ -386,7 +285,6 @@
     });
 
     $('#wou-login-passkey')?.addEventListener('click', async () => {
-      audio.playConfirm();
       try {
         await window.wouAuth.loginWithPasskey();
       } catch (err) {
@@ -405,7 +303,6 @@
 
     emailForm?.addEventListener('submit', async (e) => {
       e.preventDefault();
-      audio.playConfirm();
       const email = emailInput?.value.trim();
       if (!email) return;
       pendingEmail = email;
@@ -420,7 +317,6 @@
     });
 
     verifyOtpBtn?.addEventListener('click', async () => {
-      audio.playConfirm();
       const code = otpInput?.value.trim();
       if (!code || !pendingEmail) return;
       try {
@@ -437,16 +333,11 @@
     updateAuthUi();
   }
 
-  // Initialize WebGL perspective grid
-  if (typeof window.initTacticalGrid === 'function') {
-    window.initTacticalGrid('tactical-grid');
-  }
-
   initTheme();
   renderLeaderRail();
   bindLeaderGrid();
   if (leaders.length) {
-    updateLeader(0, false);
+    updateLeader(0);
   }
   initMenu();
   initWouAuth();

@@ -10,7 +10,7 @@
     inset: 0;
     z-index: 100;
     overflow-x: hidden;
-    overflow-y: auto;
+    overflow-y: hidden;
     color: #f5f1e8;
     font-family: "Work Sans", system-ui, sans-serif;
     letter-spacing: 0.01em;
@@ -587,7 +587,7 @@
     border-radius: 7px;
     background: rgba(10, 12, 16, 0.7);
     box-sizing: border-box;
-    overflow: auto;
+    overflow: visible;
     backdrop-filter: blur(12px);
 }
 
@@ -915,7 +915,7 @@
     color: #fff;
     cursor: pointer;
     text-align: left;
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .sow-menu__leader-card:hover {
@@ -1002,7 +1002,7 @@
     letter-spacing: 0.08em;
     cursor: pointer;
     text-align: left;
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .sow-menu__mode-tab:hover {
@@ -1091,7 +1091,7 @@
     font-weight: 900;
     letter-spacing: 0.06em;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .sow-menu__pill:hover {
@@ -1431,7 +1431,7 @@
     border-radius: 6px;
     border: 1px solid rgba(255, 255, 255, 0.08);
     background: rgba(255, 255, 255, 0.03);
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
 
 .sow-menu__roster-row.is-me {
@@ -1526,7 +1526,7 @@
     font-size: 9px;
     font-weight: 800;
     cursor: pointer;
-    transition: all 0.1s ease;
+    transition: background-color 0.1s ease, border-color 0.1s ease, color 0.1s ease;
 }
 
 .sow-menu__mod-btn:hover {
@@ -1651,7 +1651,7 @@
 
 @media (max-width: 680px), (orientation: portrait) {
     #sow-menu {
-        overflow: auto;
+        overflow: hidden;
     }
 
     .sow-menu__backdrop {
@@ -1741,8 +1741,8 @@
         width: calc(100% - 24px);
         display: flex;
         flex-direction: column;
-        height: auto;
-        min-height: 100dvh;
+        height: 100%;
+        min-height: 0;
         gap: 12px;
         padding: max(10px, env(safe-area-inset-top)) 0 max(12px, env(safe-area-inset-bottom));
     }
@@ -1849,6 +1849,18 @@
     overflow: hidden;
 }
 
+#sow-menu[data-screen="home"] .sow-menu__main {
+    overflow: hidden;
+}
+
+#sow-menu[data-screen="home"] .sow-menu__public {
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
 #sow-menu .sow-menu__mobile-nav {
     display: none;
 }
@@ -1861,11 +1873,6 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-}
-
-#sow-menu[data-screen="store"] .sow-menu__main {
-    display: grid;
-    place-items: center;
 }
 
 #sow-menu[data-screen="store"] .sow-menu__store-slot {
@@ -1900,12 +1907,6 @@
     #sow-menu .sow-menu__command {
         min-height: 0;
         max-height: none;
-    }
-
-    #sow-menu[data-screen="home"] .sow-menu__main {
-        overflow-y: auto;
-        overscroll-behavior: contain;
-        -webkit-overflow-scrolling: touch;
     }
 
     #sow-menu[data-screen="browser"] .sow-menu__main,
@@ -2026,8 +2027,12 @@
     }
 
     #sow-menu .sow-menu__profile input {
-        width: min(30vw, 128px);
+        width: 100%;
+        min-width: 0;
         max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     #sow-menu .sow-menu__top-actions {

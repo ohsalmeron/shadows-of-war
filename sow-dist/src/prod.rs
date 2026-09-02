@@ -77,6 +77,7 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
     let config = Config::load();
     require_secret("SOW_DB_SECRET")?;
     require_secret("SOW_RELAY_CONTROL_SECRET")?;
+    require_secret("SOW_REVENUECAT_WEBHOOK_SECRET")?;
     println!("==> 1/8 Preflight (read-only)");
     preflight(paths, &config)?;
     let version = version(paths, bump)?;
@@ -316,10 +317,12 @@ fn build_android(paths: &Paths, version: &str, version_code: u32) -> Result<()> 
     let fingerprint = android_fingerprint(paths, version, version_code)?;
     let version_name_arg = format!("-PsowVersionName={version}");
     let version_code_arg = format!("-PsowVersionCode={version_code}");
-    let revenuecat_key_arg = format!(
-        "-PrevenueCatAndroidPublicKey={}",
-        env::var("SOW_REVENUECAT_ANDROID_PUBLIC_KEY").unwrap_or_default()
-    );
+    let revenuecat_key = env::var("SOW_REVENUECAT_ANDROID_PUBLIC_KEY")
+        .context("SOW_REVENUECAT_ANDROID_PUBLIC_KEY must be provided via sow-dist/.env")?;
+    if !revenuecat_key.starts_with("goog_") {
+        bail!("SOW_REVENUECAT_ANDROID_PUBLIC_KEY must be a Google Play public key");
+    }
+    let revenuecat_key_arg = format!("-PrevenueCatAndroidPublicKey={revenuecat_key}");
     run(
         "./gradlew",
         &[
@@ -410,7 +413,8 @@ fn test_android(paths: &Paths, version: &str, version_code: u32) -> Result<()> {
 fn publish_android(paths: &Paths, version_code: u32) -> Result<()> {
     let script = paths.root.join("scripts/android-release.sh");
     require_file(&script, "Android Play publication script")?;
-    println!("==> Publish Android AAB to Google Play Alpha");
+    let track = env_or("SOW_ANDROID_PLAY_TRACK", "alpha");
+    println!("==> Publish Android AAB to Google Play {track}");
     let status = Command::new(&script)
         .arg("--publish-existing")
         .env(

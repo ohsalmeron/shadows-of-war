@@ -1010,6 +1010,7 @@ fn main() -> Result<()> {
     load_dotenv(&root.join("sow-dist/.env"));
     ensure_generated_secret(&root, "SOW_DB_SECRET")?;
     ensure_generated_secret(&root, "SOW_RELAY_CONTROL_SECRET")?;
+    ensure_generated_secret(&root, "SOW_REVENUECAT_WEBHOOK_SECRET")?;
 
     let paths = Paths::discover()?;
     let mut cmd = String::new();
