@@ -12,9 +12,17 @@ serde_json = { workspace = true }
 bincode = { workspace = true }
 log = { workspace = true }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+[target.'cfg(all(not(target_arch = "wasm32"), not(target_os = "ios")))'.dependencies]
 tokio = { workspace = true, features = ["net"] }
-tokio-tungstenite = { workspace = true }
+tokio-tungstenite = { workspace = true, features = ["connect", "rustls-tls-webpki-roots"] }
+futures-util = { workspace = true }
+
+[target.'cfg(target_os = "ios")'.dependencies]
+tokio = { workspace = true, features = ["net"] }
+# Apple-native TLS keeps iOS transport encryption in the OS Security framework.
+# This is intentionally scoped to iOS; FreeBSD/Linux and other native builds
+# retain the existing Rustls implementation.
+tokio-tungstenite = { workspace = true, features = ["connect", "native-tls"] }
 futures-util = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

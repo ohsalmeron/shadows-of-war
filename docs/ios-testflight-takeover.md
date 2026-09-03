@@ -19,20 +19,32 @@ TestFlight claims so later agents do not confuse an upload with a testable build
   explicit App Store Connect upload credential. The FreeBSD/Linux `sow p`
   credentials are not a substitute.
 
-## Known Shadows of War upload
+## Current Shadows of War upload
 
 - Bundle ID: `games.shadowsofwar.app`
 - App Store Connect app: Shadows of War
 - Marketing version: `0.1.2`
-- Build: `402`
+- Build `402` is the superseded upload and remains `Missing Compliance`.
+- Build `403` is the active TestFlight build.
 - The archive/export path was repaired to register `Assets.xcassets` with
   `AppIcon`, include the required iPhone/iPad icon sizes, and declare
   `CFBundleIconName`.
-- The observed Xcode result was `Upload succeeded` and App Store Connect
-  created the `Build402` record under version `0.1.2`.
+- The observed Xcode result for build `403` was `Upload succeeded` and App
+  Store Connect created the build under version `0.1.2`.
+- App Store Connect verification: build `0.1.2 (403)` is in the `Internal
+  Testers` group and its status is `Ready to Test`.
+- The `Internal Testers` group exists with automatic distribution enabled and
+  currently has zero testers; adding tester email addresses is the remaining
+  account-side action.
 
-That result proves receipt/acceptance of the package only. It does not prove
-that the build is ready for testing.
+The older 402 result proved receipt/acceptance only. The 403 group page is the
+authoritative evidence that a testable build is available.
+
+App Store Connect availability is configured for 173 of Apple's 175 offered
+territories. France and Nigeria are included; Russia and Yemen are explicitly
+excluded. Iran, North Korea, and Somalia are not offered as selectable Apple
+territories. Mac and Vision Pro distribution are disabled because this product
+is iOS-only.
 
 ## App Store Connect status meanings
 
@@ -64,18 +76,28 @@ guessing a country or making a legal/export declaration from code alone.
 
 ## Encryption evidence
 
-The client uses standard TLS through Rustls for WebSocket connections:
+The client uses platform-specific standard TLS for WebSocket connections:
 
-- `Cargo.toml` enables `tokio-tungstenite` with the `rustls-tls-webpki-roots`
-  feature.
+- iOS uses `tokio-tungstenite` with `native-tls`; the archived IPA links
+  `/System/Library/Frameworks/Security.framework/Security`.
+- Other native targets retain `rustls-tls-webpki-roots`.
 - The client constructs `wss://` relay URLs in
   `sow-client/src/net/update/mod.rs`.
+- The final IPA contains `ITSAppUsesNonExemptEncryption = false`.
 
-This is evidence for why Apple presents an export-compliance determination; it
-is not a legal classification. Do not guess an exemption or documentation
-answer on the user's behalf. If automation is desired, use an authenticated
-App Store Connect API client with the required role and key, or complete the
-Apple questionnaire in the account.
+The build was uploaded only after this implementation and plist declaration
+were verified in the exported IPA. This is technical evidence for the
+non-exempt-encryption declaration, not a substitute for legal advice.
+
+## Store metadata and screenshots
+
+- The iOS draft has a description, keywords, support URL, marketing URL, and
+  copyright saved from the repository's existing launch/site copy.
+- Three 6.5-inch iPhone PNGs were generated from the repository's real gameplay
+  media at `2688x1242` and visually checked locally.
+- The current Codex in-app browser exposes the App Store Connect `Choose File`
+  control but not a file-chooser upload API, so those images were not claimed
+  as uploaded. TestFlight readiness does not depend on public store screenshots.
 
 ## Agent-Reach boundary
 
