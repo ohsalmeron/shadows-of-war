@@ -18,10 +18,25 @@
 - Skin prices are 500 / 1,000 / 1,500 gems for the launch catalog; the 2,600-gem Kingdom Vault cannot buy all three skins.
 - The end-of-match screen shows the next unowned skin as a featured store offer and can open the store after returning to the menu.
 
+## Current release state
+
+- Android gem bundles are registered in Google Play and attached to the same
+  RevenueCat offering as the three Stripe web products. The production AAB
+  currently contains the native RevenueCat purchase bridge.
+- Web uses the production RevenueCat Purchase Link. Each gem bundle opens its
+  matching package checkout and passes the public player ID; a real payment
+  has not yet been performed in this audit.
+- The Apple App Store app exists in the same RevenueCat project with bundle ID
+  `games.shadowsofwar.app`, but App Store Connect credentials, Apple products,
+  and the native iOS RevenueCat SDK are not configured yet. TestFlight upload
+  alone does not configure purchases.
+
 ## Remaining release work
 
-- Connect the gem bundles to the configured Google Play/RevenueCat products.
-- Supply the RevenueCat public Android key and webhook secret, then validate a sandbox purchase on-device.
+- Validate one Google Play purchase on-device and one Stripe purchase end to
+  end, including the idempotent server grant.
+- Configure Apple App Store products and App Store Connect credentials in the
+  existing RevenueCat app, then add and validate the native iOS purchase UI.
 - Balance leader prices after real retention and economy data exists.
 
 The current leaders have gameplay perks. Selling access to them is intentional under the rotation model, but future hackathon/store copy must not claim that every purchase is purely cosmetic.

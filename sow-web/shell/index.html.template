@@ -194,6 +194,7 @@
            sniffing: a missing endpoint panics the client instead of
            misrouting (a guessed /api once hit the CrazyGames CDN). */
         /* PORTAL_BOOT_SLOT: SOW_PORTAL / SOW_WS_URL overrides injected by sow-dist crazygames. */
+        window.SOW_REVENUECAT_WEB_PURCHASE_LINK = __REVENUECAT_WEB_PURCHASE_LINK__;
 
     </script>
     <script type="text/javascript">

@@ -179,9 +179,12 @@ pub fn gem_bundles() -> Vec<GemBundle> {
 }
 
 pub fn gem_amount_for_product(product_id: &str) -> Option<u64> {
-    GEM_BUNDLES
-        .into_iter()
-        .find_map(|(known_id, gems)| (known_id == product_id).then_some(gems))
+    match product_id {
+        "sow_gems_500" | "price_1UBIdc5GjRL6SWJS0cuGDATW" => Some(500),
+        "sow_gems_1200" | "price_1UBIdn5GjRL6SWJSKdxrkoU2" => Some(1_200),
+        "sow_gems_2600" | "price_1UBIdn5GjRL6SWJSMPiDU5pi" => Some(2_600),
+        _ => None,
+    }
 }
 
 pub fn skins() -> Vec<SkinOffer> {
@@ -299,6 +302,10 @@ mod tests {
     fn gem_products_have_authoritative_amounts() {
         assert_eq!(gem_bundles().len(), 3);
         assert_eq!(gem_amount_for_product("sow_gems_1200"), Some(1_200));
+        assert_eq!(
+            gem_amount_for_product("price_1UBIdn5GjRL6SWJSKdxrkoU2"),
+            Some(1_200)
+        );
         assert_eq!(gem_amount_for_product("unknown"), None);
     }
 

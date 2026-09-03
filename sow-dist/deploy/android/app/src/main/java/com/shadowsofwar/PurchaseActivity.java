@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.util.Log;
 import android.widget.TextView;
 
 import com.revenuecat.purchases.CustomerInfo;
@@ -25,7 +26,8 @@ import java.util.Set;
 
 /** Native Google Play checkout bridge for the web game shell. */
 public final class PurchaseActivity extends Activity {
-    private static final String RETURN_URL = "https://shadowsofwar.io/play/";
+    private static final String TAG = "SOW Purchases";
+    private static final String RETURN_URL = "https://shadowsofwar.io/play/?sow_platform=android";
     private static final Set<String> GEM_PRODUCTS = new HashSet<>(Arrays.asList(
             "sow_gems_500",
             "sow_gems_1200",
@@ -134,10 +136,25 @@ public final class PurchaseActivity extends Activity {
             fail("RevenueCat is not configured");
             return false;
         }
-        Purchases.configure(new PurchasesConfiguration.Builder(this, key)
-                .appUserID(appUserId)
-                .build());
-        return true;
+        try {
+            if (Purchases.isConfigured()) {
+                String configuredUser = Purchases.getSharedInstance().getAppUserID();
+                if (!appUserId.equals(configuredUser)) {
+                    Log.e(TAG, "purchase requested for a different player account");
+                    fail("Restart the game before changing accounts");
+                    return false;
+                }
+                return true;
+            }
+            Purchases.configure(new PurchasesConfiguration.Builder(this, key)
+                    .appUserID(appUserId)
+                    .build());
+            return true;
+        } catch (RuntimeException error) {
+            Log.e(TAG, "RevenueCat configuration failed", error);
+            fail("Store configuration failed");
+            return false;
+        }
     }
 
     private void setMessage(String message) {

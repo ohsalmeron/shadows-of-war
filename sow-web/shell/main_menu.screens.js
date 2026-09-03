@@ -44,11 +44,24 @@
     }
 
     function renderFeedback() {
+        var purchaseStatus = "";
+        try {
+            var purchase = new URLSearchParams(window.location.search).get("purchase");
+            var purchaseMessages = {
+                success: "Purchase received. Your gems may take a moment to appear.",
+                restored: "Purchases restored.",
+                cancelled: "Purchase cancelled.",
+                error: "Purchase could not be completed."
+            };
+            if (purchaseMessages[purchase]) {
+                purchaseStatus = "<div class='sow-menu__status sow-menu__status--notice'>" + esc(purchaseMessages[purchase]) + "</div>";
+            }
+        } catch (e) {}
         var error = state.error ? "<div class='sow-menu__status sow-menu__status--error'>" + esc(state.error) + "</div>" : "";
         var notice = state.notice ? "<div class='sow-menu__status sow-menu__status--notice'>" +
             esc({ host_left: "Host left the lobby", kicked: "You were removed from the lobby", banned: "You are banned from this lobby", connection_lost: "Connection lost" }[state.notice] || state.notice) +
             "</div>" : "";
-        return error + notice;
+        return purchaseStatus + error + notice;
     }
 
     function publicLobbies(includeMatchmaking) {
@@ -204,6 +217,40 @@
             "&app_user_id=" + encodeURIComponent(state.purchase_user_id);
     }
 
+    function isAndroidTwa() {
+        var referrer = String(document.referrer || "");
+        if (/^android-app:\/\/com\.shadowsofwar(?:\/|$)/i.test(referrer)) return true;
+        try {
+            return new URLSearchParams(window.location.search).get("sow_platform") === "android" &&
+                /Android/i.test(navigator.userAgent || "");
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function webPurchaseHref(packageId) {
+        if (!state || !state.purchase_user_id || !window.SOW_REVENUECAT_WEB_PURCHASE_LINK) return "";
+        var href = window.SOW_REVENUECAT_WEB_PURCHASE_LINK.replace(/\/+$/, "") +
+            "/" + encodeURIComponent(state.purchase_user_id);
+        return packageId ? href + "?package_id=" + encodeURIComponent(packageId) : href;
+    }
+
+    function webPackageForProduct(productId) {
+        return {
+            "sow_gems_500": "$rc_monthly",
+            "sow_gems_1200": "$rc_annual",
+            "sow_gems_2600": "$rc_lifetime"
+        }[productId] || "";
+    }
+
+    function renderWebPurchaseAction() {
+        if (isAndroidTwa()) return "";
+        var href = webPurchaseHref();
+        return href
+            ? "<a class='sow-store__buy sow-store__buy--primary' href='" + esc(href) + "' target='_blank' rel='noopener'>BUY ONLINE <span aria-hidden='true'>↗</span></a>"
+            : "";
+    }
+
     function renderStoreLeader(leader) {
         var leaderSlug = leader.slug || leader.id || "null";
         var avatarUrl = asset("gameplay/avatars/" + leaderSlug + ".webp");
@@ -225,10 +272,14 @@
     }
 
     function renderStoreBundle(bundle) {
-        var href = nativePurchaseHref(bundle.product_id);
-        var action = href
-            ? "<a class='sow-store__buy sow-store__buy--primary' href='" + esc(href) + "'>BUY GEMS <span aria-hidden='true'>↗</span></a>"
-            : "<button class='sow-store__buy' type='button' disabled>ACCOUNT REQUIRED</button>";
+        var href = isAndroidTwa() ? nativePurchaseHref(bundle.product_id) : "";
+        var action = isAndroidTwa()
+            ? (href
+                ? "<a class='sow-store__buy sow-store__buy--primary' href='" + esc(href) + "'>BUY IN APP <span aria-hidden='true'>↗</span></a>"
+                : "<button class='sow-store__buy' type='button' disabled>ACCOUNT REQUIRED</button>")
+            : (webPurchaseHref(webPackageForProduct(bundle.product_id))
+                ? "<a class='sow-store__buy sow-store__buy--primary' href='" + esc(webPurchaseHref(webPackageForProduct(bundle.product_id))) + "' target='_blank' rel='noopener'>BUY ONLINE <span aria-hidden='true'>↗</span></a>"
+                : "<button class='sow-store__buy' type='button' disabled>ONLINE STORE UNAVAILABLE</button>");
         return "<article class='sow-store__bundle'><span class='sow-store__bundle-icon' aria-hidden='true'>✦</span><div><strong>" + esc(bundle.gems) + " GEMS</strong><small>One-time gem bundle</small></div>" + action + "</article>";
     }
 
@@ -259,7 +310,7 @@
                     renderFeedback() +
                     "<section class='sow-store__section' aria-labelledby='sow-store-leaders'><div class='sow-store__section-head'><h2 id='sow-store-leaders'>Leaders</h2><span>Weekly rotation</span></div><div class='sow-store__leader-grid'>" + (leaders.map(renderStoreLeader).join("") || "<p class='sow-menu__empty'>No leaders available.</p>") + "</div></section>" +
                     "<section class='sow-store__section' aria-labelledby='sow-store-skins'><div class='sow-store__section-head'><h2 id='sow-store-skins'>Skins</h2><span>Cosmetics</span></div><div class='sow-store__skin-grid'>" + (skins.map(renderStoreSkin).join("") || "<p class='sow-menu__empty'>No skins available.</p>") + "</div></section>" +
-                    "<section class='sow-store__section' aria-labelledby='sow-store-gems'><div class='sow-store__section-head'><h2 id='sow-store-gems'>Gem bundles</h2><span>Android</span></div><div class='sow-store__bundle-grid'>" + (bundles.map(renderStoreBundle).join("") || "<p class='sow-menu__empty'>Products are not configured yet.</p>") + "</div></section>" +
+                    "<section class='sow-store__section' aria-labelledby='sow-store-gems'><div class='sow-store__section-head'><h2 id='sow-store-gems'>Gem bundles</h2>" + renderWebPurchaseAction() + "</div><div class='sow-store__bundle-grid'>" + (bundles.map(renderStoreBundle).join("") || "<p class='sow-menu__empty'>Products are not configured yet.</p>") + "</div></section>" +
                 "</section></main>" +
                 renderFooter("STORE") + renderMobileNav("store") +
             "</div>";

@@ -32,7 +32,7 @@ android {
         
         manifestPlaceholders = [
             hostName: "shadowsofwar.io",
-            defaultUrl: "https://shadowsofwar.io/play/",
+            defaultUrl: "https://shadowsofwar.io/play/?sow_platform=android",
             launcherName: "Shadows of War",
             enableNotification: "false"
         ]

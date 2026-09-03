@@ -650,6 +650,10 @@ async fn main() {
             "/internal/revenuecat/webhook",
             post(handle_revenuecat_webhook),
         )
+        .route(
+            "/internal/revenuecat/webhook/stripe",
+            post(handle_revenuecat_webhook),
+        )
         .route("/profiles/search", get(handle_public_profile_search))
         .route("/profiles/{public_id}", get(handle_public_profile))
         .route(

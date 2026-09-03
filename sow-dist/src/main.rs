@@ -314,6 +314,15 @@ fn build_index(
     cg: bool,
 ) -> Result<()> {
     let tpl = fs::read_to_string(paths.shell.join("index.html.template"))?;
+    let web_purchase_link = if cg {
+        String::new()
+    } else {
+        env::var("SOW_REVENUECAT_WEB_PURCHASE_LINK")
+            .unwrap_or_default()
+            .trim_end_matches('/')
+            .to_string()
+    };
+    let web_purchase_link_js = serde_json::to_string(&web_purchase_link)?;
     let html = tpl
         .replace("__VERSION__", version)
         .replace(
@@ -335,6 +344,10 @@ fn build_index(
         .replace("__JS_FILE__", js)
         .replace("__WASM_FILE__", wasm)
         .replace("__BUILD_TS__", ts)
+        .replace(
+            "__REVENUECAT_WEB_PURCHASE_LINK__",
+            &web_purchase_link_js,
+        )
         .replace(
             "__ASSETS_UI_BASE__",
             if cg {
@@ -1104,6 +1117,7 @@ mod tests {
         assert!(html.contains("#sow-menu"));
         assert!(html.contains("SOW_menu_command"));
         assert!(html.contains("SOW_onStateUpdate"));
+        assert!(html.contains("SOW_REVENUECAT_WEB_PURCHASE_LINK = \"\""));
         assert!(html.contains("sow-hud__dock"));
         Ok(())
     }
