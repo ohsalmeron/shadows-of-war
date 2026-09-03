@@ -16,7 +16,7 @@ Thank you for your interest in contributing!
 
 ## Marketing site (`sow-web`)
 
-Static HTML lives in `sow-web/site/` (landing, privacy, terms). The WASM game shell lives in `sow-web/shell/` — see `sow-web/README.md`. Do not embed game code in the marketing pages.
+Static HTML lives in `sow-web/site/` (landing, privacy, terms, cookies, support). The WASM game shell lives in `sow-web/shell/` — see `sow-web/README.md`. Do not embed game code in the marketing pages.
 
 The current entrypoint does not expose a local WASM preview command; use the
 production packaging path for a deployable web build and `./sow native` for a

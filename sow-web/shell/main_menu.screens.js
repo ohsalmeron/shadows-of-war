@@ -119,7 +119,7 @@
 
     function renderFooter(label) {
         return "<footer class='sow-menu__footer'>" + (label ? "<span>" + esc(label) + "</span>" : "") + "<nav class='sow-menu__footer-links' aria-label='Game links'>" +
-            "<a href='/how-to-play/'>HOW TO PLAY</a><a href='/support/'>SUPPORT</a><a href='/terms/'>TERMS</a><a href='/privacy/'>PRIVACY</a>" +
+            "<a href='/how-to-play/'>HOW TO PLAY</a><a href='/support/'>SUPPORT</a><a href='/terms/'>TERMS</a><a href='/privacy/'>PRIVACY</a><a href='/cookies/'>COOKIES</a>" +
             "<a href='https://discord.gg/d6ZDeChSE' target='_blank' rel='noopener noreferrer'>DISCORD</a><a href='https://t.me/shadowsofwario' target='_blank' rel='noopener noreferrer'>TELEGRAM</a><a href='https://github.com/worldofunreal/shadows-of-war' target='_blank' rel='noopener noreferrer'>GITHUB</a>" +
             "</nav><span>SHADOWSOFWAR.IO</span></footer>";
     }

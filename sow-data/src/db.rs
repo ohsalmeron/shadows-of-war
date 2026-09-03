@@ -20,7 +20,7 @@ const ANALYTICS_EVENT_COUNT_PREFIX: &str = "sow:analytics:event:";
 const ANALYTICS_EVENT_USERS_PREFIX: &str = "sow:analytics:event_users:";
 const ANALYTICS_COHORT_PREFIX: &str = "sow:analytics:cohort:";
 const ANALYTICS_ACTIVATED_PREFIX: &str = "sow:analytics:activated:";
-const ANALYTICS_RETENTION_TTL_SECS: i64 = 100 * 24 * 3600;
+const ANALYTICS_RETENTION_TTL_SECS: i64 = 90 * 24 * 3600;
 
 /// SET index of all bot account_ids — populated by `seed_bot_pool`, used for
 /// pool introspection and analytics. Account records carry a canonical
@@ -281,6 +281,19 @@ pub enum AccountKind {
 pub struct LinkedIdentity {
     pub provider: String, // "crazygames" for verified players or "bot" for server fillers
     pub external_id: String, // Stable unique ID from the platform
+}
+
+/// Result of an operator-driven account erasure (privacy deletion
+/// requests). `found` reports whether the account record still existed;
+/// analytics residue is scrubbed regardless so orphaned memberships
+/// cannot survive a re-request.
+#[derive(Serialize, Debug)]
+pub struct DeleteAccountReport {
+    pub account_id: String,
+    pub found: bool,
+    pub keys_removed: u64,
+    pub redb_rows_removed: u32,
+    pub analytics_sets_scrubbed: u64,
 }
 
 #[derive(Clone)]
@@ -1165,6 +1178,10 @@ impl PlayerDb {
     ) -> Result<(), redis::RedisError> {
         if is_new {
             let _: () = con.pfadd(ANALYTICS_UNIQUE, account_id).await?;
+            // The HyperLogLog is a probabilistic counter with no per-member
+            // removal, so it must stay bounded by the same 90-day retention
+            // window as every other analytics key (see Privacy Policy).
+            let _: () = con.expire(ANALYTICS_UNIQUE, ANALYTICS_RETENTION_TTL_SECS).await?;
         }
         let day_key = format!("{ANALYTICS_ACTIVE_PREFIX}{}", utc_date_string());
         let _: () = con.pfadd(&day_key, account_id).await?;
@@ -1256,6 +1273,122 @@ impl PlayerDb {
             Self::record_activation_in_connection(&mut con, account_id, &date).await?;
         }
         Ok(())
+    }
+
+    /// Permanently erase one account: the Valkey account record plus its
+    /// identity mappings, the redb mirror rows (`PLAYERS_TABLE` and the
+    /// public-profile index), and the account's membership in every dated
+    /// analytics set. Operator-only — see `POST /internal/profile/delete`.
+    ///
+    /// Deliberately out of scope: match-history rows (aggregate competitive
+    /// record), JSONL event lines (pseudonymous `session_id` + `account_id`
+    /// pairs that age out via the 90-day file rotation once the account
+    /// record they point to is gone), and the HyperLogLog unique counter
+    /// (probabilistic structure with no per-member removal, bounded by its
+    /// own 90-day key TTL).
+    pub async fn delete_account(
+        &self,
+        account_id: &str,
+    ) -> Result<DeleteAccountReport, Box<dyn std::error::Error + Send + Sync>> {
+        if account_id.len() != ACCOUNT_ID_HEX_LEN
+            || !account_id.bytes().all(|b| b.is_ascii_hexdigit())
+        {
+            return Err("invalid account_id".into());
+        }
+        let mut con = self.get_connection().await?;
+        let account: Option<PlayerAccount> = Self::load_account(&mut con, account_id).await.ok();
+
+        let mut keys = vec![Self::account_key(account_id)];
+        if let Some(ref account) = account {
+            for identity in &account.linked_identities {
+                keys.push(Self::identity_key(
+                    &identity.provider,
+                    &identity.external_id,
+                ));
+            }
+        }
+        let mut keys_removed = 0_u64;
+        for key in &keys {
+            keys_removed += con.del::<_, u64>(key).await.unwrap_or(0);
+        }
+
+        // The redb mirror is best-effort: Valkey is the live source of truth,
+        // so a missing mirror row is a normal no-op, not a failure.
+        let mut redb_rows_removed = 0_u32;
+        if let Some(ref db) = self.metadata_db
+            && let Ok(write_txn) = db.begin_write()
+        {
+            if let Ok(mut table) = write_txn.open_table(PLAYERS_TABLE) {
+                match table.remove(account_id) {
+                    Ok(Some(_)) => redb_rows_removed += 1,
+                    Ok(None) => {}
+                    Err(error) => {
+                        error!("Failed to erase account {account_id} from REDB: {error}");
+                    }
+                }
+            }
+            if let Ok(mut table) = write_txn.open_table(PUBLIC_PROFILES_TABLE) {
+                let public_id = account.as_ref().map_or_else(
+                    || public_profile_id(account_id),
+                    |account| {
+                        if account.public_id.is_empty() {
+                            public_profile_id(account_id)
+                        } else {
+                            account.public_id.clone()
+                        }
+                    },
+                );
+                match table.remove(public_id.as_str()) {
+                    Ok(Some(_)) => redb_rows_removed += 1,
+                    Ok(None) => {}
+                    Err(error) => {
+                        error!("Failed to erase public profile {public_id} from REDB: {error}");
+                    }
+                }
+            }
+            if let Err(error) = write_txn.commit() {
+                error!("Failed to commit account erasure {account_id} to REDB: {error}");
+            }
+        }
+
+        // Scrub dated analytics memberships across every analytics key family.
+        let mut analytics_sets_scrubbed = 0_u64;
+        for pattern in [
+            "sow:analytics:event_users:*",
+            "sow:analytics:activated:*",
+            "sow:analytics:cohort:*",
+            "sow:analytics:active:*",
+            "sow:active:*",
+        ] {
+            let mut cursor = 0_u64;
+            loop {
+                let scanned: Result<(u64, Vec<String>), redis::RedisError> = redis::cmd("SCAN")
+                    .arg(cursor)
+                    .arg("MATCH")
+                    .arg(pattern)
+                    .arg("COUNT")
+                    .arg(256)
+                    .query_async(&mut con)
+                    .await;
+                let (next, set_keys) = scanned?;
+                for set_key in set_keys {
+                    let scrubbed: u32 = con.srem(&set_key, account_id).await.unwrap_or(0);
+                    analytics_sets_scrubbed += u64::from(scrubbed);
+                }
+                cursor = next;
+                if cursor == 0 {
+                    break;
+                }
+            }
+        }
+
+        Ok(DeleteAccountReport {
+            account_id: account_id.to_string(),
+            found: account.is_some(),
+            keys_removed,
+            redb_rows_removed,
+            analytics_sets_scrubbed,
+        })
     }
 
     /// Return a compact, authenticated-only analytics snapshot for operators.

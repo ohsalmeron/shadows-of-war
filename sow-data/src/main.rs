@@ -123,6 +123,25 @@ struct VerifyResponse {
     leader: Option<String>,
 }
 
+/// POST /internal/profile/delete — operator-only account erasure for privacy
+/// deletion requests (GDPR/CCPA). Same bearer gate as every /internal route
+/// and loopback-bound by default; never exposed publicly. Players request
+/// deletion via hello@shadowsofwar.io (see Privacy Policy); the operator
+/// runs this endpoint and confirms the report.
+#[derive(Deserialize)]
+struct ProfileDeleteRequest {
+    account_id: String,
+}
+
+#[derive(Serialize)]
+struct ProfileDeleteResponse {
+    account_id: String,
+    found: bool,
+    keys_removed: u64,
+    redb_rows_removed: u32,
+    analytics_sets_scrubbed: u64,
+}
+
 #[derive(Deserialize)]
 struct UnlockLeaderRequest {
     public_id: String,
@@ -497,6 +516,62 @@ async fn handle_internal_verify(
     }
 }
 
+async fn handle_internal_profile_delete(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(payload): Json<ProfileDeleteRequest>,
+) -> impl IntoResponse {
+    if !verify_internal_auth(&headers, &state.secret_token) {
+        warn!("Unauthorized access attempt to /internal/profile/delete");
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+            }),
+        )
+            .into_response();
+    }
+    let account_id = payload.account_id.trim().to_string();
+    match state.db.delete_account(&account_id).await {
+        Ok(report) => {
+            info!(
+                "[privacy] account erased account={} keys={} redb={} sets={}",
+                account_hint(Some(&report.account_id)),
+                report.keys_removed,
+                report.redb_rows_removed,
+                report.analytics_sets_scrubbed
+            );
+            (
+                StatusCode::OK,
+                Json(ProfileDeleteResponse {
+                    account_id: report.account_id,
+                    found: report.found,
+                    keys_removed: report.keys_removed,
+                    redb_rows_removed: report.redb_rows_removed,
+                    analytics_sets_scrubbed: report.analytics_sets_scrubbed,
+                }),
+            )
+                .into_response()
+        }
+        Err(error) => {
+            let message = error.to_string();
+            let status = if message.contains("invalid account_id") {
+                StatusCode::BAD_REQUEST
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
+            warn!("[privacy] account erase failed: {message}");
+            (
+                status,
+                Json(ErrorResponse {
+                    error: "account erasure unavailable".to_string(),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
 #[derive(Serialize)]
 struct BotPoolSeedResponse {
     account_ids: Vec<String>,
@@ -684,6 +759,10 @@ async fn main() {
         .route("/internal/save", post(handle_direct_save))
         .route("/internal/stats", get(handle_internal_stats))
         .route("/internal/verify", post(handle_internal_verify))
+        .route(
+            "/internal/profile/delete",
+            post(handle_internal_profile_delete),
+        )
         .route("/internal/bot-pool/seed", post(handle_bot_pool_seed))
         .layer(DefaultBodyLimit::max(MAX_REPLAY_REQUEST_BYTES))
         .layer(cors)

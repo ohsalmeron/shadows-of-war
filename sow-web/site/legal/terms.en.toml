@@ -1,49 +1,137 @@
 title = "Shadows of War — Terms of Service"
-updated = "Last updated: May 2026"
+updated = "Last updated: September 2026"
 close = "CLOSE"
 
 [[sections]]
-heading = "Acceptance"
+heading = "Acceptance and eligibility"
 paragraphs = [
-  "By playing Shadows of War on shadowsofwar.io, a future partner platform, or a native client, you agree to these terms.",
+  "These Terms of Service (\"Terms\") are a binding agreement between you and World of Unreal (\"Company,\" \"we,\" \"our,\" or \"us\") governing your access to and use of Shadows of War on shadowsofwar.io, partner platforms, and native clients (collectively, the \"Service\").",
+  "By playing, installing, or accessing the Service you agree to these Terms. If you do not agree, do not use the Service.",
+  "You must be at least 13 years old to use the Service. Players aged 13 to 17 may use the Service only with the permission and supervision of a parent or legal guardian, who agrees to these Terms on their behalf. The Service is not directed to children under 13, and we do not knowingly allow accounts for children under 13.",
 ]
 
 [[sections]]
-heading = "The game"
+heading = "The game and service changes"
 paragraphs = [
-  "Shadows of War is multiplayer strategy software provided as-is. Multiplayer requires network access to our servers. We may modify, suspend, or discontinue services at any time.",
+  "Shadows of War is multiplayer strategy software provided as described in these Terms. Multiplayer requires network access to our servers and may be unavailable during maintenance, outages, or sunsets of specific modes, maps, or seasons.",
+  "We may modify, suspend, or discontinue the Service (or any part of it, including leaders, maps, seasons, leaderboards, and events) at any time, with or without notice, without liability to you. We have no obligation to provide support or maintenance, although we may do so voluntarily through our support channels.",
 ]
 
 [[sections]]
-heading = "Conduct"
+heading = "Accounts"
+paragraphs = [
+  "Anonymous play creates a canonical account ID stored on your device together with a display name. Clearing site storage creates a new account; renames never change the account ID. Your account ID is a progress lookup key, not a password — do not share it, and keep your device secure.",
+  "Verified platform identities and persistent bot accounts are separate provider cases linked to the same account system. You are responsible for all activity under your account. Notify us promptly at hello@shadowsofwar.io if you believe your account was accessed without authorization.",
+  "You may stop using the Service at any time by deleting local data or requesting erasure as described in our Privacy Policy. We may suspend or terminate accounts as described in the Termination section.",
+]
+
+[[sections]]
+heading = "License and restrictions"
+paragraphs = [
+  "Subject to these Terms, we grant you a limited, non-exclusive, non-transferable, revocable license to access and use the Service for your own personal, non-commercial entertainment. All intellectual property rights in the Service — including code, art, audio, maps, trademarks, and trade secrets — belong to the Company or its licensors. These Terms transfer no ownership to you.",
+  "The game source code is separately available under the GNU Affero General Public License v3.0 or later; nothing in these Terms limits rights expressly granted by that license for the covered code. Service operation, accounts, virtual items, and server data are governed by these Terms, not by the code license.",
+]
 bullets = [
-  "Do not cheat, exploit bugs for unfair advantage, or harass other players.",
-  "Do not attempt to disrupt servers or reverse-engineer credentials.",
-  "Usernames and chat must not violate applicable law or platform rules.",
+  "Do not sell, rent, lease, sublicense, distribute, or commercially exploit the Service or any content on it.",
+  "Do not modify, create derivative works from, disassemble, decompile, or reverse-engineer any part of the Service, except where applicable law gives you a non-waivable right.",
+  "Do not access the Service to build a similar or competing product, to scrape or bulk-extract data, or to train machine-learning models.",
+  "Do not copy, reproduce, republish, or transmit Service content except as expressly permitted by these Terms.",
+  "If you share feedback or suggestions, you grant us a perpetual, irrevocable, worldwide, royalty-free license to use it freely for any purpose, without attribution or compensation.",
 ]
 
 [[sections]]
-heading = "Intellectual property"
+heading = "Virtual items and no refunds"
 paragraphs = [
-  "Source is AGPL-3.0-or-later. Based on OpenFront — © OpenFront and Contributors. Full attributions and licenses are available.",
+  "The in-game store sells virtual items only: gem bundles, leader unlocks, and skins. Virtual items are a limited, non-transferable, revocable license to use content inside the Service. They have no cash or monetary value, cannot be redeemed for money, and cannot be transferred, sold, gifted, or traded between accounts.",
+  "Leader unlocks change gameplay: unlocked leaders have distinct perks and abilities and are not purely cosmetic. The free weekly rotation described in-game is subject to change at our discretion.",
+  "ALL SALES ARE FINAL. Virtual items are non-refundable and non-replaceable to the fullest extent permitted by law. We do not grant refunds, chargeback accommodations, or replacements for used, consumed, lost, or unwanted items, for account suspension or termination resulting from your violation of these Terms, or for changes to the Service, rotation, prices, or item attributes.",
+  "Purchases are processed by the platform you buy through (Google Play, Apple App Store, Stripe, or another listed provider); taxes and payment terms are set by that platform. If a platform reverses or charges back a purchase despite this policy, we may remove the corresponding virtual items and take account measures, including suspension, to keep the game economy intact.",
 ]
 
-[[sections.links]]
-label = "in-game Credits"
-url = "#credits"
-
-[[sections.links]]
-label = "GitHub NOTICE"
-url = "https://github.com/worldofunreal/shadows-of-war"
+[[sections]]
+heading = "Player conduct"
+paragraphs = [
+  "Play to win — but play fair. Violations may result in content removal, match forfeiture, or account suspension or termination at our sole discretion.",
+]
+bullets = [
+  "Do not cheat, use bots, macros, or automation, exploit bugs for unfair advantage, or intentionally desynchronize matches.",
+  "Do not harass, threaten, hate-bait, or dox other players. Usernames, clan tags, and chat must not violate applicable law or platform rules.",
+  "Do not disrupt servers, probe or attack infrastructure, attempt to access other players' accounts, or steal, harvest, or reverse-engineer credentials or tickets.",
+  "Do not upload unlawful, infringing, or abusive content, and do not encourage others to break these rules.",
+]
 
 [[sections]]
-heading = "Disclaimer"
+heading = "Third-party services and other players"
 paragraphs = [
-  "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND. See the GNU Affero General Public License for full disclaimer language.",
+  "The Service may link to or integrate third-party services, including partner game platforms and their SDKs, payment providers, Discord, and Telegram (\"Third-Party Services\"). We do not control or endorse them; your use of each is at your own risk and governed by that party's own terms and privacy practices.",
+  "Your interactions with other players are solely between you and them. We are not responsible for player behavior, user-generated content, or any loss arising from multiplayer interactions, and we have no obligation to monitor or resolve player disputes — though we may intervene at our discretion.",
+  "To the fullest extent permitted by law, you release the Company and its officers, employees, agents, successors, and assigns from all claims and damages arising out of Third-Party Services or other players. If you are a California resident, you waive California Civil Code Section 1542.",
+]
+
+[[sections]]
+heading = "Termination"
+paragraphs = [
+  "These Terms remain in effect while you use the Service. We may suspend or terminate your access, in whole or in part — including accounts, virtual items, and leaderboard entries — at any time and for any reason, including suspected violation of these Terms, with or without notice. We are not liable for any such action.",
+  "Upon termination, your license ends immediately and virtual items are forfeited without refund. The License and restrictions, Virtual items and no refunds, Player conduct (as to past acts), Third-party services, Termination, Disclaimers, Limitation of liability, Indemnification, Disputes, and General sections survive.",
+]
+
+[[sections]]
+heading = "Disclaimers"
+paragraphs = [
+  "THE SERVICE IS PROVIDED \"AS IS\" AND \"AS AVAILABLE.\" TO THE FULLEST EXTENT PERMITTED BY LAW, THE COMPANY AND ITS SUPPLIERS DISCLAIM ALL WARRANTIES, EXPRESS OR IMPLIED, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT.",
+  "WE DO NOT WARRANT THAT THE SERVICE WILL BE UNINTERRUPTED, ERROR-FREE, SECURE, OR FREE OF HARMFUL CODE, OR THAT MATCHES, PROGRESS, RANKS, OR VIRTUAL ITEMS WILL BE PRESERVED. WHERE APPLICABLE LAW REQUIRES WARRANTIES, THEY ARE LIMITED TO 90 DAYS FROM YOUR FIRST USE.",
+]
+
+[[sections]]
+heading = "Limitation of liability"
+paragraphs = [
+  "TO THE MAXIMUM EXTENT PERMITTED BY LAW: (A) THE COMPANY AND ITS SUPPLIERS WILL NOT BE LIABLE FOR ANY LOST PROFITS, LOST DATA, LOSS OF VIRTUAL ITEMS OR PROGRESS, COSTS OF SUBSTITUTE PRODUCTS, OR ANY INDIRECT, CONSEQUENTIAL, INCIDENTAL, SPECIAL, EXEMPLARY, OR PUNITIVE DAMAGES ARISING FROM OR RELATED TO THESE TERMS OR YOUR USE OF (OR INABILITY TO USE) THE SERVICE; AND (B) OUR TOTAL LIABILITY FOR ANY CLAIM ARISING UNDER THESE TERMS IS CAPPED AT THE GREATER OF (i) $50 USD AND (ii) THE AMOUNT YOU PAID TO THE COMPANY FOR VIRTUAL ITEMS IN THE SIX MONTHS BEFORE THE INCIDENT. MULTIPLE CLAIMS DO NOT INCREASE THIS CAP.",
+  "SOME JURISDICTIONS DO NOT ALLOW THE EXCLUSION OR LIMITATION OF CERTAIN DAMAGES; IN THOSE JURISDICTIONS OUR LIABILITY IS LIMITED TO THE GREATEST EXTENT PERMITTED BY LAW.",
+]
+
+[[sections]]
+heading = "Indemnification"
+paragraphs = [
+  "You agree to defend, indemnify, and hold harmless the Company and its officers, employees, and agents from any claims and reasonable costs or attorneys' fees arising out of (i) your use of the Service, (ii) your violation of these Terms, or (iii) your violation of applicable law. We may assume control of the defense at your expense; you agree to cooperate and not to settle without our prior written consent.",
+]
+
+[[sections]]
+heading = "Disputes and arbitration"
+paragraphs = [
+  "PLEASE READ THIS SECTION CAREFULLY. It requires binding individual arbitration instead of court, and waives class-action and jury-trial rights, with a 30-day opt-out described below.",
+  "Informal resolution first: before arbitration, the disputing party must send written notice to hello@shadowsofwar.io describing the claim, and the parties will attempt good-faith resolution for 45 days. Neither party may start arbitration until 60 days after that notice.",
+  "Except for (i) individual small-claims actions and (ii) actions for injunctive or equitable relief to protect intellectual property, all disputes arising out of or relating to the Service or these Terms will be resolved exclusively through binding individual arbitration administered by JAMS under its Streamlined Arbitration Rules, held in the State of Delaware unless the parties agree otherwise.",
+  "The arbitrator may award only individual relief. YOU AND THE COMPANY WAIVE ANY RIGHT TO A JURY TRIAL AND TO PARTICIPATE IN ANY CLASS, COLLECTIVE, OR REPRESENTATIVE PROCEEDING. If a court finds the class waiver unenforceable for a specific claim, that claim will proceed in the state or federal courts of Delaware and all other claims remain in arbitration.",
+  "You may opt out of this arbitration agreement within 30 days of first accepting these Terms by emailing hello@shadowsofwar.io from your contact address with your account ID (or display name) and a clear statement that you opt out of arbitration. Opting out affects only this section.",
+]
+
+[[sections]]
+heading = "General"
+paragraphs = [
+  "Changes to Terms: we may update these Terms from time to time. Material changes take effect after prominent notice on the Service (such as the updated date above); your continued use after the update means you accept the updated Terms.",
+  "Governing law: these Terms and any dispute arising out of or related to them or the Service are governed by the laws of the State of Delaware, without regard to conflict-of-law principles. For claims not subject to arbitration, you and the Company consent to the exclusive jurisdiction and venue of the state and federal courts located in Delaware.",
+  "Export: you agree not to export or transfer technical data or products acquired from the Service in violation of U.S. export-control laws.",
+  "Electronic communications: by using the Service you consent to receive communications electronically (email or Service notices), which satisfy any written-notice requirement.",
+  "Accessibility: we aim to conform to WCAG 2.1 Level AA. Report access barriers to hello@shadowsofwar.io and we will make reasonable efforts to address them.",
+  "Entire agreement and severability: these Terms, together with the Privacy Policy and Cookie Notice, are the entire agreement regarding the Service. If any provision is found invalid, it will be modified to the minimum extent necessary and the rest continues in effect. Our failure to enforce a provision is not a waiver. You may not assign these Terms without our consent; we may assign them freely.",
+  "Copyright and trademarks: Copyright 2026 World of Unreal. All rights reserved. All trademarks, logos, and service marks are owned by the Company or third parties and may not be used without prior written consent.",
+  "Contact: World of Unreal — hello@shadowsofwar.io — https://shadowsofwar.io/support/. California residents may also contact the Complaint Assistance Unit of the Division of Consumer Services at 1625 N. Market Blvd., Suite N112, Sacramento, CA 95834, or (800) 952-5210.",
 ]
 
 [[sections]]
 heading = "Privacy"
 paragraphs = [
-  "See our Privacy Policy in Settings for data handling.",
+  "How we collect, use, share, retain, and delete your data — including your rights and how to exercise them — is described in our Privacy Policy and Cookie Notice, which are incorporated into these Terms by reference. Where these Terms and the Privacy Policy conflict on data handling, the Privacy Policy controls.",
 ]
+
+[[sections.links]]
+label = "Privacy Policy"
+url = "https://shadowsofwar.io/privacy/"
+
+[[sections.links]]
+label = "Cookie Notice"
+url = "https://shadowsofwar.io/cookies/"
+
+[[sections.links]]
+label = "Support"
+url = "https://shadowsofwar.io/support/"

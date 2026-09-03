@@ -1,44 +1,111 @@
 title = "Shadows of War — Privacy Policy"
-updated = "Last updated: August 2026"
+updated = "Last updated: September 2026"
 close = "CLOSE"
 
 [[sections]]
-heading = "Overview"
+heading = "Overview and controller"
 paragraphs = [
-  "Shadows of War is a multiplayer strategy game. This policy describes what data we process when you play on shadowsofwar.io. If the game is later published through a partner platform, that platform may apply its own privacy policy and SDK rules.",
+  "Shadows of War is a multiplayer strategy game operated by World of Unreal (\"Company,\" \"we,\" \"our,\" or \"us\"). This policy describes what data we process when you play on shadowsofwar.io, partner platforms, and native clients, and the rights you have over that data.",
+  "Controller: World of Unreal. Privacy contact: hello@shadowsofwar.io. We have no establishment in the EU/UK and have not appointed an EU/UK representative or data protection officer; send all privacy requests — including GDPR requests — directly to hello@shadowsofwar.io and we will handle them.",
+  "If you play through a partner platform, that platform's SDK may collect data under its own privacy policy in addition to this one. Payment card data is processed directly by the platform you pay through (such as Google Play, Apple, or Stripe); we never see or store your card numbers.",
+]
+
+[[sections]]
+heading = "Eligibility and children"
+paragraphs = [
+  "The Service is for players aged 13 and older; players 13 to 17 need a parent or guardian's permission. The Service is not directed to children under 13 and we do not knowingly collect their data.",
+  "If you are a parent or guardian and believe a child under 13 has provided data, contact hello@shadowsofwar.io and we will delete it promptly. Accounts found to belong to children under 13 are suspended and erased.",
 ]
 
 [[sections]]
 heading = "Data we collect"
 bullets = [
-  "Gameplay: Display name, clan tag, leader/civilization choices, and match inputs required for lockstep multiplayer.",
-  "Technical: Client build version, WebSocket connection metadata, and basic server logs for abuse prevention.",
-  "Product analytics: Anonymous usage events (boot, tutorial progress, match start/end) tied to a random session identifier and your account ID. We use them to measure funnels such as where new players stop; they contain no advertising identifiers.",
-  "Partner platforms: If the game is later published through a partner platform, its SDK may collect analytics under its own policy. We do not sell personal data.",
+  "Gameplay data: display name (max 16 characters), clan tag, leader and civilization choices, match inputs required for deterministic lockstep multiplayer, match history, rankings, and owned virtual items.",
+  "Account data: the random canonical account ID issued at first play, linked platform identities (such as a verified platform ID), and an ownership secret whose BLAKE3 hash — never the plaintext — is stored server-side.",
+  "Technical data: client build version, platform and locale, WebSocket connection metadata, relay tickets, and server logs used for operation, security, and abuse prevention.",
+  "Product analytics (first-party only): anonymous usage events from a closed taxonomy (page visits, boot stages, tutorial progress, matchmaking, match start/end, session timing) tied to a random session identifier and your account ID. They contain no advertising identifiers and are sent to our own servers — no third-party analytics vendor is involved.",
+  "Purchase data: product ID, transaction reference, and entitlement status received from our purchase platform (RevenueCat and the underlying store). Full payment details stay with the store.",
+  "Support communications: the contents of emails you send to hello@shadowsofwar.io and any account identifiers you include so we can help.",
+  "Public-by-design data: display names, clan tags, public profile handles, leaderboard entries, and match participation are visible to other players and the public by the nature of the game.",
 ]
 
 [[sections]]
-heading = "Local storage"
+heading = "How we use data and legal bases"
 paragraphs = [
-  "The client may use browser local storage for settings and cached map assets. No third-party advertising trackers are embedded in the client.",
+  "We use data to operate the game and keep it fair: service delivery (accounts, matchmaking, lobbies, relays, leaderboards, store grants), security and anti-cheat (tickets, logs, abuse detection), product analytics (funnels, activation, reliability), customer support, and legal compliance.",
+  "Where EU/UK law applies, our bases are: performance of the contract with you (running the game and your account), our legitimate interests (security, anti-abuse, measuring and improving the Service — balanced against your rights; no behavioral advertising is ever involved), your consent (where we specifically ask for it, withdrawable at any time), and compliance with legal obligations.",
+  "We do not sell personal data. We do not share data for interest-based advertising and run no third-party advertising trackers in the client.",
 ]
 
 [[sections]]
-heading = "Corresponding source"
+heading = "How we share data"
+bullets = [
+  "Infrastructure providers that host the Service under our instructions: game/orchestrator hosting, relay hosting, and CDN/proxy services (currently IONOS, Microsoft Azure, and Cloudflare).",
+  "Purchase processing: Google Play, Apple App Store, or Stripe via RevenueCat, under their own terms and privacy policies.",
+  "Partner platforms: if you play through one, its SDK operates under its own policy in addition to ours.",
+  "Other players and the public: display names, handles, rankings, and match records, as inherent to multiplayer.",
+  "Authorities: law enforcement or regulators where we in good faith believe disclosure is required by law or necessary to protect rights, safety, or the integrity of the Service.",
+  "Business transfers: a buyer or successor in a merger, acquisition, or asset sale, with notice to you where required by law.",
+]
+
+[[sections]]
+heading = "Cookies and local storage"
 paragraphs = [
-  "Server-side components are licensed under AGPL-3.0-or-later. Source code:",
+  "We use only strictly-necessary client storage: a theme preference (localStorage), random analytics session identifiers (sessionStorage), and our own first-party product-event endpoint. There are no advertising, social, or cross-site-tracking cookies, and we do not respond to that kind of tracking because there is none to opt out of. Third-party font files are fetched from Google Fonts under Google's policies. Full details, including controls, are in our Cookie Notice.",
 ]
 
 [[sections.links]]
-label = "github.com/worldofunreal/shadows-of-war"
-url = "https://github.com/worldofunreal/shadows-of-war"
+label = "Cookie Notice"
+url = "https://shadowsofwar.io/cookies/"
+
+[[sections]]
+heading = "Retention"
+paragraphs = [
+  "Product-event files (JSONL) are pruned automatically once older than 90 days, and in-memory analytics counters and set memberships expire by key TTL within 90 days. Deployments never wipe live state; retention is enforced by these TTLs and the file rotation, not by deploys.",
+  "Accounts, profiles, match history, and owned items persist until you request deletion or the account is terminated under the Terms. Support emails are kept as long as needed to resolve your request and meet legal obligations.",
+]
+
+[[sections]]
+heading = "Your rights and deletion"
+paragraphs = [
+  "You have the right to access, correct, delete, and port your data, and to object to or restrict certain processing. To exercise any right, email hello@shadowsofwar.io from your contact address and include your account ID (found in-game) or display name plus approximate creation date so we can verify ownership without collecting new identity documents.",
+  "Deletion: on a verified request we permanently erase the account record, its platform-identity mappings, the metadata mirror rows, and dated analytics memberships through an operator-only erasure endpoint, and confirm the report. Pseudonymous event lines that can no longer be linked to you age out within the 90-day rotation; aggregate match records and the probabilistic unique-player counter (which cannot address individuals) are bounded by the same 90-day window.",
+  "US state rights (including California, Colorado, Connecticut, Virginia, and other state privacy laws): rights to know, access, correct, delete, portability, appeal of a denial, and non-discrimination. We do not sell or share personal data within the meaning of those laws, so there is no sale/sharing opt-out to operate; a Global Privacy Control signal is honored as a sale/sharing opt-out request and has nothing to toggle. EU/UK rights: access, rectification, erasure, restriction, portability, objection (including to direct marketing — we send none without consent), and withdrawal of consent, plus the right to lodge a complaint with your supervisory authority.",
+  "We respond within the time required by applicable law (no later than 45 days, plus any lawful extension we notify you of). If we deny a request we will explain why and how to appeal by reply.",
+]
+
+[[sections]]
+heading = "Security"
+paragraphs = [
+  "We protect data with TLS in transit, loopback-only internal services, bearer-gated operator endpoints, and one-way hashes for account ownership secrets. No internet transmission or storage method is fully secure, and we cannot guarantee absolute security — but we acknowledge security reports within 48 hours per our security policy.",
+]
+
+[[sections]]
+heading = "International transfers"
+paragraphs = [
+  "We operate infrastructure in the United States and the European Union, and support may be handled across regions, so your data may be processed in a jurisdiction with different privacy laws than your own. Where EU/UK law requires a transfer safeguard for data leaving Europe, we rely on the safeguards available to an operator of our size — data-minimization, first-party-only analytics, and processing under these published terms — and we do not transfer data to advertising or data-broker third parties anywhere.",
+]
+
+[[sections]]
+heading = "Changes to this policy"
+paragraphs = [
+  "We may update this policy from time to time. Material changes take effect after prominent notice on the Service (such as the updated date above and a notice on the site). Your continued use after the update means you accept the updated policy.",
+]
 
 [[sections]]
 heading = "Contact"
 paragraphs = [
-  "Privacy inquiries: security contact in",
+  "All privacy questions and requests: hello@shadowsofwar.io. General help: our support center. Security vulnerabilities: privately to hello@shadowsofwar.io (never in public forums) — acknowledged within 48 hours.",
 ]
 
 [[sections.links]]
-label = "SECURITY.md"
-url = "https://github.com/worldofunreal/shadows-of-war/blob/main/SECURITY.md"
+label = "Terms of Service"
+url = "https://shadowsofwar.io/terms/"
+
+[[sections.links]]
+label = "Cookie Notice"
+url = "https://shadowsofwar.io/cookies/"
+
+[[sections.links]]
+label = "Support"
+url = "https://shadowsofwar.io/support/"

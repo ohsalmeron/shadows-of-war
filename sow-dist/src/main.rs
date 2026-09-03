@@ -571,6 +571,7 @@ fn verify_layout(dir: &Path) -> Result<()> {
         "grid-bg.js",
         "privacy/index.html",
         "terms/index.html",
+        "cookies/index.html",
         "support/index.html",
         "how-to-play/index.html",
         "leaders/index.html",
@@ -706,7 +707,7 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
     for name in ["icon-192.png", "icon-512.png", "icon-512-maskable.png"] {
         fs::copy(paths.assets_site.join("icons").join(name), out.join(name))?;
     }
-    for path in ["privacy", "terms", "support", "how-to-play", "leaders", ".well-known"] {
+    for path in ["privacy", "terms", "cookies", "support", "how-to-play", "leaders", ".well-known"] {
         let src = site.join(path);
         if !src.is_dir() {
             bail!("website legal page missing: {}", src.display());
@@ -735,9 +736,10 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
             "  <url>\n    <loc>https://shadowsofwar.io/play/</loc>\n    <lastmod>2026-08-25</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.9</priority>\n  </url>\n",
             "  <url>\n    <loc>https://shadowsofwar.io/leaders/</loc>\n    <lastmod>2026-08-25</lastmod>\n    <changefreq>monthly</changefreq>\n    <priority>0.8</priority>\n  </url>\n",
             "  <url>\n    <loc>https://shadowsofwar.io/how-to-play/</loc>\n    <lastmod>2026-08-25</lastmod>\n    <changefreq>monthly</changefreq>\n    <priority>0.8</priority>\n  </url>\n",
-            "  <url>\n    <loc>https://shadowsofwar.io/support/</loc>\n    <lastmod>2026-08-25</lastmod>\n    <changefreq>monthly</changefreq>\n    <priority>0.4</priority>\n  </url>\n",
-            "  <url>\n    <loc>https://shadowsofwar.io/privacy/</loc>\n    <lastmod>2026-08-25</lastmod>\n    <changefreq>yearly</changefreq>\n    <priority>0.3</priority>\n  </url>\n",
-            "  <url>\n    <loc>https://shadowsofwar.io/terms/</loc>\n    <lastmod>2026-08-25</lastmod>\n    <changefreq>yearly</changefreq>\n    <priority>0.3</priority>\n  </url>\n",
+            "  <url>\n    <loc>https://shadowsofwar.io/support/</loc>\n    <lastmod>2026-09-03</lastmod>\n    <changefreq>monthly</changefreq>\n    <priority>0.4</priority>\n  </url>\n",
+            "  <url>\n    <loc>https://shadowsofwar.io/privacy/</loc>\n    <lastmod>2026-09-03</lastmod>\n    <changefreq>yearly</changefreq>\n    <priority>0.3</priority>\n  </url>\n",
+            "  <url>\n    <loc>https://shadowsofwar.io/terms/</loc>\n    <lastmod>2026-09-03</lastmod>\n    <changefreq>yearly</changefreq>\n    <priority>0.3</priority>\n  </url>\n",
+            "  <url>\n    <loc>https://shadowsofwar.io/cookies/</loc>\n    <lastmod>2026-09-03</lastmod>\n    <changefreq>yearly</changefreq>\n    <priority>0.3</priority>\n  </url>\n",
             "</urlset>\n",
         ),
     )?;
