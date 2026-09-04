@@ -5,10 +5,11 @@ mod layout;
 mod modals;
 pub mod profile;
 pub mod queue_overlay;
+pub mod store;
 
 use crate::UiAction;
-use egui::{CentralPanel, Color32, Frame};
 use sow_core::protocol::LobbyInfo;
+use std::collections::BTreeSet;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum GameModeFilter {
@@ -32,6 +33,18 @@ pub enum LobbyNotice {
     ConnectionLost,
 }
 
+/// The one source of truth for the native menu screen. Queue is represented by
+/// the network-owned `is_waiting` flag while a match is being joined.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MainMenuRoute {
+    Home,
+    Browser,
+    Create,
+    Queue,
+    Store,
+    Profile,
+}
+
 pub struct MainMenuState {
     pub is_connected: bool,
     pub is_connecting: bool,
@@ -47,12 +60,10 @@ pub struct MainMenuState {
     pub is_lobby_host: bool,
     pub custom_game_is_private: bool,
     // Custom Game screen (unified single-player + create)
-    pub show_custom_game: bool,
     pub custom_game_is_sp: bool,
     pub custom_game_config: Box<sow_core::game_config::GameConfig>,
     pub custom_game_password: String,
     // Join Browser screen
-    pub show_join_browser: bool,
     pub join_mode_filter: GameModeFilter,
     pub join_lobby_code: String,
     pub join_password_input: String,
@@ -81,6 +92,12 @@ pub struct MainMenuState {
     pub account_level: u32,
     pub account_xp: u32,
     pub laurels: u64,
+    /// Authoritative commerce snapshot copied from the client profile.
+    pub store_catalog: sow_data::commerce::StoreCatalog,
+    pub selected_skin: Option<String>,
+    pub store_busy: bool,
+    pub profile: profile::NativeProfileState,
+    pub route: MainMenuRoute,
 }
 
 impl Default for MainMenuState {
@@ -104,6 +121,8 @@ impl Default for MainMenuState {
             _ => sow_core::player::Leader::Napoleon,
         };
         let civ = crate::widgets::avatar_picker::leader_civilization(leader);
+        let empty_leaders = BTreeSet::new();
+        let empty_skins = BTreeSet::new();
         Self {
             is_connected: false,
             is_connecting: false,
@@ -120,7 +139,6 @@ impl Default for MainMenuState {
             host_private_pending: false,
             in_private_match: false,
             is_lobby_host: false,
-            show_custom_game: false,
             custom_game_is_sp: true,
             custom_game_config: Box::new(sow_core::game_config::GameConfig {
                 seed: ms as u64,
@@ -128,7 +146,6 @@ impl Default for MainMenuState {
             }),
             custom_game_password: String::new(),
             custom_game_is_private: false,
-            show_join_browser: false,
             join_mode_filter: GameModeFilter::All,
             join_lobby_code: String::new(),
             join_password_input: String::new(),
@@ -150,11 +167,40 @@ impl Default for MainMenuState {
             account_level: 1,
             account_xp: 0,
             laurels: 0,
+            store_catalog: sow_data::commerce::catalog_for_profile(
+                &empty_leaders,
+                &empty_skins,
+                0,
+                0,
+                0,
+            ),
+            selected_skin: None,
+            store_busy: false,
+            profile: profile::NativeProfileState::default(),
+            route: MainMenuRoute::Home,
         }
     }
 }
 
 impl MainMenuState {
+    pub fn visible_route(&self) -> MainMenuRoute {
+        if self.is_waiting {
+            MainMenuRoute::Queue
+        } else {
+            self.route
+        }
+    }
+
+    pub fn open_route(&mut self, route: MainMenuRoute) {
+        if route != MainMenuRoute::Queue {
+            self.route = route;
+        }
+    }
+
+    pub fn go_home(&mut self) {
+        self.route = MainMenuRoute::Home;
+    }
+
     pub fn apply_map_catalog_custom(&mut self, catalog: &[sow_core::maps::MapCatalogEntry]) {
         let cfg = &mut self.custom_game_config;
         cfg.map_name = sow_core::maps::resolve_map_name(catalog, &cfg.map_name);
@@ -249,63 +295,51 @@ pub fn draw_terms_privacy_footer(
     if narrow {
         ui.vertical_centered(|ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
-            ui.allocate_ui_with_layout(
-                egui::vec2(ui.available_width(), 15.0),
-                egui::Layout::left_to_right(egui::Align::Center)
-                    .with_main_align(egui::Align::Center)
-                    .with_main_wrap(true),
-                |ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
-                    ui.label(
-                        egui::RichText::new(strings.by_playing_you_agree.trim_end())
-                            .font(sow_ui_kit::theme::font_regular(size))
-                            .color(text_color),
-                    );
-                    draw_terms_link(ui, action);
-                    ui.label(
-                        egui::RichText::new(strings.and_the.trim())
-                            .font(sow_ui_kit::theme::font_regular(size))
-                            .color(text_color),
-                    );
-                    draw_privacy_link(ui, action);
-                },
-            );
-            ui.allocate_ui_with_layout(
-                egui::vec2(ui.available_width(), 15.0),
-                egui::Layout::left_to_right(egui::Align::Center)
-                    .with_main_align(egui::Align::Center)
-                    .with_main_wrap(true),
-                |ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
-                    ui.label(
-                        egui::RichText::new(&version)
-                            .font(sow_ui_kit::theme::font_regular(size))
-                            .color(text_color),
-                    );
-                    ui.label(
-                        egui::RichText::new("·")
-                            .font(sow_ui_kit::theme::font_regular(size))
-                            .color(text_color),
-                    );
-                    ui.label(
-                        egui::RichText::new(&credits.based_on_short)
-                            .font(sow_ui_kit::theme::font_regular(size))
-                            .color(text_color),
-                    );
-                    ui.label(
-                        egui::RichText::new("·")
-                            .font(sow_ui_kit::theme::font_regular(size))
-                            .color(text_color),
-                    );
-                    draw_discord_link(ui);
-                    ui.label(
-                        egui::RichText::new("·")
-                            .font(sow_ui_kit::theme::font_regular(size))
-                            .color(text_color),
-                    );
-                    draw_github_link(ui);
-                },
-            );
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                ui.label(
+                    egui::RichText::new(strings.by_playing_you_agree.trim_end())
+                        .font(sow_ui_kit::theme::font_regular(size))
+                        .color(text_color),
+                );
+                draw_terms_link(ui, action);
+                ui.label(
+                    egui::RichText::new(strings.and_the.trim())
+                        .font(sow_ui_kit::theme::font_regular(size))
+                        .color(text_color),
+                );
+                draw_privacy_link(ui, action);
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                ui.label(
+                    egui::RichText::new(&version)
+                        .font(sow_ui_kit::theme::font_regular(size))
+                        .color(text_color),
+                );
+                ui.label(
+                    egui::RichText::new("·")
+                        .font(sow_ui_kit::theme::font_regular(size))
+                        .color(text_color),
+                );
+                ui.label(
+                    egui::RichText::new(&credits.based_on_short)
+                        .font(sow_ui_kit::theme::font_regular(size))
+                        .color(text_color),
+                );
+                ui.label(
+                    egui::RichText::new("·")
+                        .font(sow_ui_kit::theme::font_regular(size))
+                        .color(text_color),
+                );
+                draw_discord_link(ui);
+                ui.label(
+                    egui::RichText::new("·")
+                        .font(sow_ui_kit::theme::font_regular(size))
+                        .color(text_color),
+                );
+                draw_github_link(ui);
+            });
         });
         return;
     }
@@ -375,24 +409,8 @@ pub fn draw_terms_privacy_footer(
     );
 }
 
-/// Home screen, built from fixed panels so the chrome never scrolls — the only scroll
-/// region is the Public Games list in the middle of the central panel. The selected
-/// leader is already conveyed by the full-bleed backdrop and the identity avatar, so
-/// there is no separate leader card competing for space.
-///
-/// Layout (the footer bottom panel is drawn by the caller before this):
-/// ```text
-///   ┌ identity (Panel::top, fixed) ───────────────────────┐
-///   │ [avatar] name / sign-in                      [gear] │
-///   ├─────────────────────────────────────────────────────┤
-///   │ CENTRAL (dark)                                       │
-///   │  Panel::top → [ Quick Match card ][  CREATE  ]       │  (desktop row)
-///   │             → Public Games  [All][FFA][Teams]        │
-///   │  ScrollArea → lobby list ↕                           │
-///   │  Panel::bot → room code                              │
-///   └─────────────────────────────────────────────────────┘
-/// ```
-/// On mobile the top row stacks: Quick Match card, then a full-width CREATE.
+/// Home shell. The identity bar stays outside the single body scroll region;
+/// every control below is width-bounded by the current viewport metrics.
 fn draw_home(
     root_ui: &mut egui::Ui,
     state: &mut MainMenuState,
@@ -401,185 +419,146 @@ fn draw_home(
     action: &mut Option<UiAction>,
 ) {
     let strings = &sow_i18n::get(lang).main_menu;
-    let compact = sow_ui_kit::theme::compact_viewport(root_ui.ctx());
-    let scale = sow_ui_kit::theme::viewport_scale(root_ui.ctx());
-    let section_gap = (10.0 * scale).max(6.0);
+    let metrics = layout::main_menu_metrics(root_ui.ctx());
     let muted = sow_ui_kit::theme::palette::text_muted();
-    // Wide enough to place the CREATE button beside the Quick Match card (landscape >= 540px).
-    let wide = !sow_ui_kit::theme::portrait_layout(root_ui.ctx()) && root_ui.available_width() >= 540.0;
-
-    let id_top_pad = if scale < 0.85 { 8 } else { 16 };
-    let id_bot_pad = if scale < 0.85 { 4 } else { 8 };
-    let id_header_h = (48.0 * scale).clamp(38.0, 48.0);
-    let profile_h = (56.0 * scale).clamp(44.0, 56.0);
-    let gear_w = (44.0 * scale).clamp(36.0, 44.0);
-    #[cfg(target_os = "ios")]
-    let store_w = (82.0 * scale).clamp(68.0, 82.0);
-    #[cfg(not(target_os = "ios"))]
-    let store_w = 0.0;
-
-    // ── Identity strip (fixed, full width): avatar + name/sign-in + settings gear ──
-    egui::Panel::top("home_identity")
-        .resizable(false)
-        .show_separator_line(false)
-        .frame(egui::Frame::NONE.inner_margin(egui::Margin {
-            left: 16,
-            right: 16,
-            top: id_top_pad,
-            bottom: id_bot_pad,
-        }))
-        .show_inside(root_ui, |ui| {
+    let header_frame = egui::Frame::NONE
+        .fill(sow_ui_kit::theme::palette::surface_transparent())
+        .inner_margin(egui::Margin::symmetric(metrics.outer_pad as i8, 8));
+    header_frame.show(root_ui, |ui| {
+        if metrics.class == layout::ViewportClass::Wide {
             ui.horizontal(|ui| {
-                let action_gap = if store_w > 0.0 { 8.0 } else { 0.0 };
-                let header_w = (ui.available_width() - gear_w - store_w - action_gap - 8.0).max(80.0);
+                let actions_w = 82.0 + 92.0 + metrics.touch_min + metrics.gap * 2.0;
+                let profile_w = (ui.available_width() - actions_w).max(260.0);
                 ui.allocate_ui_with_layout(
-                    egui::vec2(header_w, id_header_h),
+                    egui::vec2(profile_w, 56.0),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| profile::draw_user_profile_header(ui, state, 56.0, asset_loader, lang, action),
+                );
+                ui.add_space(metrics.gap);
+                draw_menu_actions(ui, metrics, action);
+            });
+        } else {
+            profile::draw_user_profile_header(
+                ui,
+                state,
+                if metrics.is_phone() { 52.0 } else { 56.0 },
+                asset_loader,
+                lang,
+                action,
+            );
+            ui.add_space(metrics.gap * 0.5);
+            draw_menu_actions(ui, metrics, action);
+        }
+    });
+
+    egui::ScrollArea::vertical()
+        .id_salt("home_body_scroll")
+        .auto_shrink([false, false])
+        .show(root_ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.add_space(4.0);
+            ui.label(
+                egui::RichText::new(&strings.quick_match_label)
+                    .size(12.0)
+                    .strong()
+                    .color(muted),
+            );
+            ui.add_space(4.0);
+
+            let quick_w = if metrics.class == layout::ViewportClass::Wide {
+                (ui.available_width() * 0.58).min(420.0)
+            } else {
+                ui.available_width()
+            };
+            ui.horizontal(|ui| {
+                ui.allocate_ui_with_layout(
+                    egui::vec2(quick_w, 0.0),
                     egui::Layout::top_down(egui::Align::Min),
                     |ui| {
-                        profile::draw_user_profile_header(
+                        browser::draw_left_column(
                             ui,
                             state,
-                            compact,
-                            profile_h,
+                            metrics.is_compact(),
+                            0.0,
+                            action,
                             asset_loader,
                             lang,
-                            action,
                         );
                     },
                 );
-                #[cfg(target_os = "ios")]
-                {
-                    let store = crate::widgets::ThemeButton::new("STORE")
+                if metrics.class == layout::ViewportClass::Wide {
+                    ui.add_space(metrics.gap);
+                    let create = crate::widgets::ThemeButton::new(&strings.create_game_btn)
                         .style(crate::widgets::ThemeButtonStyle::Secondary)
-                        .min_size(egui::vec2(store_w, id_header_h))
-                        .text_size((12.0 * scale).clamp(10.0, 12.0));
-                    if ui.add(store).clicked() {
-                        *action = Some(UiAction::OpenStore);
-                    }
-                }
-                let gear = crate::widgets::ThemeButton::new("⚙")
-                    .style(crate::widgets::ThemeButtonStyle::Tertiary)
-                    .min_size(egui::vec2(gear_w, id_header_h))
-                    .text_size((24.0 * scale).clamp(18.0, 24.0));
-                if ui.add(gear).clicked() {
-                    *action = Some(UiAction::ToggleSettings);
-                }
-            });
-        });
-
-    // ── Central: Quick Match + Public Games (only the lobby list scrolls) ──
-    // No panel fill — the leader backdrop shows through; individual cards/rows carry
-    // their own surfaces.
-    let central_y_pad = if scale < 0.85 { 6 } else { 12 };
-    CentralPanel::default()
-        .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(16, central_y_pad)))
-        .show_inside(root_ui, |ui| {
-            // Fixed top region: Quick Match card, then the Public Games header + pills.
-            egui::Panel::top("home_pg_top")
-                .resizable(false)
-                .show_separator_line(false)
-                .frame(egui::Frame::NONE)
-                .show_inside(ui, |ui| {
-                    ui.label(
-                        egui::RichText::new(&strings.quick_match_label)
-                            .size(12.0)
-                            .strong()
-                            .color(muted),
-                    );
-                    ui.add_space(3.0);
-
-                    // Quick Match card, left-aligned at a compact hero size.
-                    let card_w = if wide {
-                        (320.0 * scale.max(0.75)).clamp(220.0, 360.0)
-                    } else {
-                        ui.available_width()
-                    };
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(card_w, 0.0),
-                        egui::Layout::top_down(egui::Align::Min),
-                        |ui| {
-                            browser::draw_left_column(
-                                ui,
-                                state,
-                                compact,
-                                0.0,
-                                action,
-                                asset_loader,
-                                lang,
-                            );
-                        },
-                    );
-
-                    ui.add_space(section_gap);
-                    ui.label(
-                        egui::RichText::new(&strings.game_browser_title)
-                            .size(12.0)
-                            .strong()
-                            .color(muted),
-                    );
-                    ui.add_space(3.0);
-                    join_browser::draw_filter_pills(ui, state, strings);
-                    ui.add_space(4.0);
-                });
-
-            // Fixed bottom action bar: [ lobby-code component ] [ CREATE ] — mirrors the
-            // identity bar's [ nickname box ] [ gear ] rhythm. Stacks on narrow screens.
-            let bot_top_margin = if scale < 0.85 { 4 } else { 8 };
-            egui::Panel::bottom("home_pg_bottom")
-                .resizable(false)
-                .show_separator_line(false)
-                .frame(egui::Frame::NONE.inner_margin(egui::Margin {
-                    left: 0,
-                    right: 0,
-                    top: bot_top_margin,
-                    bottom: 0,
-                }))
-                .show_inside(ui, |ui| {
-                    let bar_h = (42.0 * scale).clamp(34.0, 46.0);
-                    let mut open_create = false;
-                    if wide {
-                        ui.horizontal(|ui| {
-                            let create_w = (180.0 * scale).clamp(120.0, 200.0);
-                            let comp_w = (ui.available_width() - create_w - section_gap).max(140.0);
-                            ui.allocate_ui_with_layout(
-                                egui::vec2(comp_w, bar_h),
-                                egui::Layout::top_down(egui::Align::Min),
-                                |ui| {
-                                    join_browser::draw_private_join_row(ui, state, strings, action);
-                                },
-                            );
-                            ui.add_space(section_gap);
-                            let create_btn =
-                                crate::widgets::ThemeButton::new(&strings.create_game_btn)
-                                    .style(crate::widgets::ThemeButtonStyle::Secondary)
-                                    .min_size(egui::vec2(ui.available_width(), bar_h))
-                                    .text_size((18.0 * scale).clamp(14.0, 18.0));
-                            open_create = ui.add(create_btn).clicked();
-                        });
-                    } else {
-                        join_browser::draw_private_join_row(ui, state, strings, action);
-                        ui.add_space(section_gap * 0.5);
-                        let create_btn = crate::widgets::ThemeButton::new(&strings.create_game_btn)
-                            .style(crate::widgets::ThemeButtonStyle::Secondary)
-                            .min_size(egui::vec2(ui.available_width(), bar_h))
-                            .text_size((18.0 * scale).clamp(14.0, 18.0));
-                        open_create = ui.add(create_btn).clicked();
-                    }
-                    if open_create {
-                        state.show_custom_game = true;
+                        .min_size(egui::vec2(ui.available_width(), 52.0))
+                        .text_size(18.0);
+                    if ui.add(create).clicked() {
+                        state.open_route(MainMenuRoute::Create);
                         state.custom_game_is_sp = false;
                     }
-                });
+                }
+            });
 
-            // Remaining middle: the scrolling lobby list — the only scroll on the menu.
-            egui::ScrollArea::vertical()
-                .id_salt("home_public_games_scroll")
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    ui.set_width(ui.available_width());
-                    join_browser::draw_lobby_rows(ui, state, asset_loader, action, strings);
-                });
+            if metrics.class != layout::ViewportClass::Wide {
+                ui.add_space(metrics.gap);
+                let create = crate::widgets::ThemeButton::new(&strings.create_game_btn)
+                    .style(crate::widgets::ThemeButtonStyle::Secondary)
+                    .min_size(egui::vec2(ui.available_width(), 52.0))
+                    .text_size(18.0);
+                if ui.add(create).clicked() {
+                    state.open_route(MainMenuRoute::Create);
+                    state.custom_game_is_sp = false;
+                }
+            }
+
+            ui.add_space(metrics.gap);
+            ui.label(
+                egui::RichText::new(&strings.game_browser_title)
+                    .size(12.0)
+                    .strong()
+                    .color(muted),
+            );
+            ui.add_space(4.0);
+            join_browser::draw_filter_pills(ui, state, strings);
+            ui.add_space(metrics.gap * 0.5);
+            join_browser::draw_private_join_row(ui, state, strings, action);
+            ui.add_space(metrics.gap);
+            join_browser::draw_lobby_rows(ui, state, asset_loader, action, strings);
         });
+}
+
+fn draw_menu_actions(
+    ui: &mut egui::Ui,
+    metrics: layout::MainMenuMetrics,
+    action: &mut Option<UiAction>,
+) {
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing.x = metrics.gap;
+        let store = crate::widgets::ThemeButton::new("STORE")
+            .style(crate::widgets::ThemeButtonStyle::Secondary)
+            .min_size(egui::vec2(82.0, metrics.touch_min))
+            .text_size(12.0);
+        if ui.add(store).clicked() {
+            #[cfg(target_os = "ios")]
+            { *action = Some(UiAction::OpenStore); }
+            #[cfg(not(target_os = "ios"))]
+            { *action = Some(UiAction::OpenStorePage); }
+        }
+        let profile = crate::widgets::ThemeButton::new("PROFILE")
+            .style(crate::widgets::ThemeButtonStyle::Tertiary)
+            .min_size(egui::vec2(92.0, metrics.touch_min))
+            .text_size(11.0);
+        if ui.add(profile).clicked() {
+            *action = Some(UiAction::OpenProfilePage);
+        }
+        let gear = crate::widgets::ThemeButton::new("⚙")
+            .style(crate::widgets::ThemeButtonStyle::Tertiary)
+            .min_size(egui::vec2(metrics.touch_min, metrics.touch_min))
+            .text_size(24.0);
+        if ui.add(gear).clicked() {
+            *action = Some(UiAction::ToggleSettings);
+        }
+    });
 }
 
 pub fn draw(
@@ -590,12 +569,15 @@ pub fn draw(
     reduced_motion: bool,
 ) -> Option<UiAction> {
     let mut action = None;
-    let compact = sow_ui_kit::theme::compact_viewport(root_ui.ctx());
+    let metrics = layout::main_menu_metrics(root_ui.ctx());
+    let compact = metrics.is_compact();
     let strings = &sow_i18n::get(lang).main_menu;
 
     // Draw the full-bleed backdrop first so that all panels (including the footer)
     // are drawn on top of it.
-    if (state.is_waiting || !state.show_custom_game) && !state.show_leader_picker {
+    if matches!(state.visible_route(), MainMenuRoute::Home | MainMenuRoute::Browser | MainMenuRoute::Queue)
+        && !state.show_leader_picker
+    {
         let backdrop_rect = root_ui.ctx().content_rect();
         let use_portrait = backdrop_rect.width() < backdrop_rect.height();
         crate::widgets::draw_leader_hero_backdrop(
@@ -622,37 +604,35 @@ pub fn draw(
             draw_terms_privacy_footer(ui, lang, &mut action);
         });
 
-    if state.show_custom_game && !state.is_waiting {
-        custom_game::draw(
+    match state.visible_route() {
+        MainMenuRoute::Store => store::draw(root_ui, state, asset_loader, &mut action),
+        MainMenuRoute::Profile => profile::draw_native(root_ui, state, &mut action),
+        MainMenuRoute::Create => custom_game::draw(
             root_ui,
             state,
             asset_loader,
             &mut action,
             lang,
             reduced_motion,
-        );
-    } else if state.is_waiting {
-        // Lobby waiting room fills the space between the top and the (already-drawn) footer.
-        CentralPanel::default()
-            .frame(Frame::new().fill(Color32::TRANSPARENT))
-            .show_inside(root_ui, |ui| {
-                let (_, action_min_h, _, _) = layout::menu_layout_chrome(
-                    ui.ctx(),
-                    ui.available_height(),
-                    ui.available_width(),
-                    compact,
-                );
-                queue_overlay::draw_queue_overlay(
-                    ui,
-                    state,
-                    action_min_h,
-                    &mut action,
-                    asset_loader,
-                    lang,
-                );
-            });
-    } else {
-        draw_home(root_ui, state, asset_loader, lang, &mut action);
+        ),
+        MainMenuRoute::Queue => {
+            let (_, action_min_h, _, _) = layout::menu_layout_chrome(
+                root_ui.ctx(),
+                root_ui.available_height(),
+                root_ui.available_width(),
+                compact,
+            );
+            queue_overlay::draw_queue_overlay(
+                root_ui,
+                state,
+                action_min_h,
+                &mut action,
+                asset_loader,
+                lang,
+            );
+        }
+        MainMenuRoute::Browser => draw_browser(root_ui, state, asset_loader, lang, &mut action),
+        MainMenuRoute::Home => draw_home(root_ui, state, asset_loader, lang, &mut action),
     }
 
     modals::draw_connecting_indicator(root_ui.ctx(), state, lang, compact);
@@ -690,4 +670,42 @@ pub fn draw(
     }
 
     action
+}
+
+fn draw_browser(
+    root_ui: &mut egui::Ui,
+    state: &mut MainMenuState,
+    asset_loader: &mut crate::ui::asset_loader::AssetLoader,
+    lang: sow_i18n::Language,
+    action: &mut Option<UiAction>,
+) {
+    let metrics = layout::main_menu_metrics(root_ui.ctx());
+    let strings = &sow_i18n::get(lang).main_menu;
+    egui::Frame::NONE
+        .inner_margin(egui::Margin::symmetric(metrics.outer_pad as i8, 10))
+        .show(root_ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .add(crate::widgets::ThemeButton::new("← BACK")
+                    .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                    .min_size(egui::vec2(92.0, metrics.touch_min))
+                    .text_size(13.0))
+                    .clicked()
+                {
+                    state.go_home();
+                }
+                ui.label(egui::RichText::new("PUBLIC GAMES").strong().size(22.0));
+            });
+            ui.add_space(metrics.gap);
+            egui::ScrollArea::vertical()
+                .id_salt("browser_body_scroll")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    join_browser::draw_filter_pills(ui, state, strings);
+                    ui.add_space(metrics.gap * 0.5);
+                    join_browser::draw_private_join_row(ui, state, strings, action);
+                    ui.add_space(metrics.gap);
+                    join_browser::draw_lobby_rows(ui, state, asset_loader, action, strings);
+                });
+        });
 }

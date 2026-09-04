@@ -21,7 +21,7 @@ fn pill_toggle(ui: &mut egui::Ui, label: &str, active: bool) -> bool {
             },
         ))
         .corner_radius(CornerRadius::same(6))
-        .min_size(Vec2::new(0.0, 28.0));
+        .min_size(Vec2::new(0.0, 44.0));
     ui.add(btn).clicked()
 }
 
@@ -86,11 +86,11 @@ pub fn draw(
     _reduced_motion: bool,
 ) {
     if root_ui.ctx().input(|i| i.key_pressed(egui::Key::Escape)) {
-        state.show_custom_game = false;
+        state.go_home();
     }
 
     let strings = &sow_i18n::get(lang).main_menu;
-    let compact = sow_ui_kit::theme::compact_viewport(root_ui.ctx());
+    let compact = super::layout::main_menu_metrics(root_ui.ctx()).is_compact();
 
     // Sync leader + catalog
     state.custom_game_config.player_leader = state.selected_leader;
@@ -121,9 +121,7 @@ pub fn draw(
     }
 
     // ── Top: title + SP/MP toggle ─────────────────────────────────
-    egui::Panel::top("custom_game_header")
-        .frame(sow_ui_kit::theme::screen_panel_frame())
-        .show_inside(root_ui, |ui| {
+    sow_ui_kit::theme::screen_panel_frame().show(root_ui, |ui| {
             if compact {
                 ui.vertical(|ui| {
                     ui.heading(&strings.custom_game_title);
@@ -138,9 +136,9 @@ pub fn draw(
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let back = crate::widgets::ThemeButton::new(&strings.back)
                             .style(crate::widgets::ThemeButtonStyle::Tertiary)
-                            .min_size(Vec2::new(90.0, 30.0));
+                            .min_size(Vec2::new(96.0, 44.0));
                         if ui.add(back).clicked() {
-                            state.show_custom_game = false;
+                            state.go_home();
                         }
                     });
                 });
@@ -148,13 +146,10 @@ pub fn draw(
         });
 
     // ── Central: settings panels ───────────────────────────────────
-    egui::CentralPanel::default()
-        .frame(
-            Frame::new()
-                .fill(Color32::from_rgb(8, 10, 14))
-                .inner_margin(egui::Margin::symmetric(16, 12)),
-        )
-        .show_inside(root_ui, |ui| {
+    Frame::new()
+        .fill(Color32::from_rgb(8, 10, 14))
+        .inner_margin(egui::Margin::symmetric(16, 12))
+        .show(root_ui, |ui| {
             let is_sp = state.custom_game_is_sp;
             let item_gap = if compact { 4.0 } else { 8.0 };
 
@@ -196,29 +191,34 @@ pub fn draw(
                         draw_back_button(ui, state, strings);
                     });
             } else {
-                ui.columns(2, |columns| {
-                    columns[0].vertical(|ui| {
-                        draw_map_preview(ui, state, asset_loader, strings);
-                        ui.add_space(item_gap);
-                        draw_map_selection_card(ui, state, asset_loader, strings);
-                        ui.add_space(item_gap);
-                        draw_difficulty_spawning_card(ui, state, strings);
-                        if is_sp {
-                            ui.add_space(item_gap);
-                            draw_seed_card(ui, state, strings);
-                        } else {
-                            ui.add_space(item_gap);
-                            draw_visibility_card(ui, state, strings);
-                        }
+                egui::ScrollArea::vertical()
+                    .id_salt("custom_game_body_scroll")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.columns(2, |columns| {
+                            columns[0].vertical(|ui| {
+                                draw_map_preview(ui, state, asset_loader, strings);
+                                ui.add_space(item_gap);
+                                draw_map_selection_card(ui, state, asset_loader, strings);
+                                ui.add_space(item_gap);
+                                draw_difficulty_spawning_card(ui, state, strings);
+                                if is_sp {
+                                    ui.add_space(item_gap);
+                                    draw_seed_card(ui, state, strings);
+                                } else {
+                                    ui.add_space(item_gap);
+                                    draw_visibility_card(ui, state, strings);
+                                }
+                            });
+                            columns[1].vertical(|ui| {
+                                draw_sliders_card(ui, state, strings);
+                                ui.add_space(16.0);
+                                draw_action_button(ui, state, action, is_sp, strings, compact);
+                                ui.add_space(4.0);
+                                draw_back_button(ui, state, strings);
+                            });
+                        });
                     });
-                    columns[1].vertical(|ui| {
-                        draw_sliders_card(ui, state, strings);
-                        ui.add_space(16.0);
-                        draw_action_button(ui, state, action, is_sp, strings, compact);
-                        ui.add_space(4.0);
-                        draw_back_button(ui, state, strings);
-                    });
-                });
             }
         });
 }
@@ -242,7 +242,7 @@ fn draw_action_button(
     action: &mut Option<UiAction>,
     is_sp: bool,
     strings: &sow_i18n::MainMenuStrings,
-    compact: bool,
+    _compact: bool,
 ) {
     let btn_label = if is_sp {
         &strings.start_simulation
@@ -253,7 +253,7 @@ fn draw_action_button(
         .style(crate::widgets::ThemeButtonStyle::Secondary)
         .min_size(Vec2::new(
             ui.available_width(),
-            if compact { 36.0 } else { 60.0 },
+            52.0,
         ))
         .text_size(20.0);
     if ui.add(start).clicked() {
@@ -268,16 +268,16 @@ fn draw_back_button(
 ) {
     let back = crate::widgets::ThemeButton::new(&strings.back)
         .style(crate::widgets::ThemeButtonStyle::Tertiary)
-        .min_size(Vec2::new(ui.available_width(), 30.0));
+        .min_size(Vec2::new(ui.available_width(), 44.0));
     if ui.add(back).clicked() {
-        state.show_custom_game = false;
+        state.go_home();
     }
 }
 
 fn action_btn_clicked(state: &mut MainMenuState, action: &mut Option<UiAction>, is_sp: bool) {
     if is_sp {
         let cfg = *state.custom_game_config.clone();
-        state.show_custom_game = false;
+        state.go_home();
         *action = Some(UiAction::StartSinglePlayer(Box::new(cfg)));
     } else {
         let cfg = *state.custom_game_config.clone();
@@ -286,7 +286,7 @@ fn action_btn_clicked(state: &mut MainMenuState, action: &mut Option<UiAction>, 
         } else {
             Some(state.custom_game_password.clone())
         };
-        state.show_custom_game = false;
+        state.go_home();
         *action = Some(UiAction::CreateGame {
             config: Box::new(cfg),
             is_private: state.custom_game_is_private,
@@ -302,7 +302,7 @@ fn draw_map_preview(
     strings: &sow_i18n::MainMenuStrings,
 ) {
     let config = &state.custom_game_config;
-    let compact = sow_ui_kit::theme::compact_viewport(ui.ctx());
+    let compact = super::layout::main_menu_metrics(ui.ctx()).is_compact();
     let thumbnail = asset_loader.thumbnail(&config.map_name);
     let w = ui.available_width();
     let h = (w / 1.77).clamp(40.0, if compact { 90.0 } else { 160.0 });

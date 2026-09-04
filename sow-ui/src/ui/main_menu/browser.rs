@@ -56,7 +56,7 @@ fn draw_lobby_list(
         // Cap height so the Quick Match card stays a compact hero, not a giant banner.
         // On short viewports (CrazyGames embeds), scale down proportionally to avoid pushing
         // the Public Games section off screen.
-        let scale = sow_ui_kit::theme::viewport_scale(ui.ctx());
+        let scale = super::layout::main_menu_metrics(ui.ctx()).scale;
         let base_h = if parent_w > 640.0 { 150.0 } else { 160.0 };
         let card_h = (base_h * scale).clamp(96.0, 168.0);
         let display_name = asset_loader
@@ -113,7 +113,7 @@ pub fn draw_left_column(
     asset_loader: &crate::ui::asset_loader::AssetLoader,
     lang: sow_i18n::Language,
 ) {
-    let side = if compact && !sow_ui_kit::theme::portrait_layout(ui.ctx()) {
+    let side = if compact && !super::layout::main_menu_metrics(ui.ctx()).is_phone() {
         crate::ui::map_texture::thumbnail_square_side_bounded(
             ui.available_width(),
             max_height,

@@ -284,14 +284,20 @@ impl SowApp {
                     let boot_ready = ui_ready && hero_ready;
 
                     if boot_ready {
-                        // Native has no cross-session login/persistence yet (only CrazyGames on
-                        // web does), so there's no trustworthy "has this player done the tutorial?"
-                        // record. Until native logins exist, the intro is ALWAYS enabled: every
-                        // boot starts the scripted tutorial. (`start_portal_intro_match` flips the
-                        // splash job, so it fires once per launch; exit-to-menu still works.) When
-                        // native logins land, gate this on `self.progress.is_first_game()` like web.
-                        log::info!("native boot: intro tutorial (always enabled on native)");
-                        self.start_portal_intro_match();
+                        // Native stores the same local progress snapshot as the web client. Keep
+                        // the first-run intro one-time, and expose an explicit menu-preview mode
+                        // for UI work without changing the normal player route.
+                        if std::env::var_os("SOW_NATIVE_MENU").is_some()
+                            || !self.progress.is_first_game()
+                        {
+                            log::info!("native boot: main menu");
+                            self.ui.app.splash_state.done = true;
+                            self.ui.app.splash_state.target_phase =
+                                Some(sow_ui_kit::ClientPhase::MainMenu);
+                        } else {
+                            log::info!("native boot: first-run intro tutorial");
+                            self.start_portal_intro_match();
+                        }
                     }
                     }
                 }

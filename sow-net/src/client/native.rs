@@ -35,7 +35,7 @@ impl SowClient {
                                 break;
                             }
                         } else {
-                            log::warn!("[SOW-CLIENT] rx.recv() returned None!");
+                            log::debug!("[SOW-CLIENT] send channel closed; network task exiting");
                             break;
                         }
                     }
@@ -56,7 +56,7 @@ impl SowClient {
                                 break;
                             }
                             None => {
-                                log::warn!("[SOW-CLIENT] read.next() returned None!");
+                                log::debug!("[SOW-CLIENT] websocket closed by peer");
                                 break;
                             }
                         }

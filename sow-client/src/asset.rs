@@ -620,6 +620,121 @@ impl SowApp {
                         self.fetch_cloud_progress();
                     }
                 }
+                crate::player_progress::DbEvent::NativeProfileLoaded { public_id, view } => {
+                    if self.ui.app.main_menu_state.profile.public_id.as_deref()
+                        != Some(public_id.as_str())
+                    {
+                        continue;
+                    }
+                    self.ui.app.main_menu_state.profile.loading = false;
+                    self.ui.app.main_menu_state.profile.error = None;
+                    self.ui.app.main_menu_state.profile.history = view.recent_matches.clone();
+                    self.ui.app.main_menu_state.profile.history_cursor =
+                        view.recent_matches.len();
+                    self.ui.app.main_menu_state.profile.history_has_next =
+                        view.matches_played > view.recent_matches.len() as u32;
+                    self.ui.app.main_menu_state.profile.ratings.clear();
+                    self.ui.app.main_menu_state.profile.ratings_loaded = false;
+                    self.ui.app.main_menu_state.profile.view = Some(view);
+                }
+                crate::player_progress::DbEvent::NativeProfileLoadFailed { public_id, status } => {
+                    if self.ui.app.main_menu_state.profile.public_id.as_deref()
+                        != Some(public_id.as_str())
+                    {
+                        continue;
+                    }
+                    self.ui.app.main_menu_state.profile.loading = false;
+                    self.ui.app.main_menu_state.profile.error = Some(format!(
+                        "Profile unavailable (HTTP {}).",
+                        status.map(|value| value.to_string()).unwrap_or_else(|| "network error".into())
+                    ));
+                }
+                crate::player_progress::DbEvent::NativeProfileHistoryLoaded {
+                    public_id,
+                    items,
+                    next_cursor,
+                } => {
+                    if self.ui.app.main_menu_state.profile.public_id.as_deref()
+                        != Some(public_id.as_str())
+                    {
+                        continue;
+                    }
+                    self.ui.app.main_menu_state.profile.loading = false;
+                    self.ui.app.main_menu_state.profile.error = None;
+                    self.ui.app.main_menu_state.profile.history.extend(items);
+                    self.ui.app.main_menu_state.profile.history_cursor =
+                        next_cursor.unwrap_or(self.ui.app.main_menu_state.profile.history_cursor);
+                    self.ui.app.main_menu_state.profile.history_has_next = next_cursor.is_some();
+                }
+                crate::player_progress::DbEvent::NativeProfileRatingsLoaded {
+                    public_id,
+                    items,
+                } => {
+                    if self.ui.app.main_menu_state.profile.public_id.as_deref()
+                        != Some(public_id.as_str())
+                    {
+                        continue;
+                    }
+                    self.ui.app.main_menu_state.profile.loading = false;
+                    self.ui.app.main_menu_state.profile.error = None;
+                    self.ui.app.main_menu_state.profile.ratings = items;
+                    self.ui.app.main_menu_state.profile.ratings_loaded = true;
+                }
+                crate::player_progress::DbEvent::NativeProfileSearchLoaded { query, items } => {
+                    self.ui.app.main_menu_state.profile.loading = false;
+                    self.ui.app.main_menu_state.profile.error = None;
+                    self.ui.app.main_menu_state.profile.search_query = query;
+                    self.ui.app.main_menu_state.profile.search_results = items;
+                }
+                crate::player_progress::DbEvent::NativeMatchDetailLoaded { match_id: _, detail } => {
+                    self.ui.app.main_menu_state.profile.loading = false;
+                    self.ui.app.main_menu_state.profile.error = None;
+                    self.ui.app.main_menu_state.profile.match_detail = Some(detail);
+                }
+                crate::player_progress::DbEvent::NativeProfileOperationFailed {
+                    public_id,
+                    operation,
+                    message,
+                } => {
+                    if let Some(public_id) = public_id.as_deref()
+                        && self.ui.app.main_menu_state.profile.public_id.as_deref()
+                            != Some(public_id)
+                    {
+                        continue;
+                    }
+                    self.ui.app.main_menu_state.profile.loading = false;
+                    self.ui.app.main_menu_state.profile.error = Some(message);
+                    log::error!("[profile] {operation} failed");
+                }
+                crate::player_progress::DbEvent::StoreProfileLoaded {
+                    account_id,
+                    progress,
+                    operation,
+                } => {
+                    if self.progress_account_id.as_deref() != Some(account_id.as_str()) {
+                        log::error!("[store] ignoring {operation} response for a different account");
+                        self.ui.app.main_menu_state.store_busy = false;
+                        continue;
+                    }
+                    self.progress = progress;
+                    self.apply_progress_preferences();
+                    self.save_local_progress();
+                    self.ui.app.main_menu_state.store_busy = false;
+                    self.ui.app.main_menu_state.error_message = None;
+                    log::info!("[store] {operation} acknowledged by server");
+                }
+                crate::player_progress::DbEvent::StoreActionFailed {
+                    operation,
+                    status,
+                    message,
+                } => {
+                    self.ui.app.main_menu_state.store_busy = false;
+                    self.ui.app.main_menu_state.error_message = Some(match status {
+                        Some(status) => format!("{message} (HTTP {status})"),
+                        None => message,
+                    });
+                    log::error!("[store] {operation} failed status={status:?}");
+                }
             }
         }
     }

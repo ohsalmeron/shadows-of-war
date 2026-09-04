@@ -16,7 +16,6 @@ pub mod rewards;
 pub mod metadata_db;
 #[cfg(feature = "server")]
 pub mod moderation;
-#[cfg(feature = "server")]
 pub mod profile;
 #[cfg(feature = "server")]
 pub mod time_util;
@@ -32,7 +31,6 @@ pub use leaders::{Civilization, Leader, leader_for_civilization};
 pub use metadata_db::{
     GeoEntityRecord, LeaderRecord, get_geo_entity_by_name, get_leader_by_name, init_database,
 };
-#[cfg(feature = "server")]
 pub use profile::{
     MatchParticipantRecord, MatchRecord, PublicLeaderSummary, PublicMatchDetail, PublicMatchSummary,
     PublicLeaderboardEntry, PublicProfileIndex, PublicProfileSummary, PublicProfileView,

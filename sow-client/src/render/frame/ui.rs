@@ -190,6 +190,20 @@ impl SowApp {
             self.ui.app.main_menu_state.account_level = self.progress.level;
             self.ui.app.main_menu_state.account_xp = self.progress.xp;
             self.ui.app.main_menu_state.laurels = self.progress.laurels;
+            self.ui.app.main_menu_state.selected_skin = self.progress.selected_skin.clone();
+            let rotation_period = web_time::SystemTime::now()
+                .duration_since(web_time::SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()
+                / sow_data::commerce::ROTATION_PERIOD_SECS;
+            self.ui.app.main_menu_state.store_catalog =
+                sow_data::commerce::catalog_for_profile(
+                    &self.progress.owned_leaders,
+                    &self.progress.owned_skins,
+                    self.progress.laurels,
+                    self.progress.gems,
+                    rotation_period,
+                );
             let ui_action = self.ui.app.draw(ctx, &mut local_cancel_intents);
 
             if self.ui.update_available {

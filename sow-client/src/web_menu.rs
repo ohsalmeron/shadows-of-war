@@ -1394,8 +1394,14 @@ pub(crate) fn publish_state(app: &mut SowApp) {
             "selected_leader": leader_id(state.selected_leader),
             "selected_leader_name": state.selected_leader.name(),
             "selected_civilization": state.selected_civilization.name(),
-            "show_browser": state.show_join_browser,
-            "show_create": state.show_custom_game,
+            "show_browser": matches!(
+                state.visible_route(),
+                sow_ui::ui::main_menu::MainMenuRoute::Browser
+            ),
+            "show_create": matches!(
+                state.visible_route(),
+                sow_ui::ui::main_menu::MainMenuRoute::Create
+            ),
             "join_lobby_code": state.join_lobby_code,
             "joined_lobby_id": state.joined_lobby_id,
             "pending_lobby_id": state.pending_join_lobby_id,

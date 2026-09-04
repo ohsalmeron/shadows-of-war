@@ -37,6 +37,18 @@ load_dist_env() {
   mkdir -p "${CARGO_TARGET_DIR}"
 }
 
+load_native_public_config() {
+  if [[ -z "${SOW_REVENUECAT_WEB_PURCHASE_LINK:-}" && -f "${ROOT}/sow-dist/.env" ]]; then
+    local purchase_link
+    purchase_link="$(awk -F= '$1 == "SOW_REVENUECAT_WEB_PURCHASE_LINK" { sub(/^[^=]*=/, ""); print }' "${ROOT}/sow-dist/.env" | tail -n 1)"
+    purchase_link="${purchase_link#\"}"
+    purchase_link="${purchase_link%\"}"
+    if [[ "${purchase_link}" == https://* ]]; then
+      export SOW_REVENUECAT_WEB_PURCHASE_LINK="${purchase_link}"
+    fi
+  fi
+}
+
 run_dist() {
   local log_prefix="$1"
   shift
@@ -68,6 +80,7 @@ case "${CMD}" in
     exit 0
     ;;
   native|n)
+    load_native_public_config
     export VERBOSE="${VERBOSE:-1}"
     export SOW_WS_URL="${SOW_WS_URL:-wss://shadowsofwar.io/ws/}"
     export SOW_MAPS_URL="${SOW_MAPS_URL:-https://shadowsofwar.io/maps}"

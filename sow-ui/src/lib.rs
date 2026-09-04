@@ -64,6 +64,35 @@ pub enum UiAction {
     SetFullscreen(bool),
     /// Toggle the UI Kit Showcase full-screen gallery.
     ToggleShowcase,
+    /// Open the native store page. The platform-specific purchase action is separate.
+    OpenStorePage,
+    /// Open the native player profile page.
+    OpenProfilePage,
+    /// Load the currently authenticated player's public profile.
+    LoadOwnProfile,
+    /// Open another public player profile.
+    OpenPublicProfilePage(String),
+    /// Load more match history for the active profile.
+    LoadProfileHistory,
+    /// Load ranked records for the active profile.
+    LoadProfileRatings,
+    /// Search public player profiles.
+    SearchProfiles(String),
+    /// Load a public match detail modal.
+    LoadMatchDetail(String),
+    /// Close the public match detail modal.
+    CloseMatchDetail,
     /// Open the native platform store (iOS RevenueCat; web/Android use their own shell).
     OpenStore,
+    /// Open the RevenueCat web checkout for a gem bundle on desktop.
+    BuyGems(String),
+    /// Spend authoritative laurels or gems on a leader.
+    UnlockLeader {
+        leader_id: String,
+        currency: String,
+    },
+    /// Spend authoritative gems on a skin.
+    UnlockSkin(String),
+    /// Equip an already-owned skin.
+    EquipSkin(String),
 }

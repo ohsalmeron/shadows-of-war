@@ -132,8 +132,9 @@ pub fn draw_queue_overlay(
     asset_loader: &crate::ui::asset_loader::AssetLoader,
     lang: sow_i18n::Language,
 ) {
-    let compact = sow_ui_kit::theme::compact_viewport(ui.ctx());
-    let scale = sow_ui_kit::theme::viewport_scale(ui.ctx());
+    let metrics = super::layout::main_menu_metrics(ui.ctx());
+    let compact = metrics.is_compact();
+    let scale = metrics.scale;
     let lobby_info = resolve_lobby_info(state);
     let panel_frame = sow_ui_kit::theme::standard_panel_frame(compact);
     let available_rect = ui.available_rect_before_wrap();
@@ -864,7 +865,7 @@ fn draw_player_row(
                                 crate::widgets::ThemeButton::new(&strings.kick_btn)
                                     .style(crate::widgets::ThemeButtonStyle::Secondary)
                                     .text_size(12.0)
-                                    .min_size(egui::vec2(bw, 28.0)),
+                                    .min_size(egui::vec2(bw, 44.0)),
                             )
                             .clicked()
                         {
@@ -880,7 +881,7 @@ fn draw_player_row(
                                     crate::widgets::ThemeButton::new(&strings.move_team_btn)
                                         .style(crate::widgets::ThemeButtonStyle::Secondary)
                                         .text_size(12.0)
-                                        .min_size(egui::vec2(bw, 28.0)),
+                                        .min_size(egui::vec2(bw, 44.0)),
                                 )
                                 .clicked()
                         {
@@ -895,7 +896,7 @@ fn draw_player_row(
                                 crate::widgets::ThemeButton::new(&strings.ban_btn)
                                     .style(crate::widgets::ThemeButtonStyle::Danger)
                                     .text_size(12.0)
-                                    .min_size(egui::vec2(bw, 28.0)),
+                                    .min_size(egui::vec2(bw, 44.0)),
                             )
                             .clicked()
                         {

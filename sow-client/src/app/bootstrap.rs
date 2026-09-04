@@ -380,7 +380,6 @@ impl SowApp {
         let mut sow_app = sow_app;
         #[cfg(target_arch = "wasm32")]
         let mut sow_app = sow_app;
-        #[cfg(target_arch = "wasm32")]
         if let Some(portal) = crate::store_portals::load_portal_progress() {
             sow_app.progress = portal;
         }

@@ -167,6 +167,7 @@ impl SowApp {
         self.net.ws_connect_not_before = web_time::Instant::now();
 
         self.ui.app.main_menu_state.is_waiting = false;
+        self.ui.app.main_menu_state.go_home();
         self.ui.app.main_menu_state.pending_join_lobby_id = None;
         self.ui.app.main_menu_state.joined_lobby_id = None;
         self.join_waiting_for_identity = false;

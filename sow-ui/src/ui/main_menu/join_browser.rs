@@ -20,7 +20,8 @@ fn filter_pill(ui: &mut egui::Ui, label: &str, active: bool) -> bool {
     let btn = egui::Button::new(RichText::new(label).size(13.0).color(text_col).strong())
         .fill(bg)
         .stroke(Stroke::new(1.0_f32, stroke_col))
-        .corner_radius(CornerRadius::same(6));
+        .corner_radius(CornerRadius::same(6))
+        .min_size(egui::vec2(0.0, 44.0));
     ui.add(btn).clicked()
 }
 
@@ -56,7 +57,7 @@ pub fn draw_lobby_rows(
     action: &mut Option<UiAction>,
     strings: &sow_i18n::MainMenuStrings,
 ) {
-    let compact = sow_ui_kit::theme::compact_viewport(ui.ctx());
+    let compact = super::layout::main_menu_metrics(ui.ctx()).is_compact();
     let side = crate::ui::map_texture::thumbnail_square_side_bounded(
         ui.available_width(),
         if compact { 200.0 } else { 260.0 },
@@ -190,7 +191,7 @@ pub fn draw_private_join_row(
     component.show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.horizontal(|ui| {
-            let join_w = 92.0;
+            let join_w = 104.0;
             let field_w = (ui.available_width() - join_w - 6.0).max(60.0);
             let field_frame = Frame::NONE
                 .fill(sow_ui_kit::theme::palette::field_bg())
@@ -214,7 +215,7 @@ pub fn draw_private_join_row(
             ui.add_space(6.0);
             let join_btn = crate::widgets::ThemeButton::new(&strings.join_private_btn)
                 .style(crate::widgets::ThemeButtonStyle::Secondary)
-                .min_size(egui::vec2(join_w, 30.0));
+                .min_size(egui::vec2(join_w, 44.0));
             if ui.add(join_btn).clicked() {
                 *action = Some(UiAction::JoinWithCode);
             }
@@ -388,14 +389,14 @@ pub fn draw_password_modal(
                     let half = (ui.available_width() - 8.0) / 2.0;
                     let cancel_btn = crate::widgets::ThemeButton::new(&strings.back)
                         .style(crate::widgets::ThemeButtonStyle::Tertiary)
-                        .min_size(egui::vec2(half, 36.0));
+                        .min_size(egui::vec2(half, 44.0));
                     if ui.add(cancel_btn).clicked() {
                         close = true;
                     }
                     ui.add_space(8.0);
                     let join_btn = crate::widgets::ThemeButton::new(&strings.join_private_btn)
                         .style(crate::widgets::ThemeButtonStyle::Primary)
-                        .min_size(egui::vec2(half, 36.0));
+                        .min_size(egui::vec2(half, 44.0));
                     if ui.add(join_btn).clicked() {
                         *action = Some(UiAction::JoinWithPassword(target_id));
                         close = true;

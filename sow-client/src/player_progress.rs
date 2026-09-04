@@ -88,6 +88,46 @@ pub enum DbEvent {
         request_id: u64,
         status: Option<u16>,
     },
+    NativeProfileLoaded {
+        public_id: String,
+        view: sow_data::profile::PublicProfileView,
+    },
+    NativeProfileLoadFailed {
+        public_id: String,
+        status: Option<u16>,
+    },
+    NativeProfileHistoryLoaded {
+        public_id: String,
+        items: Vec<sow_data::profile::PublicMatchSummary>,
+        next_cursor: Option<usize>,
+    },
+    NativeProfileRatingsLoaded {
+        public_id: String,
+        items: Vec<sow_data::profile::PublicRatingView>,
+    },
+    NativeProfileSearchLoaded {
+        query: String,
+        items: Vec<sow_data::profile::PublicProfileSummary>,
+    },
+    NativeMatchDetailLoaded {
+        match_id: String,
+        detail: sow_data::profile::PublicMatchDetail,
+    },
+    NativeProfileOperationFailed {
+        public_id: Option<String>,
+        operation: String,
+        message: String,
+    },
+    StoreProfileLoaded {
+        account_id: String,
+        progress: PlayerProgress,
+        operation: String,
+    },
+    StoreActionFailed {
+        operation: String,
+        status: Option<u16>,
+        message: String,
+    },
 }
 
 impl PlayerProgress {

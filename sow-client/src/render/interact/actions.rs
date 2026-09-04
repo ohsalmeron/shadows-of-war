@@ -44,23 +44,28 @@ impl SowApp {
                         return;
                     }
                     self.request_join(Some(id), false, None, None);
-                    self.ui.app.main_menu_state.show_join_browser = false;
+                    self.ui.app.main_menu_state.go_home();
                 }
                 UiAction::HostPrivateLobby => {
                     self.request_join(None, true, None, None);
                 }
                 UiAction::OpenCreateGame => {
-                    self.ui.app.main_menu_state.show_custom_game = true;
+                    self.ui
+                        .app
+                        .main_menu_state
+                        .open_route(sow_ui::ui::main_menu::MainMenuRoute::Create);
                     self.ui.app.main_menu_state.custom_game_is_sp = false;
                     self.ui.app.main_menu_state.error_message = None;
                 }
                 UiAction::OpenJoinBrowser => {
-                    self.ui.app.main_menu_state.show_join_browser = true;
+                    self.ui
+                        .app
+                        .main_menu_state
+                        .open_route(sow_ui::ui::main_menu::MainMenuRoute::Browser);
                     self.ui.app.main_menu_state.error_message = None;
                 }
                 UiAction::CloseOverlay => {
-                    self.ui.app.main_menu_state.show_custom_game = false;
-                    self.ui.app.main_menu_state.show_join_browser = false;
+                    self.ui.app.main_menu_state.go_home();
                 }
                 UiAction::CreateGame {
                     config,
@@ -68,7 +73,7 @@ impl SowApp {
                     password,
                 } => {
                     self.request_join(None, is_private, Some(config), password);
-                    self.ui.app.main_menu_state.show_custom_game = false;
+                    self.ui.app.main_menu_state.go_home();
                 }
                 UiAction::JoinWithCode => {
                     let code = self
@@ -80,7 +85,7 @@ impl SowApp {
                         .to_string();
                     if let Ok(lobby_id) = code.parse::<u64>() {
                         self.request_join(Some(lobby_id), false, None, None);
-                        self.ui.app.main_menu_state.show_join_browser = false;
+                        self.ui.app.main_menu_state.go_home();
                     } else {
                         self.ui.app.main_menu_state.error_message =
                             Some("Enter a valid lobby code".to_string());
@@ -94,7 +99,7 @@ impl SowApp {
                         Some(password)
                     };
                     self.request_join(Some(lobby_id), false, None, pw);
-                    self.ui.app.main_menu_state.show_join_browser = false;
+                    self.ui.app.main_menu_state.go_home();
                     self.ui.app.main_menu_state.join_password_for_lobby = None;
                     self.ui.app.main_menu_state.join_password_input.clear();
                 }
@@ -185,9 +190,87 @@ impl SowApp {
                 UiAction::ToggleShowcase => {
                     self.ui.app.is_showcase_open = !self.ui.app.is_showcase_open;
                 }
+                UiAction::OpenStorePage => {
+                    self.ui
+                        .app
+                        .main_menu_state
+                        .open_route(sow_ui::ui::main_menu::MainMenuRoute::Store);
+                    self.ui.app.main_menu_state.error_message = None;
+                }
+                UiAction::OpenProfilePage => {
+                    self.ui
+                        .app
+                        .main_menu_state
+                        .open_route(sow_ui::ui::main_menu::MainMenuRoute::Profile);
+                    self.ui.app.main_menu_state.profile.public_id = self.profile_public_id.clone();
+                    self.ui.app.main_menu_state.profile.error = None;
+                    self.ui.app.main_menu_state.profile.view = None;
+                    self.ui.app.main_menu_state.profile.history.clear();
+                    self.ui.app.main_menu_state.profile.ratings.clear();
+                    self.ui.app.main_menu_state.profile.search_results.clear();
+                    self.ui.app.main_menu_state.profile.history_cursor = 0;
+                    self.ui.app.main_menu_state.profile.history_has_next = false;
+                    self.ui.app.main_menu_state.profile.ratings_loaded = false;
+                    self.ui.app.main_menu_state.profile.match_detail = None;
+                    self.ui.app.main_menu_state.profile.active_tab =
+                        sow_ui::ui::main_menu::profile::NativeProfileTab::Overview;
+                    self.ui.app.main_menu_state.profile.loading = false;
+                }
                 UiAction::OpenStore => {
                     #[cfg(target_os = "ios")]
                     self.open_ios_store();
+                }
+                UiAction::LoadOwnProfile => {
+                    self.load_native_profile();
+                }
+                UiAction::OpenPublicProfilePage(public_id) => {
+                    self.ui
+                        .app
+                        .main_menu_state
+                        .open_route(sow_ui::ui::main_menu::MainMenuRoute::Profile);
+                    self.ui.app.main_menu_state.profile.public_id = Some(public_id);
+                    self.ui.app.main_menu_state.profile.view = None;
+                    self.ui.app.main_menu_state.profile.history.clear();
+                    self.ui.app.main_menu_state.profile.ratings.clear();
+                    self.ui.app.main_menu_state.profile.history_cursor = 0;
+                    self.ui.app.main_menu_state.profile.history_has_next = false;
+                    self.ui.app.main_menu_state.profile.ratings_loaded = false;
+                    self.ui.app.main_menu_state.profile.match_detail = None;
+                    self.ui.app.main_menu_state.profile.error = None;
+                    self.ui.app.main_menu_state.profile.loading = false;
+                }
+                UiAction::LoadProfileHistory => {
+                    self.load_native_profile_history();
+                }
+                UiAction::LoadProfileRatings => {
+                    self.load_native_profile_ratings();
+                }
+                UiAction::SearchProfiles(query) => {
+                    self.search_native_profiles(query);
+                }
+                UiAction::LoadMatchDetail(match_id) => {
+                    self.load_native_match_detail(match_id);
+                }
+                UiAction::CloseMatchDetail => {
+                    self.ui.app.main_menu_state.profile.match_detail = None;
+                }
+                UiAction::BuyGems(product_id) => {
+                    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "ios")))]
+                    self.open_desktop_purchase(&product_id);
+                    #[cfg(any(target_arch = "wasm32", target_os = "ios"))]
+                    let _ = product_id;
+                }
+                UiAction::UnlockLeader {
+                    leader_id,
+                    currency,
+                } => {
+                    self.unlock_native_leader(leader_id, currency);
+                }
+                UiAction::UnlockSkin(skin_id) => {
+                    self.unlock_native_skin(skin_id);
+                }
+                UiAction::EquipSkin(skin_id) => {
+                    self.equip_native_skin(skin_id);
                 }
                 UiAction::ZoomIn => {
                     self.process_camera_zoom(
@@ -304,6 +387,39 @@ impl SowApp {
         };
         unsafe {
             sow_revenuecat_open_store(app_user_id.as_ptr(), view_controller.as_ptr());
+        }
+    }
+
+    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "ios")))]
+    fn open_desktop_purchase(&mut self, product_id: &str) {
+        let Some(public_id) = self.profile_public_id.as_deref() else {
+            self.ui.app.main_menu_state.error_message =
+                Some("Your player profile is still loading. Try again in a moment.".into());
+            return;
+        };
+        let Some(base) = std::env::var("SOW_REVENUECAT_WEB_PURCHASE_LINK")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+        else {
+            self.ui.app.main_menu_state.error_message =
+                Some("Online purchases are not configured for this desktop build.".into());
+            return;
+        };
+        let encoded_user = url::form_urlencoded::byte_serialize(public_id.as_bytes()).collect::<String>();
+        let encoded_product = url::form_urlencoded::byte_serialize(product_id.as_bytes()).collect::<String>();
+        let url = format!(
+            "{}/{}/?package_id={}",
+            base.trim_end_matches('/'),
+            encoded_user,
+            encoded_product
+        );
+        if let Err(error) = open::that(&url) {
+            log::error!("[store] failed to open RevenueCat checkout: {error}");
+            self.ui.app.main_menu_state.error_message =
+                Some("Could not open the online checkout.".into());
+        } else {
+            log::info!("[store] opened RevenueCat checkout for gem bundle");
+            self.ui.app.main_menu_state.error_message = None;
         }
     }
 

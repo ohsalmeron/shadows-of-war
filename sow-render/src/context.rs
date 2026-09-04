@@ -16,7 +16,10 @@ impl RenderContext {
         let context = unsafe {
             gpu::Context::init(gpu::ContextDesc {
                 presentation: true,
-                validation: cfg!(debug_assertions),
+                // Validation is opt-in because developer machines do not all ship the
+                // Vulkan validation layer. Keep the normal launcher warning-free while
+                // preserving an explicit diagnostic mode for graphics work.
+                validation: std::env::var_os("SOW_GPU_VALIDATION").is_some(),
                 overlay: false,
                 ..Default::default()
             })?
