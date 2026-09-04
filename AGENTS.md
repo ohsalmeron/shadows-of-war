@@ -58,9 +58,24 @@ hostnames, paths and compatibility behavior are not production instructions.
 
 The relay is deliberately not restarted by this pipeline until a real drain
 contract exists. A relay change must not silently destroy active games.
-There is no production backfill subcommand. `./sow p` is the only production
-deployment path; `./sow l` / `./sow local` is a local-only web/WASM preview;
+There is no production backfill subcommand. `./sow p` is the production
+deployment path for web/backend (WASM + FreeBSD + Azure); `./sow l` / `./sow local` is a local-only web/WASM preview;
 `./sow` without a subcommand runs the native client.
+Android is decoupled on purpose: `./sow a` / `./sow android` builds the AAB
+and publishes it to Google Play alpha. Every Play upload restarts Google's
+review clock, so `./sow p` never touches Android — run `./sow a` only when a
+new build is actually ready for review. This four-command interface
+(`native`, `l`, `p`, `a`) is the amended CLI contract; do not invent
+further subcommands.
+
+### Legacy egui freeze
+
+`sow-ui` is the legacy native UI. JavaScript is the canonical store and
+account UI; iOS purchases use the native Swift/RevenueCat bridge only. The
+tracked `scripts/check-legacy-ui-freeze.sh` hash gate runs before every `./sow`
+workflow and before the iOS archive. Do not change, add, or remove
+`sow-ui/src/**/*.rs`, or update `sow-ui/LEGACY_UI.sha256`, without explicit
+owner approval.
 
 ## Platform-specific workflows
 
@@ -68,8 +83,8 @@ deployment path; `./sow l` / `./sow local` is a local-only web/WASM preview;
   archive/export there and upload only when the user requests an upload.
 - Do not run `./sow p` for iOS-only work on macOS. The Mac is not a production
   control host unless it has the complete production prerequisites configured,
-  including the Linux-side tooling, FreeBSD builder/VM, SSH access, Android
-  tooling, and required release credentials.
+  including the Linux-side tooling, FreeBSD builder/VM, SSH access, and
+  required release credentials.
 - Never create a FreeBSD VM, provision release keys, or configure production
   access implicitly. Those are infrastructure changes requiring explicit user
   approval.
@@ -91,10 +106,10 @@ deployment path; `./sow l` / `./sow local` is a local-only web/WASM preview;
 
 ## Production pipeline validation gate
 
-- Changes intended for the production web/backend/Android/FreeBSD release must
-  be validated with `./sow p` from the configured production control host. The
-  pipeline is the acceptance test for that scope and the only evidence that
-  supports a production “done” claim.
+- Changes intended for the production web/backend/FreeBSD release must be
+  validated with `./sow p` from the configured production control host. Android
+  and Google Play changes use `./sow a`, which owns the Android preflight,
+  device test, Play validation, and upload for that platform.
 - `./sow l` / `./sow local` is for local web/WASM preview only. It does not
   validate production deployment and does not replace `./sow p` when that
   pipeline is in scope.
@@ -111,7 +126,9 @@ deployment path; `./sow l` / `./sow local` is a local-only web/WASM preview;
 
 ## Read-only debugging
 
-The following commands are diagnostics only; any mutation belongs in `./sow p`.
+The following commands are diagnostics only; production mutations belong in
+the appropriate official pipeline (`./sow p` for web/backend/FreeBSD and
+`./sow a` for Android/Play).
 
 ```sh
 ssh ionos 'sudo service sow_server status'

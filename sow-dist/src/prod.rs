@@ -82,14 +82,15 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
     preflight(paths, &config)?;
     let version = version(paths, bump)?;
     println!("==> Production {version}");
-    let android_code = android_version_code(paths, &version, bump)?;
+    // Android is deliberately NOT part of this pipeline: every Play upload
+    // resets Google's review clock, so AAB publication lives in `./sow a`
+    // and runs only when a new build is actually ready for review.
 
     println!("==> 2/8 Build candidates");
-    let (_web, backend, _relay, _android) = std::thread::scope(|scope| {
+    let (_web, backend, _relay) = std::thread::scope(|scope| {
         let web = scope.spawn(|| build_web(paths, &version));
         let backend = scope.spawn(|| build_freebsd(paths, &config));
         let relay = scope.spawn(|| build_relay(paths, &config));
-        let android = scope.spawn(|| build_android(paths, &version, android_code));
         web.join()
             .map_err(|_| anyhow::anyhow!("web build panicked"))??;
         let backend = backend
@@ -98,10 +99,7 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
         let relay = relay
             .join()
             .map_err(|_| anyhow::anyhow!("relay build panicked"))??;
-        android
-            .join()
-            .map_err(|_| anyhow::anyhow!("Android build panicked"))??;
-        Ok::<_, anyhow::Error>(((), backend, relay, ()))
+        Ok::<_, anyhow::Error>(((), backend, relay))
     })?;
 
     println!("==> 3/8 Package immutable release");
@@ -135,8 +133,6 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
         verify_relay_identity(&config, &release)?;
         retain_releases(&config)?;
         verify_public(paths, &config, &release)?;
-        test_android(paths, &version, android_code)?;
-        publish_android(paths, android_code)?;
         println!("✅ Production already serves the requested content");
         return Ok(());
     }
@@ -166,9 +162,28 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
 
     println!("==> 8/8 Public verification");
     verify_public(paths, &config, &release)?;
+    println!("✅ Production {} ready as {}", release.version, release.id);
+    Ok(())
+}
+
+/// `./sow a` — Android-only track, decoupled from `./sow p` on purpose.
+/// Each Play upload restarts Google's review clock, so this runs only on
+/// explicit request: versionCode bumps, AAB rebuilds, on-device smoke test,
+/// then upload to the configured Play track.
+pub(super) fn execute_android(paths: &Paths) -> Result<()> {
+    println!("==> 1/3 Preflight (read-only)");
+    preflight_android(paths)?;
+    let version = version(paths, false)?;
+    println!("==> Android {version}");
+    let android_code = android_version_code(paths, &version, false)?;
+
+    println!("==> 2/3 Build Android AAB");
+    build_android(paths, &version, android_code)?;
+
+    println!("==> 3/3 Test and publish");
     test_android(paths, &version, android_code)?;
     publish_android(paths, android_code)?;
-    println!("✅ Production {} ready as {}", release.version, release.id);
+    println!("✅ Android {version} (code {android_code}) published");
     Ok(())
 }
 
@@ -241,8 +256,16 @@ fn android_fingerprint(paths: &Paths, version: &str, version_code: u32) -> Resul
     )
 }
 
+fn android_play_key_path() -> Option<PathBuf> {
+    env::var_os("SOW_PLAY_KEY").map(PathBuf::from).or_else(|| {
+        env::var_os("HOME").map(|home| {
+            PathBuf::from(home).join(".config/shadows-of-war/google-play-service-account.json")
+        })
+    })
+}
+
 fn play_highest_android_version_code() -> Result<u32> {
-    let Some(play_key) = env::var_os("SOW_PLAY_KEY").map(PathBuf::from) else {
+    let Some(play_key) = android_play_key_path() else {
         return Ok(0);
     };
     if !play_key.is_file() {
@@ -274,7 +297,11 @@ fn play_highest_android_version_code() -> Result<u32> {
             .strip_prefix('[')
             .and_then(|value| value.strip_suffix(']'))
             .context("Google Play returned malformed version list")?;
-        for value in result.split(',').map(str::trim).filter(|value| !value.is_empty()) {
+        for value in result
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
             let code = value
                 .parse::<u32>()
                 .with_context(|| format!("Google Play returned invalid version code: {value}"))?;
@@ -300,9 +327,7 @@ fn android_version_code(paths: &Paths, _version: &str, _bump: bool) -> Result<u3
         .checked_add(1)
         .context("Android versionCode exhausted")?;
     fs::write(&path, format!("{next}\n"))?;
-    println!(
-        "  Android versionCode local={current} play_max={highest_play_code} -> {next}"
-    );
+    println!("  Android versionCode local={current} play_max={highest_play_code} -> {next}");
     Ok(next)
 }
 
@@ -381,9 +406,8 @@ fn build_android(paths: &Paths, version: &str, version_code: u32) -> Result<()> 
     }
 
     fs::create_dir_all(output.parent().context("Android output parent missing")?)?;
-    fs::copy(&bundle, &output).with_context(|| {
-        format!("copy {} to {}", bundle.display(), output.display())
-    })?;
+    fs::copy(&bundle, &output)
+        .with_context(|| format!("copy {} to {}", bundle.display(), output.display()))?;
     fs::create_dir_all(cache.parent().context("Android cache parent missing")?)?;
     fs::write(cache, format!("{fingerprint}\n"))?;
     println!(
@@ -400,8 +424,7 @@ fn test_android(paths: &Paths, version: &str, version_code: u32) -> Result<()> {
         .map(|s| s.status.success() && String::from_utf8_lossy(&s.stdout).trim() == "device")
         .unwrap_or(false);
     if !has_adb_device {
-        println!("  skipping Android local device test (no device attached)");
-        return Ok(());
+        bail!("Android local device test requires an attached USB-debugging device");
     }
     let test_script = paths.root.join("scripts/android-local-test.sh");
     require_file(&test_script, "Android local test script")?;
@@ -422,10 +445,6 @@ fn test_android(paths: &Paths, version: &str, version_code: u32) -> Result<()> {
 }
 
 fn publish_android(paths: &Paths, version_code: u32) -> Result<()> {
-    if env::var_os("SOW_PLAY_KEY").is_none() {
-        println!("  skipping Android Google Play publish (SOW_PLAY_KEY not set)");
-        return Ok(());
-    }
     let script = paths.root.join("scripts/android-release.sh");
     require_file(&script, "Android Play publication script")?;
     let track = env_or("SOW_ANDROID_PLAY_TRACK", "alpha");
@@ -457,9 +476,7 @@ fn preflight(paths: &Paths, config: &Config) -> Result<()> {
             println!("    {file}");
         }
     }
-    for command in [
-        "adb", "cargo", "curl", "fastlane", "java", "rsync", "rustc", "scp", "ssh", "wasm-opt",
-    ] {
+    for command in ["cargo", "curl", "rsync", "rustc", "scp", "ssh", "wasm-opt"] {
         if !Command::new("/bin/sh")
             .args(["-c", &format!("command -v {command} >/dev/null")])
             .status()?
@@ -468,15 +485,6 @@ fn preflight(paths: &Paths, config: &Config) -> Result<()> {
             bail!("{command} is required");
         }
     }
-    let adb_state = Command::new("adb").args(["get-state"]).output();
-    let has_adb_device = adb_state
-        .as_ref()
-        .map(|s| s.status.success() && String::from_utf8_lossy(&s.stdout).trim() == "device")
-        .unwrap_or(false);
-    if !has_adb_device {
-        println!("  adb: no device attached (skipping on-device smoke test)");
-    }
-    validate_android_release_inputs(paths)?;
     if !Command::new("rustc")
         .args([
             "--print",
@@ -492,6 +500,17 @@ fn preflight(paths: &Paths, config: &Config) -> Result<()> {
         bail!("Rust WASM standard library missing");
     }
     require_file(&paths.root.join("Cargo.toml"), "workspace Cargo.toml")?;
+    // The blade graphics fork is gitignored, not vendored: a fresh clone has
+    // no blade/ and every Rust build fails at workspace resolution. Fail fast
+    // here with the one-command fix instead of mid-build.
+    for vendored in [
+        "blade/blade-egui/Cargo.toml",
+        "blade/blade-graphics/Cargo.toml",
+    ] {
+        if !paths.root.join(vendored).is_file() {
+            bail!("{vendored} missing (blade/ is gitignored) — run ./scripts/vendor-blade.sh");
+        }
+    }
     run("sudo", &["test", "-d", "/var/lib/machines/debian12"], None)
         .context("Debian 12 nspawn container (/var/lib/machines/debian12) missing")?;
     run(
@@ -526,6 +545,44 @@ fn preflight(paths: &Paths, config: &Config) -> Result<()> {
     .context("relay host preflight failed")
 }
 
+fn preflight_android(paths: &Paths) -> Result<()> {
+    let dirty_files = workspace_dirty_files(paths)?;
+    if dirty_files.is_empty() {
+        println!("  worktree clean");
+    } else {
+        println!(
+            "  worktree dirty ({} files — Android build uses current workspace):",
+            dirty_files.len()
+        );
+    }
+    for command in ["adb", "fastlane", "java"] {
+        if !Command::new("/bin/sh")
+            .args(["-c", &format!("command -v {command} >/dev/null")])
+            .status()?
+            .success()
+        {
+            bail!("{command} is required for Android release");
+        }
+    }
+    require_file(
+        &paths.root.join(ANDROID_PROJECT).join("gradlew"),
+        "Android Gradle wrapper",
+    )?;
+    require_file(
+        &paths.root.join(ANDROID_PROJECT).join("key.properties"),
+        "Android signing properties",
+    )?;
+    let play_key = android_play_key_path().context(
+        "Google Play service-account key path is not configured (set SOW_PLAY_KEY or use the default path)",
+    )?;
+    require_file(&play_key, "Google Play service-account key")?;
+    require_secret("SOW_REVENUECAT_ANDROID_PUBLIC_KEY")?;
+    if !env::var("SOW_REVENUECAT_ANDROID_PUBLIC_KEY")?.starts_with("goog_") {
+        bail!("SOW_REVENUECAT_ANDROID_PUBLIC_KEY must be a Google Play public key");
+    }
+    validate_android_release_inputs(paths)
+}
+
 fn validate_android_release_inputs(paths: &Paths) -> Result<()> {
     let project = paths.root.join(ANDROID_PROJECT);
     let build_gradle = fs::read_to_string(project.join("app/build.gradle"))?;
@@ -543,9 +600,7 @@ fn validate_android_release_inputs(paths: &Paths) -> Result<()> {
         bail!("Android asset_statements must delegate to https://shadowsofwar.io");
     }
 
-    let assetlinks_path = paths
-        .root
-        .join("sow-web/site/.well-known/assetlinks.json");
+    let assetlinks_path = paths.root.join("sow-web/site/.well-known/assetlinks.json");
     let assetlinks: serde_json::Value = serde_json::from_slice(&fs::read(&assetlinks_path)?)
         .with_context(|| format!("invalid {}", assetlinks_path.display()))?;
     let statements = assetlinks
@@ -558,8 +613,7 @@ fn validate_android_release_inputs(paths: &Paths) -> Result<()> {
                 .and_then(serde_json::Value::as_array)
                 .is_some_and(|relations| {
                     relations.iter().any(|relation| {
-                        relation.as_str()
-                            == Some("delegate_permission/common.handle_all_urls")
+                        relation.as_str() == Some("delegate_permission/common.handle_all_urls")
                     })
                 })
                 && statement

@@ -567,6 +567,11 @@ fn verify_layout(dir: &Path) -> Result<()> {
         "app.js",
         "styles.css",
         "legal.css",
+        "fonts/fonts.css",
+        "fonts/work-sans-latin.woff2",
+        "fonts/work-sans-latin-ext.woff2",
+        "fonts/work-sans-italic-latin.woff2",
+        "fonts/work-sans-italic-latin-ext.woff2",
         "wou-auth.js",
         "grid-bg.js",
         "privacy/index.html",
@@ -707,7 +712,16 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
     for name in ["icon-192.png", "icon-512.png", "icon-512-maskable.png"] {
         fs::copy(paths.assets_site.join("icons").join(name), out.join(name))?;
     }
-    for path in ["privacy", "terms", "cookies", "support", "how-to-play", "leaders", ".well-known"] {
+    for path in [
+        "privacy",
+        "terms",
+        "cookies",
+        "support",
+        "how-to-play",
+        "leaders",
+        "fonts",
+        ".well-known",
+    ] {
         let src = site.join(path);
         if !src.is_dir() {
             bail!("website legal page missing: {}", src.display());
@@ -1043,11 +1057,12 @@ fn main() -> Result<()> {
     }
 
     match cmd.as_str() {
-        "p" | "prod" | "play" => prod::execute(&paths, bump),
+        "p" | "prod" => prod::execute(&paths, bump),
+        "a" | "android" => prod::execute_android(&paths),
         "local" | "l" => cmd_local(&paths),
         "native" | "n" | "" => cmd_native(&paths),
         _ => {
-            eprintln!("Usage: ./sow [p|local|native]");
+            eprintln!("Usage: ./sow [p|a|local|native]");
             std::process::exit(1);
         }
     }
@@ -1068,6 +1083,11 @@ mod tests {
             "app.js",
             "styles.css",
             "legal.css",
+            "fonts/fonts.css",
+            "fonts/work-sans-latin.woff2",
+            "fonts/work-sans-latin-ext.woff2",
+            "fonts/work-sans-italic-latin.woff2",
+            "fonts/work-sans-italic-latin-ext.woff2",
             "wou-auth.js",
             "how-to-play/index.html",
             "leaders/index.html",

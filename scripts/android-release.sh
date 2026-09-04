@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Android publication phase invoked automatically by ./sow p after the AAB
+# Android publication phase invoked by ./sow a after the AAB
 # has passed the local device smoke test.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

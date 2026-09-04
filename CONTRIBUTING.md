@@ -5,10 +5,11 @@ Thank you for your interest in contributing!
 ## Getting started
 
 1. Fork the repository and clone your fork.
-2. Ensure `assets/gameplay/` is complete (fonts, emoji, HUD assets, and avatars are required by the gameplay client).
-3. Build the workspace: `cargo build --workspace`
-4. Run tests: `cargo test --workspace`
-5. Format and lint before submitting:
+2. Vendor the pinned graphics fork (gitignored, not vendored): `./scripts/vendor-blade.sh`.
+3. Ensure `assets/gameplay/` is complete (fonts, emoji, HUD assets, and avatars are required by the gameplay client).
+4. Build the workspace: `cargo build --workspace`
+5. Run tests: `cargo test --workspace`
+6. Format and lint before submitting:
    ```bash
    cargo fmt --all
    cargo clippy --workspace -- -D warnings

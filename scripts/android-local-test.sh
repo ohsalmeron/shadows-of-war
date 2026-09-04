@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Local Android smoke test. ./sow p calls this before publishing the AAB.
+# Local Android smoke test. ./sow a calls this before publishing the AAB.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PROJECT="$ROOT/sow-dist/deploy/android"
 VARIANT="${SOW_ANDROID_TEST_VARIANT:-debug}"

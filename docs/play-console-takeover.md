@@ -13,7 +13,7 @@ La regla operativa es simple:
 
 - El agente inspecciona y automatiza todo lo que tenga una API o CLI soportada.
 - El navegador se usa únicamente cuando Google no expone esa operación por API o exige una decisión/confirmación del propietario.
-- Para cambios de Shadows of War, `./sow p` sigue siendo el único pipeline oficial de producción. No se reemplaza con `scp`, `rsync`, SSH manual, symlinks ni reinicios manuales.
+- Para cambios de Shadows of War, `./sow p` es el pipeline oficial de web/backend/infra y `./sow a` el pipeline explícito de Android/Play. No se reemplazan con `scp`, `rsync`, SSH manual, symlinks ni reinicios manuales.
 
 ## Respuesta inmediata: países de los testers
 
@@ -181,14 +181,17 @@ El script del repo es:
 /home/bizkit/Github/shadows-of-war/scripts/android-release.sh
 ```
 
-Para producción de Shadows of War se usa únicamente:
+Para producción Web/backend/infra de Shadows of War se usa:
 
 ```sh
 cd /home/bizkit/Github/shadows-of-war
 ./sow p
 ```
 
-No agregar subcomandos nuevos a `./sow`. La interfaz soportada es `./sow p`, `./sow l`/`./sow local` y `./sow native`.
+Para Android/Google Play se usa únicamente `./sow a` (o `./sow android`).
+La interfaz completa es `./sow p` para Web/backend/infra, `./sow a` para
+Android/Play, `./sow l`/`./sow local` para preview y `./sow native` para el
+cliente nativo.
 
 ## Reglas para hacer opt-in sin confusión
 
@@ -248,8 +251,9 @@ project: projf6bc119d
 Apps existentes:
 
 - Test Store: `app5cbcb3e77b`.
+- App Store: `app44fef55941`, bundle `games.shadowsofwar.app`.
 - Play Store: `appc659dd11dd`, package `com.shadowsofwar`.
-- No hay una app Web/Stripe configurada todavía.
+- Stripe Web Billing: `app5ab74d80c4`, configurada para el Stripe de Shadows of War.
 
 Productos Play registrados actualmente en RevenueCat:
 
@@ -269,13 +273,9 @@ $rc_lifetime → sow_gems_2600
 
 Los nombres `$rc_monthly`, `$rc_annual` y `$rc_lifetime` son IDs de package heredados; el catálogo real son bundles consumibles de gems, no suscripciones.
 
-Entitlement existente:
-
-```text
-shadows_of_war_pro
-```
-
-No usar ese entitlement para gems consumibles.
+No hay un entitlement asociado al offering de lanzamiento. No se debe crear ni
+adjuntar `shadows_of_war_pro` a estos productos: son bundles consumibles de
+gemas y el backend los entrega mediante el webhook de compra única.
 
 Comandos de lectura del CLI:
 
@@ -300,7 +300,7 @@ RevenueCat CLI puede administrar la configuración de RevenueCat, pero no sustit
 
 ### Web
 
-RevenueCat sí soporta compras web, pero la app Web no está configurada todavía. El camino corto es RevenueCat Web Purchase Links/hosted paywall, que requiere conectar un proveedor de pagos como Stripe, Paddle o RevenueCat Billing. Eso es una fase separada y no debe bloquear el release Android.
+RevenueCat Web Billing está configurado mediante el Purchase Link de producción y Stripe; el cliente Web debe usar ese enlace. Eso es independiente del release Android.
 
 ## Checklist de takeover para otro agente
 
@@ -314,7 +314,7 @@ RevenueCat sí soporta compras web, pero la app Web no está configurada todaví
 [ ] Si faltan, indicar al propietario el único paso manual de Countries / regions.
 [ ] No pedir re-login de RevenueCat si el perfil default sigue autenticado.
 [ ] No crear productos Play hasta que payments profile esté verificado.
-[ ] Para cambios del código o release, usar ./sow p.
+[ ] Para cambios del cliente Web/backend/infra usar `./sow p`; para Android/Play usar `./sow a`.
 [ ] Verificar el resultado en Play Console/API y documentar fecha, track y version code.
 ```
 
@@ -346,6 +346,6 @@ Investiga y reporta primero: disponibilidad de ID, KE, NG, PH y VN; testers en l
 Usa la API/CLI existente y no vuelvas a pedir autenticación.
 No imprimas secretos.
 El cambio de países de Alpha probablemente requiere Play Console web porque la API pública solo expone lectura.
-No hagas deploy manual: para cambios del repo usa únicamente ./sow p.
+No hagas deploy manual: para cambios del repo usa únicamente ./sow p (web/backend) y ./sow a (Android/Play).
 Reporta exactamente qué puede hacer el agente y qué único paso manual queda.
 ```

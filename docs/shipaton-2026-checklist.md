@@ -39,9 +39,13 @@ El FAQ de Shipaton permite que un proyecto que existía solamente en web publiqu
 | Promo/free trial para judges | ❌ Pendiente | Crear una forma de probar el contenido premium |
 | Submission de Devpost | ❌ Pendiente | Completarla antes del deadline |
 
-### Importante sobre ./sow p
+### Importante sobre ./sow p / ./sow a
 
-./sow p publica los componentes web, servidor, base de datos y relay de Shadows of War. Actualmente no es el botón que publica el AAB Android en Google Play. La publicación Android se termina en Play Console.
+./sow p publica los componentes web, servidor, base de datos y relay de Shadows of War. No publica Android.
+
+La publicación Android automatizada se ejecuta con `./sow a`: genera el AAB,
+valida el dispositivo y lo sube a Alpha. No ejecutes `./sow p` para subir
+Android.
 
 ### Artefacto Android
 

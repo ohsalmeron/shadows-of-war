@@ -14,18 +14,53 @@ USAGE:
 COMMANDS:
   (no args) / native   Run native desktop game client directly
   l, local              Build WASM + webroot and serve it locally on port 4173
-  p, prod              Run full production build & deploy pipeline (WASM + Android + FreeBSD + Azure)
+  p, prod              Run production build & deploy (WASM + FreeBSD + Azure, no Android)
+  a, android           Build the Android AAB and publish it to Google Play alpha
   help, -h, --help     Show this help message
 
 EXAMPLES:
   ./sow                # Launch desktop game client
   ./sow l              # Build and serve the local web client (Ctrl-C to stop)
-  ./sow p              # Full production build and deploy to IONOS & Azure
-  ./sow p -v           # Production deploy with public + Android version bump
+  ./sow p              # Production build and deploy to IONOS & Azure
+  ./sow p -v           # Production deploy with public version bump
+  ./sow a              # Android AAB + Play alpha upload (each upload restarts Play review)
 EOF
 }
 
 CMD="${1:-native}"
+
+load_dist_env() {
+  if [[ -f "${ROOT}/sow-dist/.env" ]]; then
+    set -a; source "${ROOT}/sow-dist/.env"; set +a
+  fi
+  export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-${ROOT}/target}"
+  mkdir -p "${CARGO_TARGET_DIR}"
+}
+
+run_dist() {
+  local log_prefix="$1"
+  shift
+  local bin="${CARGO_TARGET_DIR}/debug/sow"
+  local log_dir="${ROOT}/dist/logs"
+  local log_file="${log_dir}/${log_prefix}-$(date +%Y%m%d-%H%M%S).log"
+  mkdir -p "${log_dir}"
+  : >"${log_file}"
+  chmod 600 "${log_file}"
+  set +e
+  (
+    cargo build -p sow-dist || exit $?
+    exec "${bin}" "$@"
+  ) 2>&1 | tee "${log_file}"
+  local status=${PIPESTATUS[0]}
+  set -e
+  echo "SOW log: ${log_file}"
+  return "${status}"
+}
+
+case "${CMD}" in
+  -h|--help|help) ;;
+  *) "${ROOT}/scripts/check-legacy-ui-freeze.sh" ;;
+esac
 
 case "${CMD}" in
   -h|--help|help)
@@ -51,10 +86,12 @@ case "${CMD}" in
     cargo build -p sow-dist
     exec "${BIN}" "$@"
     ;;
-  p|prod|play)
-    if [[ -f "${ROOT}/sow-dist/.env" ]]; then
-      set -a; source "${ROOT}/sow-dist/.env"; set +a
-    fi
+  p|prod)
+    load_dist_env
+    run_dist production "$@"
+    ;;
+  a|android)
+    load_dist_env
     SOW_USER_HOME="$(getent passwd "$(id -u)" | cut -d: -f6)"
     SOW_RUBY_BIN="${SOW_USER_HOME}/.local/share/gem/ruby/3.4.0/bin"
     export PATH="${SOW_RUBY_BIN}:${PATH}"
@@ -62,23 +99,7 @@ case "${CMD}" in
     export FASTLANE_OPT_OUT_USAGE=1
     export FASTLANE_SKIP_UPDATE_CHECK=1
     export FASTLANE_DISABLE_COLORS=1
-    export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-${ROOT}/target}"
-    mkdir -p "${CARGO_TARGET_DIR}"
-    BIN="${CARGO_TARGET_DIR}/debug/sow"
-    SOW_LOG_DIR="${ROOT}/dist/logs"
-    SOW_LOG_FILE="${SOW_LOG_DIR}/prod-$(date +%Y%m%d-%H%M%S).log"
-    mkdir -p "${SOW_LOG_DIR}"
-    : >"${SOW_LOG_FILE}"
-    chmod 600 "${SOW_LOG_FILE}"
-    set +e
-    (
-      cargo build -p sow-dist || exit $?
-      exec "${BIN}" "$@"
-    ) 2>&1 | tee "${SOW_LOG_FILE}"
-    SOW_STATUS=${PIPESTATUS[0]}
-    set -e
-    echo "Production log: ${SOW_LOG_FILE}"
-    exit "${SOW_STATUS}"
+    run_dist android "$@"
     ;;
   *)
     echo "Unknown command: ${CMD}" >&2

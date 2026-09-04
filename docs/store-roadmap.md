@@ -10,6 +10,7 @@
 - The server resolves the selected leader before a match, so a client cannot use a locked leader by editing local state.
 - The purchase surface is universal: in-game store → platform checkout/RevenueCat → server grant. It is not tied to CrazyGames or Poki.
 - Android gem bundles use Google Play Billing through the native RevenueCat bridge. Product IDs are `sow_gems_500`, `sow_gems_1200`, and `sow_gems_2600`; RevenueCat receives the public profile ID, never the private account ID.
+- Android release is intentionally separate: `./sow a` builds, device-tests, validates, and uploads the AAB to Play Alpha; `./sow p` never uploads Android.
 - RevenueCat purchase events are granted by the server and deduplicated by event ID.
 
 ## Implemented in the first Android slice
@@ -23,20 +24,21 @@
 - Android gem bundles are registered in Google Play and attached to the same
   RevenueCat offering as the three Stripe web products. The production AAB
   currently contains the native RevenueCat purchase bridge.
-- Web uses the production RevenueCat Purchase Link. Each gem bundle opens its
-  matching package checkout and passes the public player ID; a real payment
-  has not yet been performed in this audit.
-- The Apple App Store app exists in the same RevenueCat project with bundle ID
-  `games.shadowsofwar.app`, but App Store Connect credentials, Apple products,
-  and the native iOS RevenueCat SDK are not configured yet. TestFlight upload
-  alone does not configure purchases.
+- Web uses the production RevenueCat Purchase Link. The single BUY ONLINE
+  action opens the package selector and passes the public player ID; a real
+  payment has not yet been performed in this audit.
+- The Apple App Store app uses the same RevenueCat project with bundle ID
+  `games.shadowsofwar.app`; the three consumables are configured and the
+  native bridge is in the Xcode target. A Mac/TestFlight build is still
+  required for final runtime purchase proof.
 
 ## Remaining release work
 
 - Validate one Google Play purchase on-device and one Stripe purchase end to
   end, including the idempotent server grant.
-- Configure Apple App Store products and App Store Connect credentials in the
-  existing RevenueCat app, then add and validate the native iOS purchase UI.
+- Build the iOS app with the RevenueCat public SDK key supplied through the
+  signed app configuration, then validate one sandbox purchase plus the
+  idempotent server grant.
 - Balance leader prices after real retention and economy data exists.
 
 The current leaders have gameplay perks. Selling access to them is intentional under the rotation model, but future hackathon/store copy must not claim that every purchase is purely cosmetic.

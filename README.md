@@ -103,8 +103,9 @@ The project uses `./sow` as single entrypoint:
 
 ```bash
 ./sow native        # desktop client (connects to prod by default)
-./sow p             # full production deploy (WASM + FreeBSD + relay)
+./sow p             # production deploy (WASM + FreeBSD + relay)
 ./sow p -v          # also bump public patch version
+./sow a             # Android AAB + Google Play alpha upload
 ```
 
 **Native:**

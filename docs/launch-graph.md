@@ -134,7 +134,8 @@ flowchart LR
 
 1. Audit the release payload so unrelated dirty work cannot hitchhike into the
    deployment.
-2. Run the official `./sow p` pipeline after explicit production approval.
+2. Run the official `./sow p` pipeline after explicit production approval. For
+   Android/Play, use the separate `./sow a` pipeline only when the AAB is ready.
 3. Verify the public root, `/how-to-play/`, `/play/`, static assets, and one
    real matchmaking entry path.
 
