@@ -107,7 +107,7 @@ impl AssetConfig {
 }
 
 /// Explicit configuration only: JS global (wasm), env var (native desktop),
-/// or signed Info.plist value (iOS).
+/// or signed Info.plist value (Apple app bundles).
 /// Missing/empty value = panic. No fallback, no derivation, ever.
 pub(crate) fn require_endpoint(name: &str) -> String {
     #[cfg(target_arch = "wasm32")]
@@ -127,9 +127,15 @@ pub(crate) fn require_endpoint(name: &str) -> String {
             return v;
         }
     }
+    #[cfg(target_os = "macos")]
+    if let Some(v) = macos_info_plist_value(name) {
+        if !v.is_empty() {
+            return v;
+        }
+    }
     panic!(
         "SOW endpoint not configured: {name}. Set the JS global (wasm shell boot), \
-         env var (native desktop), or Info.plist value (iOS). Refusing to guess a fallback."
+         env var (native desktop), or Info.plist value (Apple app bundle). Refusing to guess a fallback."
     );
 }
 
@@ -160,4 +166,91 @@ fn ios_info_plist_value(name: &str) -> Option<String> {
         .map(|byte| *byte as u8)
         .collect::<Vec<_>>();
     String::from_utf8(bytes).ok()
+}
+
+#[cfg(target_os = "macos")]
+fn macos_info_plist_value(name: &str) -> Option<String> {
+    use std::ffi::{CStr, CString, c_char, c_void};
+
+    type CFAllocatorRef = *const c_void;
+    type CFBundleRef = *const c_void;
+    type CFIndex = isize;
+    type CFStringRef = *const c_void;
+    type CFTypeID = usize;
+    type CFTypeRef = *const c_void;
+    type CFStringEncoding = u32;
+
+    const K_CF_STRING_ENCODING_UTF8: CFStringEncoding = 0x0800_0100;
+
+    #[link(name = "CoreFoundation", kind = "framework")]
+    unsafe extern "C" {
+        fn CFBundleGetMainBundle() -> CFBundleRef;
+        fn CFBundleGetValueForInfoDictionaryKey(
+            bundle: CFBundleRef,
+            key: CFStringRef,
+        ) -> CFTypeRef;
+        fn CFGetTypeID(cf: CFTypeRef) -> CFTypeID;
+        fn CFStringCreateWithCString(
+            allocator: CFAllocatorRef,
+            c_str: *const c_char,
+            encoding: CFStringEncoding,
+        ) -> CFStringRef;
+        fn CFStringGetCString(
+            string: CFStringRef,
+            buffer: *mut c_char,
+            buffer_size: CFIndex,
+            encoding: CFStringEncoding,
+        ) -> u8;
+        fn CFStringGetTypeID() -> CFTypeID;
+        fn CFRelease(cf: CFTypeRef);
+    }
+
+    let key = CString::new(name).ok()?;
+    let key_ref = unsafe {
+        CFStringCreateWithCString(
+            std::ptr::null(),
+            key.as_ptr(),
+            K_CF_STRING_ENCODING_UTF8,
+        )
+    };
+    if key_ref.is_null() {
+        return None;
+    }
+
+    let value = unsafe {
+        let bundle = CFBundleGetMainBundle();
+        if bundle.is_null() {
+            CFRelease(key_ref);
+            return None;
+        }
+        CFBundleGetValueForInfoDictionaryKey(bundle, key_ref)
+    };
+    if value.is_null() {
+        unsafe { CFRelease(key_ref) };
+        return None;
+    }
+
+    let result = unsafe {
+        if CFGetTypeID(value) != CFStringGetTypeID() {
+            None
+        } else {
+            let mut buffer = [0i8; 2048];
+            if CFStringGetCString(
+                value,
+                buffer.as_mut_ptr(),
+                buffer.len() as CFIndex,
+                K_CF_STRING_ENCODING_UTF8,
+            ) == 0
+            {
+                None
+            } else {
+                CStr::from_ptr(buffer.as_ptr())
+                    .to_str()
+                    .ok()
+                    .map(ToOwned::to_owned)
+            }
+        }
+    };
+    unsafe { CFRelease(key_ref) };
+    result
 }

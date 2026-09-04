@@ -132,7 +132,13 @@ impl AssetLoader {
             return;
         }
 
-        #[cfg(all(not(target_arch = "wasm32"), target_os = "ios"))]
+        // Store-style Apple bundles must be self-contained. Keep the boot art
+        // embedded for macOS just like iOS; sandboxed apps cannot read from
+        // the repository-relative path used by the legacy desktop launcher.
+        #[cfg(all(
+            not(target_arch = "wasm32"),
+            any(target_os = "ios", target_os = "macos")
+        ))]
         {
             let load_image = |name: &str, bytes: &[u8]| decode_and_upload_webp(ctx, name, bytes);
 
@@ -166,7 +172,10 @@ impl AssetLoader {
             ));
         }
 
-        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "ios")))]
+        #[cfg(all(
+            not(target_arch = "wasm32"),
+            not(any(target_os = "ios", target_os = "macos"))
+        ))]
         {
             fn read_ui_webp(filename: &str) -> Vec<u8> {
                 use std::path::Path;

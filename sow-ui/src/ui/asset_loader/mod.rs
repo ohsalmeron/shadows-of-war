@@ -208,6 +208,64 @@ impl AssetLoader {
         }
     }
 
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    fn bundled_avatar_bytes(key: AvatarFetchKey) -> &'static [u8] {
+        match key {
+            AvatarFetchKey::Fallback => include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../assets/gameplay/avatars/null.webp"
+            )),
+            AvatarFetchKey::Leader(Leader::Caesar) => include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../assets/gameplay/avatars/caesar.webp"
+            )),
+            AvatarFetchKey::Leader(Leader::Cleopatra) => include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../assets/gameplay/avatars/cleopatra.webp"
+            )),
+            AvatarFetchKey::Leader(Leader::Ragnar) => include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../assets/gameplay/avatars/ragnar.webp"
+            )),
+            AvatarFetchKey::Leader(Leader::SunTzu) => include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../assets/gameplay/avatars/sun_tzu.webp"
+            )),
+            AvatarFetchKey::Leader(Leader::Alexander) => include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../assets/gameplay/avatars/alexander.webp"
+            )),
+            AvatarFetchKey::Leader(Leader::GenghisKhan) => include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../assets/gameplay/avatars/genghis_khan.webp"
+            )),
+            AvatarFetchKey::Leader(Leader::RichardTheLionheart) => include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../assets/gameplay/avatars/richard_the_lionheart.webp"
+            )),
+            AvatarFetchKey::Leader(Leader::Vercingetorix) => include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../assets/gameplay/avatars/vercingetorix.webp"
+            )),
+            AvatarFetchKey::Leader(Leader::Boudica) => include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../assets/gameplay/avatars/boudica.webp"
+            )),
+            AvatarFetchKey::Leader(Leader::LadySixSky) => include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../assets/gameplay/avatars/lady_six_sky.webp"
+            )),
+            AvatarFetchKey::Leader(Leader::Leonidas) => include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../assets/gameplay/avatars/leonidas.webp"
+            )),
+            AvatarFetchKey::Leader(Leader::Napoleon) => include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../assets/gameplay/avatars/napoleon.webp"
+            )),
+        }
+    }
+
     pub fn get_assets_to_fetch(
         &mut self,
         lobbies: &[sow_core::protocol::LobbyInfo],
@@ -272,17 +330,21 @@ impl AssetLoader {
                 return;
             }
 
-            fn read_avatar_webp(filename: &str) -> Option<Vec<u8>> {
-                use std::path::Path;
-                let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("../assets/gameplay/avatars")
-                    .join(filename);
-                std::fs::read(&path).ok()
-            }
-
             let load_key = |key: AvatarFetchKey| -> Option<(AvatarFetchKey, Vec<u8>)> {
-                let filename = Self::avatar_filename(key);
-                read_avatar_webp(&filename).map(|bytes| (key, bytes))
+                #[cfg(any(target_os = "ios", target_os = "macos"))]
+                {
+                    return Some((key, Self::bundled_avatar_bytes(key).to_vec()));
+                }
+
+                #[cfg(not(any(target_os = "ios", target_os = "macos")))]
+                {
+                    use std::path::Path;
+                    let filename = Self::avatar_filename(key);
+                    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+                        .join("../assets/gameplay/avatars")
+                        .join(filename);
+                    std::fs::read(&path).ok().map(|bytes| (key, bytes))
+                }
             };
 
             for key in std::iter::once(AvatarFetchKey::Fallback)
