@@ -413,6 +413,10 @@ fn draw_home(
     let id_header_h = (48.0 * scale).clamp(38.0, 48.0);
     let profile_h = (56.0 * scale).clamp(44.0, 56.0);
     let gear_w = (44.0 * scale).clamp(36.0, 44.0);
+    #[cfg(target_os = "ios")]
+    let store_w = (82.0 * scale).clamp(68.0, 82.0);
+    #[cfg(not(target_os = "ios"))]
+    let store_w = 0.0;
 
     // ── Identity strip (fixed, full width): avatar + name/sign-in + settings gear ──
     egui::Panel::top("home_identity")
@@ -426,7 +430,8 @@ fn draw_home(
         }))
         .show_inside(root_ui, |ui| {
             ui.horizontal(|ui| {
-                let header_w = (ui.available_width() - gear_w - 8.0).max(80.0);
+                let action_gap = if store_w > 0.0 { 8.0 } else { 0.0 };
+                let header_w = (ui.available_width() - gear_w - store_w - action_gap - 8.0).max(80.0);
                 ui.allocate_ui_with_layout(
                     egui::vec2(header_w, id_header_h),
                     egui::Layout::top_down(egui::Align::Min),
@@ -442,6 +447,16 @@ fn draw_home(
                         );
                     },
                 );
+                #[cfg(target_os = "ios")]
+                {
+                    let store = crate::widgets::ThemeButton::new("STORE")
+                        .style(crate::widgets::ThemeButtonStyle::Secondary)
+                        .min_size(egui::vec2(store_w, id_header_h))
+                        .text_size((12.0 * scale).clamp(10.0, 12.0));
+                    if ui.add(store).clicked() {
+                        *action = Some(UiAction::OpenStore);
+                    }
+                }
                 let gear = crate::widgets::ThemeButton::new("⚙")
                     .style(crate::widgets::ThemeButtonStyle::Tertiary)
                     .min_size(egui::vec2(gear_w, id_header_h))

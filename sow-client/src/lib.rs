@@ -46,6 +46,17 @@ fn camera_zoom_upper_bound(screen_w: f32, screen_h: f32) -> f32 {
     (longest * 3.0).clamp(CAMERA_MIN_ZOOM, CAMERA_MAX_ZOOM_CAP.max(CAMERA_MIN_ZOOM))
 }
 
+/// Minimum zoom so the map always covers the viewport — never see outside.
+/// Generic over all maps: uses runtime `map_w/h`, no per-map config.
+pub(crate) fn camera_zoom_lower_bound(screen_w: f32, screen_h: f32, map_w: u32, map_h: u32) -> f32 {
+    if map_w == 0 || map_h == 0 {
+        return CAMERA_MIN_ZOOM;
+    }
+    let fit_w = screen_w / map_w as f32;
+    let fit_h = screen_h / map_h as f32;
+    fit_w.max(fit_h).max(CAMERA_MIN_ZOOM)
+}
+
 fn spawn_sow_client_connect(
     url: String,
     connect_tx: &crossbeam_channel::Sender<Result<SowClient, String>>,
@@ -265,7 +276,9 @@ impl ApplicationHandler for SowApp {
         // browser's requestAnimationFrame compositor (Firefox/Chrome), crashing FPS to ~15.
         // Pin web to Wait and drive redraws via request_redraw below. See README
         // "Event Loop Starvation" / commit 11b8b8a. Do not collapse this cfg split.
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(target_os = "ios")]
+        let flow = winit::event_loop::ControlFlow::Poll;
+        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "ios")))]
         let flow = if self.ui.app.phase == sow_ui_kit::ClientPhase::Playing {
             winit::event_loop::ControlFlow::Poll
         } else {
@@ -289,8 +302,32 @@ pub fn run_game(event_loop: winit::event_loop::EventLoop) {
     let _ = event_loop.run_app(app);
 }
 
+#[cfg(target_os = "ios")]
+static IOS_REVENUECAT_PURCHASE_COMPLETED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(target_os = "ios")]
+#[unsafe(no_mangle)]
+pub extern "C" fn sow_ios_revenuecat_purchase_completed() {
+    IOS_REVENUECAT_PURCHASE_COMPLETED.store(true, std::sync::atomic::Ordering::Release);
+}
+
+#[cfg(target_os = "ios")]
+pub(crate) fn take_ios_revenuecat_purchase_completed() -> bool {
+    IOS_REVENUECAT_PURCHASE_COMPLETED.swap(false, std::sync::atomic::Ordering::AcqRel)
+}
+
+#[cfg(target_os = "ios")]
+#[unsafe(no_mangle)]
+pub extern "C" fn sow_ios_main() {
+    use winit::event_loop::EventLoopBuilder;
+
+    let event_loop = EventLoopBuilder::default().build().unwrap();
+    run_game(event_loop);
+}
+
 #[cfg(target_os = "android")]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
     use winit::event_loop::EventLoopBuilder;
     use winit::platform::android::EventLoopBuilderExtAndroid;

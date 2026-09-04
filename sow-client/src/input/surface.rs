@@ -1,6 +1,6 @@
 use crate::app::SowApp;
 use crate::render::world::movers::world_to_tile;
-use crate::{CAMERA_MIN_ZOOM, camera_zoom_upper_bound};
+use crate::{camera_zoom_lower_bound, camera_zoom_upper_bound};
 use blade_graphics as gpu;
 use egui::Vec2;
 
@@ -102,9 +102,16 @@ impl SowApp {
         }
 
         crate::viewport::Viewport::from_configured(self, sf).sync_to_app(self);
-        let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
-        self.input.camera_zoom = self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
-        self.input.target_zoom = self.input.camera_zoom;
+        let zmin = camera_zoom_lower_bound(
+            self.input.screen_w,
+            self.input.screen_h,
+            self.sim.map_w,
+            self.sim.map_h,
+        );
+        let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h).max(zmin);
+        self.input.camera_zoom = self.input.camera_zoom.clamp(zmin, zmax);
+        self.input.target_zoom = self.input.target_zoom.clamp(zmin, zmax);
+        self.clamp_camera_to_map();
 
         if recreate_surface {
             self.check_surface();
@@ -117,14 +124,55 @@ impl SowApp {
     }
     pub(crate) fn process_camera_zoom(&mut self, zoom_factor: f32, cx: f32, cy: f32) {
         let old_zoom = self.input.camera_zoom;
+        let zmin = camera_zoom_lower_bound(
+            self.input.screen_w,
+            self.input.screen_h,
+            self.sim.map_w,
+            self.sim.map_h,
+        );
         self.input.camera_zoom *= zoom_factor;
-        let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
-        self.input.camera_zoom = self.input.camera_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
+        let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h).max(zmin);
+        self.input.camera_zoom = self.input.camera_zoom.clamp(zmin, zmax);
         self.input.target_zoom = self.input.camera_zoom;
 
         let map_x = (cx - self.input.camera_x) / old_zoom;
         let map_y = (cy - self.input.camera_y) / old_zoom;
         self.input.camera_x = cx - map_x * self.input.camera_zoom;
         self.input.camera_y = cy - map_y * self.input.camera_zoom;
+        self.clamp_camera_to_map();
+    }
+
+    /// Keep the visible rect inside `[0,map_w]x[0,map_h]` so void is never shown.
+    /// If the map is smaller than the viewport at current zoom, center it.
+    /// All coords are physical px: `screen = world*zoom + camera`.
+    /// Also enforces zoom in `[lower,upper]` so the map always covers the viewport.
+    pub(crate) fn clamp_camera_to_map(&mut self) {
+        if self.sim.map_w == 0 || self.sim.map_h == 0 {
+            return;
+        }
+        let zmin = camera_zoom_lower_bound(
+            self.input.screen_w,
+            self.input.screen_h,
+            self.sim.map_w,
+            self.sim.map_h,
+        );
+        let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h).max(zmin);
+        self.input.camera_zoom = self.input.camera_zoom.clamp(zmin, zmax);
+        self.input.target_zoom = self.input.target_zoom.clamp(zmin, zmax);
+        let z = self.input.camera_zoom;
+        let mw = self.sim.map_w as f32 * z;
+        let mh = self.sim.map_h as f32 * z;
+        let sw = self.input.screen_w;
+        let sh = self.input.screen_h;
+        self.input.camera_x = if mw <= sw {
+            (sw - mw) * 0.5
+        } else {
+            self.input.camera_x.clamp(sw - mw, 0.0)
+        };
+        self.input.camera_y = if mh <= sh {
+            (sh - mh) * 0.5
+        } else {
+            self.input.camera_y.clamp(sh - mh, 0.0)
+        };
     }
 }

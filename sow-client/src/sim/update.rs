@@ -385,6 +385,7 @@ impl SowApp {
                                     self.input.screen_w * 0.5 - next_world_cx * next_zoom;
                                 self.input.camera_y =
                                     self.input.screen_h * 0.5 - next_world_cy * next_zoom;
+                                self.clamp_camera_to_map();
 
                                 if (target_zoom - next_zoom).abs() < 0.2
                                     && (target_world_cx - next_world_cx).abs() < 0.1
@@ -396,6 +397,7 @@ impl SowApp {
                                         self.input.screen_w * 0.5 - target_world_cx * target_zoom;
                                     self.input.camera_y =
                                         self.input.screen_h * 0.5 - target_world_cy * target_zoom;
+                                    self.clamp_camera_to_map();
                                     self.input.has_snapped_camera_to_spawn = true;
                                     log::info!(
                                         "Game started! Camera smoothly arrived at player spawn at ({}, {}), zoom={}",

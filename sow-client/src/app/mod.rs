@@ -18,6 +18,10 @@ impl SowApp {
         self.update_assets();
         self.update_loader();
         self.update_sim(now);
+        #[cfg(target_os = "ios")]
+        if crate::take_ios_revenuecat_purchase_completed() {
+            self.fetch_cloud_progress();
+        }
         #[cfg(target_arch = "wasm32")]
         crate::web_menu::publish_state(self);
     }

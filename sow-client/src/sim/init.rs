@@ -85,6 +85,9 @@ impl SowApp {
             self.input.screen_w * 0.5 - (map_w as f32 * 0.5) * self.input.camera_zoom;
         self.input.camera_y =
             self.input.screen_h * 0.5 - (map_h as f32 * 0.5) * self.input.camera_zoom;
+        self.sim.map_w = map_w;
+        self.sim.map_h = map_h;
+        self.clamp_camera_to_map();
         self.input.has_snapped_camera_to_spawn = false;
         self.ui.is_spectating = false;
         self.ui.observing = false;

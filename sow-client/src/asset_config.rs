@@ -1,7 +1,8 @@
 //! Single asset URL configuration for every client target (native, web, CrazyGames).
 //!
 //! Strict by design: every endpoint must be declared explicitly (JS globals on
-//! wasm, env vars on native). There are NO defaults and NO derivations — a
+//! wasm, env vars on native desktop, and signed Info.plist values on iOS).
+//! There are NO defaults and NO derivations — a
 //! missing endpoint is a packaging/serving bug and must crash the client at
 //! boot. A guessed `/api` once routed database traffic to the CrazyGames CDN
 //! (403) and silently booted players into the wrong mode; that class of
@@ -17,7 +18,8 @@ pub struct AssetConfig {
 }
 
 impl AssetConfig {
-    /// Resolve once at boot: explicit JS globals (wasm) or env vars (native).
+    /// Resolve once at boot: explicit JS globals (wasm), env vars (native
+    /// desktop), or signed Info.plist values (iOS).
     /// Missing configuration panics — the client never guesses endpoints.
     pub fn resolve() -> Self {
         let maps_base = require_endpoint("SOW_MAPS_URL");
@@ -104,7 +106,8 @@ impl AssetConfig {
     }
 }
 
-/// Explicit configuration only: JS global (wasm) or env var (native).
+/// Explicit configuration only: JS global (wasm), env var (native desktop),
+/// or signed Info.plist value (iOS).
 /// Missing/empty value = panic. No fallback, no derivation, ever.
 pub(crate) fn require_endpoint(name: &str) -> String {
     #[cfg(target_arch = "wasm32")]
@@ -118,8 +121,43 @@ pub(crate) fn require_endpoint(name: &str) -> String {
             return v;
         }
     }
+    #[cfg(target_os = "ios")]
+    if let Some(v) = ios_info_plist_value(name) {
+        if !v.is_empty() {
+            return v;
+        }
+    }
     panic!(
-        "SOW endpoint not configured: {name}. Set the JS global (wasm shell boot) \
-         or the env var (native). Refusing to guess a fallback."
+        "SOW endpoint not configured: {name}. Set the JS global (wasm shell boot), \
+         env var (native desktop), or Info.plist value (iOS). Refusing to guess a fallback."
     );
+}
+
+#[cfg(target_os = "ios")]
+fn ios_info_plist_value(name: &str) -> Option<String> {
+    use std::ffi::CString;
+
+    unsafe extern "C" {
+        fn sow_ios_config_value(
+            key: *const std::ffi::c_char,
+            buffer: *mut std::ffi::c_char,
+            capacity: i32,
+        ) -> i32;
+    }
+
+    let key = CString::new(name).ok()?;
+    let mut buffer = [0i8; 2048];
+    // SAFETY: both pointers refer to valid buffers for the synchronous call;
+    // the bridge writes at most capacity - 1 bytes and NUL-terminates them.
+    let length = unsafe {
+        sow_ios_config_value(key.as_ptr(), buffer.as_mut_ptr(), buffer.len() as i32)
+    };
+    if length <= 0 || length as usize >= buffer.len() {
+        return None;
+    }
+    let bytes = buffer[..length as usize]
+        .iter()
+        .map(|byte| *byte as u8)
+        .collect::<Vec<_>>();
+    String::from_utf8(bytes).ok()
 }

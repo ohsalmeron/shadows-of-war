@@ -1,5 +1,5 @@
 use crate::app::SowApp;
-use crate::{CAMERA_MIN_ZOOM, camera_zoom_upper_bound};
+use crate::{camera_zoom_lower_bound, camera_zoom_upper_bound};
 use egui::Pos2;
 use sow_ui_kit::ClientPhase;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
@@ -556,6 +556,7 @@ impl SowApp {
                     let dy = position.y - self.input.last_mouse_y;
                     self.input.camera_x += dx as f32;
                     self.input.camera_y += dy as f32;
+                    self.clamp_camera_to_map();
                 }
 
                 if primary {
@@ -623,8 +624,15 @@ impl SowApp {
                     };
                     let zoom_factor = 1.0 + scroll * 0.15;
                     self.input.target_zoom *= zoom_factor;
-                    let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h);
-                    self.input.target_zoom = self.input.target_zoom.clamp(CAMERA_MIN_ZOOM, zmax);
+                    let zmin = camera_zoom_lower_bound(
+                        self.input.screen_w,
+                        self.input.screen_h,
+                        self.sim.map_w,
+                        self.sim.map_h,
+                    );
+                    let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h)
+                        .max(zmin);
+                    self.input.target_zoom = self.input.target_zoom.clamp(zmin, zmax);
                     if let Some(win) = self.gfx.window.as_ref() {
                         win.request_redraw();
                     }

@@ -64,4 +64,6 @@ pub enum UiAction {
     SetFullscreen(bool),
     /// Toggle the UI Kit Showcase full-screen gallery.
     ToggleShowcase,
+    /// Open the native platform store (iOS RevenueCat; web/Android use their own shell).
+    OpenStore,
 }

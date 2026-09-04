@@ -24,6 +24,7 @@ impl SowApp {
                 let pan = 1000.0 * dt;
                 self.input.camera_x += dx * pan;
                 self.input.camera_y += dy * pan;
+                self.clamp_camera_to_map();
                 if let Some(win) = self.gfx.window.as_ref() {
                     win.request_redraw();
                 }
@@ -46,6 +47,7 @@ impl SowApp {
                 self.input.camera_x = self.input.screen_w * 0.5 - world_cx * self.input.camera_zoom;
                 self.input.camera_y = self.input.screen_h * 0.5 - world_cy * self.input.camera_zoom;
                 self.input.camera_focus_target = None;
+                self.clamp_camera_to_map();
             } else {
                 let lerp_factor = (1.0 - f32::exp(-12.0 * dt)).clamp(0.0, 1.0);
                 self.input.camera_zoom += zoom_diff * lerp_factor;
@@ -53,6 +55,7 @@ impl SowApp {
                 let new_target_y = self.input.screen_h * 0.5 - world_cy * self.input.camera_zoom;
                 self.input.camera_x += (new_target_x - self.input.camera_x) * lerp_factor;
                 self.input.camera_y += (new_target_y - self.input.camera_y) * lerp_factor;
+                self.clamp_camera_to_map();
             }
 
             if let Some(win) = self.gfx.window.as_ref() {
@@ -75,6 +78,7 @@ impl SowApp {
                 let map_y = (cy - self.input.camera_y) / old_zoom;
                 self.input.camera_x = cx - map_x * self.input.camera_zoom;
                 self.input.camera_y = cy - map_y * self.input.camera_zoom;
+                self.clamp_camera_to_map();
 
                 if let Some(win) = self.gfx.window.as_ref() {
                     win.request_redraw();
