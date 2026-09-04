@@ -373,21 +373,107 @@
   }
 
   window.SOW_portalShowAuthPrompt = async function () {
-    if (!crazyGamesSdkReady() || !window.CrazyGames.SDK.user || !window.CrazyGames.SDK.user.showAuthPrompt) {
+    if (crazyGamesSdkReady() && window.CrazyGames.SDK.user && window.CrazyGames.SDK.user.showAuthPrompt) {
+      try {
+        var user = await window.CrazyGames.SDK.user.showAuthPrompt();
+        var identity = await crazyGamesIdentityFromUser(user);
+        if (identity) {
+          window.SOW_PLATFORM_IDENTITY = identity;
+          window.SOW_AUTH_CHANGED = true;
+          console.log("Auth prompt successful login:", user.username);
+        }
+      } catch (e) {
+        console.warn("Auth prompt failed or cancelled:", e);
+      }
       return;
     }
+    // Self-hosted /play/: no portal SDK exists, so route through World of
+    // Unreal identity. The hub returns to this page with ?session_token&
+    // account=, which sowCaptureWouReturn() stores below; the Rust client
+    // already consumes wou_session_token/wou_user_data from localStorage.
     try {
-      var user = await window.CrazyGames.SDK.user.showAuthPrompt();
-      var identity = await crazyGamesIdentityFromUser(user);
-      if (identity) {
-        window.SOW_PLATFORM_IDENTITY = identity;
-        window.SOW_AUTH_CHANGED = true;
-        console.log("Auth prompt successful login:", user.username);
+      var provider = window.SOW_WOU_PROVIDER || "google";
+      var returnTo = window.location.href.split("#")[0];
+      var stateObj = { returnTo: returnTo, accountId: "", provider: provider };
+      var statePayload = "";
+      try {
+        statePayload = btoa(unescape(encodeURIComponent(JSON.stringify(stateObj))))
+          .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      } catch (e2) {
+        statePayload = encodeURIComponent(JSON.stringify(stateObj));
       }
+      try { sessionStorage.setItem("wou_oauth_provider", provider); } catch (e3) {}
+      var targetUrl = "https://id.worldofunreal.com/api/v1/auth/oauth/login/"
+        + encodeURIComponent(provider)
+        + "?redirect_uri=" + encodeURIComponent("https://worldofunreal.com/auth/callback")
+        + "&state=" + encodeURIComponent(statePayload);
+      window.location.href = targetUrl;
     } catch (e) {
-      console.warn("Auth prompt failed or cancelled:", e);
+      console.warn("WOU login redirect failed:", e);
     }
   };
+
+  // Capture a returning WOU SSO login (?session_token&account=) into the
+  // same localStorage keys the Rust client reads. Runs at shell boot.
+  function sowCaptureWouReturn() {
+    try {
+      var params = new URLSearchParams(window.location.search);
+      var token = params.get("session_token");
+      var acc = params.get("account");
+      if (!token || !acc) return;
+      var account = JSON.parse(decodeURIComponent(acc));
+      window.localStorage.setItem("wou_session_token", token);
+      window.localStorage.setItem("wou_user_data", JSON.stringify(account));
+      window.SOW_AUTH_CHANGED = true;
+      params.delete("session_token");
+      params.delete("account");
+      var clean = window.location.pathname + (params.toString() ? "?" + params.toString() : "") + window.location.hash;
+      window.history.replaceState({}, document.title, clean);
+      console.log("WOU login captured for:", account.display_name || account.id);
+    } catch (e) {
+      console.warn("WOU login capture failed:", e);
+    }
+  }
+
+  // Block list cache for conduct enforcement (profiles/search filtering).
+  // Loaded at boot when an anonymous identity exists; refreshed on report.
+  window.SOW_BLOCKED_IDS = [];
+  function sowLoadBlocks() {
+    try {
+      var accountId = window.localStorage.getItem("sow_account_id");
+      var secret = window.localStorage.getItem("sow_account_secret");
+      if (!accountId || !secret) return;
+      var base = String(window.SOW_DATABASE_URL || "/api").replace(/\/$/, "");
+      fetch(base + "/profile/anonymous/blocks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify({ account_id: accountId, auth_secret: secret })
+      }).then(function (res) {
+        if (!res.ok) throw new Error("blocks unavailable");
+        return res.json();
+      }).then(function (data) {
+        window.SOW_BLOCKED_IDS = Array.isArray(data.blocked_ids) ? data.blocked_ids : [];
+      }).catch(function (e) {
+        console.warn("Block list load failed:", e);
+      });
+    } catch (e) {
+      console.warn("Block list load failed:", e);
+    }
+  }
+
+  window.SOW_isBlockedId = function (id) {
+    if (!id) return false;
+    return (window.SOW_BLOCKED_IDS || []).indexOf(String(id)) !== -1;
+  };
+
+  try {
+    sowCaptureWouReturn();
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", sowLoadBlocks);
+    } else {
+      sowLoadBlocks();
+    }
+  } catch (e) {}
 
   window.SOW_LINK_PROMPT_RESPONSE = null;
   window.SOW_portalShowAccountLinkPrompt = async function () {

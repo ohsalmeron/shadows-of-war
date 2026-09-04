@@ -164,6 +164,26 @@
     function openProfile(id) {
         var targetId = id || (state && state.public_profile_id);
         if (!targetId) return;
+        reportOpen = false;
+        reportTarget = null;
+        reportSent = false;
+        deleteArmed = false;
+        try {
+            if (typeof window.SOW_isBlockedId === "function" && window.SOW_isBlockedId(targetId)) {
+                profileOpen = true;
+                profilePublicId = targetId;
+                profileTab = "overview";
+                profileData = null;
+                profileHistory = [];
+                profileHistoryCursor = 0;
+                profileRatings = null;
+                profileMatchDetail = null;
+                profileSearchResults = [];
+                profileError = "You blocked this player.";
+                render();
+                return;
+            }
+        } catch (e) {}
         profileOpen = true;
         profilePublicId = targetId;
         profileTab = "overview";

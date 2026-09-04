@@ -51,7 +51,7 @@ bullets = [
 [[sections]]
 heading = "Cookies and local storage"
 paragraphs = [
-  "We use only strictly-necessary client storage: a theme preference (localStorage), random analytics session identifiers (sessionStorage), and our own first-party product-event endpoint. There are no advertising, social, or cross-site-tracking cookies, and we do not respond to that kind of tracking because there is none to opt out of. Third-party font files are fetched from Google Fonts under Google's policies. Full details, including controls, are in our Cookie Notice.",
+  "We use only strictly-necessary client storage: a theme preference (localStorage), random analytics session identifiers (sessionStorage), and our own first-party product-event endpoint. There are no advertising, social, or cross-site-tracking cookies, and we do not respond to that kind of tracking because there is none to opt out of. Fonts are self-hosted on our own domain, so our pages make zero cross-origin requests. Full details, including controls, are in our Cookie Notice.",
 ]
 
 [[sections.links]]

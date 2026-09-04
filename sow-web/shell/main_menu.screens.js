@@ -1,3 +1,53 @@
+    // ── Conduct & privacy (Terms/Privacy enforcement in-client) ──
+    var REPORT_REASONS = [
+        ["cheating", "Cheating / automation"],
+        ["harassment", "Harassment"],
+        ["hate_speech", "Hate speech"],
+        ["threats", "Threats"],
+        ["spam", "Spam"],
+        ["inappropriate_name", "Inappropriate name"],
+        ["exploiting", "Exploiting bugs"],
+        ["other", "Other (explain below)"]
+    ];
+    var reportOpen = false;
+    var reportTarget = null;
+    var reportSent = false;
+    var reportBusy = false;
+    var deleteArmed = false;
+    var deleteBusy = false;
+    var ageDeclined = false;
+    var ageConfirmed = false;
+    try { ageConfirmed = window.localStorage.getItem("sow_age_ok") === "1"; } catch (e) {}
+
+    function selfCreds() {
+        var id = null;
+        var secret = null;
+        try {
+            id = window.localStorage.getItem("sow_account_id");
+            secret = window.localStorage.getItem("sow_account_secret");
+        } catch (e) {}
+        return (id && secret) ? { account_id: id, auth_secret: secret } : null;
+    }
+
+    function isBlockedPublicId(publicId) {
+        try {
+            return typeof window.SOW_isBlockedId === "function" && window.SOW_isBlockedId(publicId);
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function renderAgeGate() {
+        var body = ageDeclined
+            ? "<p>Shadows of War is for players aged 13 and older (13–17 with a parent or guardian's permission). <a href='https://shadowsofwar.io/' style='color:var(--orange);text-decoration:underline;'>Back to the site</a></p>"
+            : "<p>Shadows of War is for players aged 13 and older. Players 13–17 may play with a parent or guardian's permission. Confirm to enter.</p>" +
+              "<div style='display:flex;gap:12px;justify-content:center;flex-wrap:wrap;'>" +
+              "<button type='button' class='sow-menu__primary' data-command='confirm_age'>I AM 13+ / HAVE PERMISSION</button>" +
+              "<button type='button' class='sow-menu__ghost-button' data-command='decline_age'>LEAVE</button></div>";
+        return "<div role='dialog' aria-modal='true' aria-label='Age confirmation' style='position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(5,5,10,.92);padding:24px;'>" +
+            "<div style='max-width:520px;text-align:center;'><h2>AGE CHECK</h2>" + body + "<p style='margin-top:16px;'><a href='https://shadowsofwar.io/terms/' target='_blank' rel='noopener' style='color:var(--orange);'>Terms</a> · <a href='https://shadowsofwar.io/privacy/' target='_blank' rel='noopener' style='color:var(--orange);'>Privacy</a></p></div></div>";
+    }
+
     function renderTopbar() {
         var leader = leaderById(state.selected_leader);
         var name = displayNameDraft != null ? displayNameDraft : (state.player_name || "ANONYMOUS");
@@ -235,14 +285,6 @@
         return packageId ? href + "?package_id=" + encodeURIComponent(packageId) : href;
     }
 
-    function webPackageForProduct(productId) {
-        return {
-            "sow_gems_500": "$rc_monthly",
-            "sow_gems_1200": "$rc_annual",
-            "sow_gems_2600": "$rc_lifetime"
-        }[productId] || "";
-    }
-
     function renderWebPurchaseAction() {
         if (isAndroidTwa()) return "";
         var href = webPurchaseHref();
@@ -277,9 +319,7 @@
             ? (href
                 ? "<a class='sow-store__buy sow-store__buy--primary' href='" + esc(href) + "'>BUY IN APP <span aria-hidden='true'>↗</span></a>"
                 : "<button class='sow-store__buy' type='button' disabled>ACCOUNT REQUIRED</button>")
-            : (webPurchaseHref(webPackageForProduct(bundle.product_id))
-                ? "<a class='sow-store__buy sow-store__buy--primary' href='" + esc(webPurchaseHref(webPackageForProduct(bundle.product_id))) + "' target='_blank' rel='noopener'>BUY ONLINE <span aria-hidden='true'>↗</span></a>"
-                : "<button class='sow-store__buy' type='button' disabled>ONLINE STORE UNAVAILABLE</button>");
+            : "";
         return "<article class='sow-store__bundle'><span class='sow-store__bundle-icon' aria-hidden='true'>✦</span><div><strong>" + esc(bundle.gems) + " GEMS</strong><small>One-time gem bundle</small></div>" + action + "</article>";
     }
 
@@ -308,9 +348,10 @@
                 "<main class='sow-menu__main sow-menu__main--store'><section class='sow-menu__store-slot' data-store-slot aria-label='Store'>" +
                     "<header class='sow-store__heading'><div><p class='sow-store__eyebrow'>STORE</p><h1>Store</h1><p>Leaders, skins and gems.</p></div><div class='sow-store__balances'><span><b>✦</b> " + esc(store.gems || 0) + " <small>GEMS</small></span><span><b>◈</b> " + esc(store.laurels || 0) + " <small>LAURELS</small></span></div></header>" +
                     renderFeedback() +
-                    "<section class='sow-store__section' aria-labelledby='sow-store-leaders'><div class='sow-store__section-head'><h2 id='sow-store-leaders'>Leaders</h2><span>Weekly rotation</span></div><div class='sow-store__leader-grid'>" + (leaders.map(renderStoreLeader).join("") || "<p class='sow-menu__empty'>No leaders available.</p>") + "</div></section>" +
+                    "<section class='sow-store__section' aria-labelledby='sow-store-leaders'><div class='sow-store__section-head'><h2 id='sow-store-leaders'>Leaders</h2><span>Weekly rotation</span></div><div class='sow-store__leader-grid'>" + (leaders.map(renderStoreLeader).join("") || "<p class='sow-menu__empty'>No leaders available.</p>") + "</div><p class='sow-store__fineprint'>Unlocked leaders have distinct gameplay perks — they are not purely cosmetic. Gem unlocks are final sale, no refunds.</p></section>" +
                     "<section class='sow-store__section' aria-labelledby='sow-store-skins'><div class='sow-store__section-head'><h2 id='sow-store-skins'>Skins</h2><span>Cosmetics</span></div><div class='sow-store__skin-grid'>" + (skins.map(renderStoreSkin).join("") || "<p class='sow-menu__empty'>No skins available.</p>") + "</div></section>" +
-                    "<section class='sow-store__section' aria-labelledby='sow-store-gems'><div class='sow-store__section-head'><h2 id='sow-store-gems'>Gem bundles</h2>" + renderWebPurchaseAction() + "</div><div class='sow-store__bundle-grid'>" + (bundles.map(renderStoreBundle).join("") || "<p class='sow-menu__empty'>Products are not configured yet.</p>") + "</div></section>" +
+                    "<section class='sow-store__section' aria-labelledby='sow-store-gems'><div class='sow-store__section-head'><h2 id='sow-store-gems'>Gem bundles</h2>" + renderWebPurchaseAction() + "</div><div class='sow-store__bundle-grid'>" + (bundles.map(renderStoreBundle).join("") || "<p class='sow-menu__empty'>Products are not configured yet.</p>") + "</div>" +
+                    "<p class='sow-store__fineprint'>Digital items delivered instantly to your account. <strong>All sales are final — no refunds.</strong> Buying means you consent to immediate delivery and give up the statutory withdrawal right where applicable. See <a href='https://shadowsofwar.io/terms/' target='_blank' rel='noopener'>Terms</a>.</p></section>" +
                 "</section></main>" +
                 renderFooter("STORE") + renderMobileNav("store") +
             "</div>";
@@ -404,9 +445,48 @@
         return "<div class='sow-menu__backdrop'></div><div class='sow-menu__shell sow-profile'>" +
             renderTopbar() +
             "<main class='sow-menu__main sow-profile__main'><section class='sow-profile__page'>" + header +
-            "<nav class='sow-profile__tabs' role='tablist' aria-label='Profile sections'>" + tabs + "</nav>" + content + search + searchResults +
+            "<nav class='sow-profile__tabs' role='tablist' aria-label='Profile sections'>" + tabs + "</nav>" + content + renderModeration(own) + search + searchResults +
             "</section></main>" +
             renderFooter("PROFILE") + renderMobileNav("profile") + detail + "</div>";
+    }
+
+    // Conduct + privacy controls on profiles. Own profile: self-service
+    // erasure (double-confirm, ownership-proofed server-side). Others:
+    // report with closed-reason dropdown + free text for Other; filing
+    // also blocks the account client-side and notifies moderation.
+    function renderModeration(own) {
+        if (own) {
+            if (!selfCreds()) return "";
+            var delAction = deleteBusy
+                ? "<p class='sow-profile__empty'>Deleting account…</p>"
+                : deleteArmed
+                    ? "<p><strong>This is permanent.</strong> Your account, profile, items, and history will be erased. Click again to confirm.</p><button type='button' class='sow-menu__danger' data-command='confirm_delete'>YES, DELETE MY ACCOUNT</button> <button type='button' class='sow-menu__ghost-button' data-command='cancel_delete'>CANCEL</button>"
+                    : "<button type='button' class='sow-menu__ghost-button' data-command='request_delete'>Delete my account…</button>";
+            return "<section class='sow-profile__section' aria-label='Danger zone'><div class='sow-profile__section-head'><h2>Danger zone</h2></div>" + delAction + "</section>";
+        }
+        if (!profilePublicId || !selfCreds()) return "";
+        if (reportSent) {
+            return "<section class='sow-profile__section' aria-label='Report filed'><div class='sow-profile__section-head'><h2>Report filed</h2></div><p class='sow-profile__empty'>Thanks — our moderation team will review this player. They are now blocked for you.</p></section>";
+        }
+        if (isBlockedPublicId(profilePublicId)) {
+            return "<section class='sow-profile__section' aria-label='Blocked'><div class='sow-profile__section-head'><h2>Blocked</h2></div><p class='sow-profile__empty'>You blocked this player when you reported them.</p></section>";
+        }
+        if (!reportOpen || reportTarget !== profilePublicId) {
+            return "<section class='sow-profile__section' aria-label='Conduct'><div class='sow-profile__section-head'><h2>Conduct</h2></div><button type='button' class='sow-menu__ghost-button' data-command='open_report' data-profile-id='" + esc(profilePublicId) + "'>Report player…</button></section>";
+        }
+        var options = REPORT_REASONS.map(function (r) {
+            return "<option value='" + esc(r[0]) + "'>" + esc(r[1]) + "</option>";
+        }).join("");
+        return "<section class='sow-profile__section' aria-label='Report player'><div class='sow-profile__section-head'><h2>Report player</h2></div>" +
+            "<form data-form='report'>" +
+            "<label for='sow-report-reason'>Reason</label>" +
+            "<select id='sow-report-reason' name='reason'>" + options + "</select>" +
+            "<label for='sow-report-details'>Details (required for Other)</label>" +
+            "<textarea id='sow-report-details' name='details' rows='3' maxlength='500' placeholder='What happened?'></textarea>" +
+            "<p class='sow-profile__empty'>Filing also blocks this player for you and notifies our moderation team. False reports violate the Terms.</p>" +
+            "<button type='submit'" + (reportBusy ? " disabled" : "") + ">" + (reportBusy ? "Sending…" : "Send report & block") + "</button> " +
+            "<button type='button' class='sow-menu__ghost-button' data-command='cancel_report'>Cancel</button>" +
+            "</form></section>";
     }
 
     function cloneConfig() {
@@ -850,6 +930,10 @@
 
         if (leaderPickerOpen && screen !== "home") root.innerHTML += renderLeaderPicker();
 
+        // 13+ eligibility gate (Terms). Blocks the whole menu until confirmed;
+        // the choice persists per device. Under-13s must leave.
+        if (!ageConfirmed) root.innerHTML += renderAgeGate();
+
         if (isTyping) {
             var restored = null;
             if (activeRole) {
@@ -1019,6 +1103,70 @@
         if (command === "close_match") {
             profileMatchDetail = null;
             render();
+            return;
+        }
+        if (command === "confirm_age") {
+            ageConfirmed = true;
+            ageDeclined = false;
+            try { window.localStorage.setItem("sow_age_ok", "1"); } catch (e) {}
+            render();
+            return;
+        }
+        if (command === "decline_age") {
+            ageDeclined = true;
+            render();
+            return;
+        }
+        if (command === "open_report") {
+            reportOpen = true;
+            reportTarget = target.dataset.profileId || profilePublicId;
+            reportSent = false;
+            render();
+            return;
+        }
+        if (command === "cancel_report") {
+            reportOpen = false;
+            reportTarget = null;
+            render();
+            return;
+        }
+        if (command === "request_delete") {
+            deleteArmed = true;
+            render();
+            return;
+        }
+        if (command === "cancel_delete") {
+            deleteArmed = false;
+            render();
+            return;
+        }
+        if (command === "confirm_delete") {
+            var delCreds = selfCreds();
+            if (!delCreds || deleteBusy) {
+                deleteArmed = false;
+                render();
+                return;
+            }
+            deleteBusy = true;
+            render();
+            fetch(profileApi("/profile/anonymous/delete"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                body: JSON.stringify({ account_id: delCreds.account_id, auth_secret: delCreds.auth_secret })
+            }).then(function (response) {
+                if (!response.ok) throw new Error("delete failed");
+                try {
+                    ["sow_account_id", "sow_account_secret", "sow_player_progress"].forEach(function (k) {
+                        window.localStorage.removeItem(k);
+                    });
+                } catch (e) {}
+                window.location.reload();
+            }).catch(function () {
+                deleteBusy = false;
+                deleteArmed = false;
+                state.error = "Account deletion unavailable. Try again or email hello@shadowsofwar.io.";
+                render();
+            });
             return;
         }
         if (command === "open_leader_picker") {
@@ -1243,11 +1391,61 @@
                 return response.json();
             }).then(function (data) {
                 profileSearchResults = Array.isArray(data.items) ? data.items : [];
+                profileSearchResults = profileSearchResults.filter(function (s) {
+                    return !isBlockedPublicId(s && s.public_id);
+                });
                 profileError = "";
             }).catch(function () {
                 profileSearchResults = [];
                 profileError = "Profile search unavailable.";
             }).finally(function () {
+                render();
+            });
+            return;
+        }
+        if (form.dataset.form === "report") {
+            event.preventDefault();
+            if (reportBusy) return;
+            var repCreds = selfCreds();
+            var reason = form.elements.reason ? form.elements.reason.value : "";
+            var details = form.elements.details ? form.elements.details.value.trim() : "";
+            if (!repCreds || !reportTarget) {
+                reportOpen = false;
+                render();
+                return;
+            }
+            if (reason === "other" && !details) {
+                profileError = "Details are required for reason Other.";
+                render();
+                return;
+            }
+            reportBusy = true;
+            render();
+            fetch(profileApi("/profile/anonymous/report"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                body: JSON.stringify({
+                    account_id: repCreds.account_id,
+                    auth_secret: repCreds.auth_secret,
+                    reported_public_id: reportTarget,
+                    reason: reason,
+                    details: details || null
+                })
+            }).then(function (response) {
+                if (!response.ok) throw new Error("report failed");
+                return response.json();
+            }).then(function () {
+                reportSent = true;
+                reportOpen = false;
+                try {
+                    var list = window.SOW_BLOCKED_IDS || [];
+                    if (list.indexOf(reportTarget) === -1) list.push(reportTarget);
+                    window.SOW_BLOCKED_IDS = list;
+                } catch (e) {}
+            }).catch(function () {
+                profileError = "Report unavailable. Try again or email hello@shadowsofwar.io.";
+            }).finally(function () {
+                reportBusy = false;
                 render();
             });
             return;
