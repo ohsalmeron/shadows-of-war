@@ -1,10 +1,25 @@
-# Data deletion runbook (operator-only)
+# Data deletion & moderation runbook (operator-only)
 
-Player-facing promise: `sow-web/site/privacy/` ("Your rights and deletion").
-This is the internal procedure that fulfills it. Never expose the endpoint
-below publicly — it is bearer-gated and loopback-bound by design.
+Player-facing promises: `sow-web/site/privacy/` ("Your rights and deletion")
+and the in-game profile controls. This is the internal procedure that
+fulfills them. Bearer-gated endpoints below are loopback-bound by design —
+never expose them publicly.
 
-## 1. Receive and verify
+## 0. Self-service first
+
+Players no longer need email for the common cases:
+
+- **Delete my account** lives in their own profile (double-confirm). It calls
+  `POST /profile/anonymous/delete` with their ownership secret and runs the
+  same erasure engine as §2. Email requests still work for edge cases
+  (lost device/secret: verify via creation date + linked platform instead).
+- **Report player** lives on other players' profiles (closed-reason dropdown
+  + free text for Other). It calls `POST /profile/anonymous/report`, always
+  activates a block, stores the report for 12 months (`sow:report:{id}`,
+  index `sow:reports:index`, capped at 5000), and emails the moderation
+  mailbox when configured (see §4).
+
+## 1. Receive and verify (email path)
 
 1. Request arrives at `hello@shadowsofwar.io` with an `account_id`
    (32 hex chars, found in-game) or a display name + approximate creation date.
@@ -70,3 +85,33 @@ and offer appeal by reply.
 Same procedure, expedited: suspend first (Terms violation — underage account),
 erase second, reply to the parent/guardian. Do not ask the child for new
 identity documents; verify via the parent's email context instead.
+
+## 5. Moderation queue & email setup
+
+Review reports oldest-first:
+
+```sh
+ssh ionos 'valkey-cli -h 127.0.0.1 ZRANGE sow:reports:index 0 19 WITHSCORES'
+ssh ionos 'valkey-cli -h 127.0.0.1 GET "sow:report:<report_id>"'
+```
+
+Enforcement uses the existing lobby tools (`kick_player`, `ban_player`) or a
+manual `POST /internal/profile/delete` for account-level action. Chargeback
+abuse is never auto-suspended — the webhook already zeroes the gems; the
+human decides the account.
+
+To activate report emails, set these in `/usr/local/etc/sow/sow.env` on IONOS
+(mode 0600, same file as `SOW_DB_SECRET`) and restart `sow_database`:
+
+```sh
+SOW_SMTP_HOST=mail.worldofunreal.com
+SOW_SMTP_PORT=587
+SOW_SMTP_USER=<sender mailbox>
+SOW_SMTP_PASS=<sender password>
+SOW_SMTP_FROM=<sender mailbox>
+SOW_MODERATION_EMAIL=<moderation mailbox>
+```
+
+The mailbox address lives only in that file — never in the repo, never in a
+client response. Without it, reports still store + log; `email_sent=false`
+in the database log tells you the queue needs manual review.

@@ -15,6 +15,8 @@ pub mod rewards;
 #[cfg(feature = "server")]
 pub mod metadata_db;
 #[cfg(feature = "server")]
+pub mod moderation;
+#[cfg(feature = "server")]
 pub mod profile;
 #[cfg(feature = "server")]
 pub mod time_util;

@@ -358,7 +358,15 @@ async fn handle_revenuecat_webhook(
     }
 
     let event = payload.event;
-    if event.event_type != "NON_RENEWING_PURCHASE" {
+    // Grants flow one way; reversals flow the other. Refund/void/chargeback
+    // notifications revoke the bundle amount (floored at zero, deduplicated
+    // by event id) so the no-refund economy in the Terms stays real instead
+    // of aspirational. Suspension for abuse stays a manual operator call.
+    let refund = matches!(
+        event.event_type.as_str(),
+        "CANCELLATION" | "REFUND" | "VOIDED_PURCHASE"
+    );
+    if event.event_type != "NON_RENEWING_PURCHASE" && !refund {
         info!(
             "RevenueCat event ignored type={} event={}",
             event.event_type, event.id
@@ -379,6 +387,43 @@ async fn handle_revenuecat_webhook(
         )
             .into_response();
     };
+    if refund {
+        return match state
+            .db
+            .revoke_revenuecat_gems(&event.id, &event.app_user_id, product_id)
+            .await
+        {
+            Ok((account, true)) => {
+                info!(
+                    "RevenueCat gems revoked account={} product={} gems={} type={}",
+                    account_hint(Some(&account.id)),
+                    product_id,
+                    account.profile.gems,
+                    event.event_type
+                );
+                (
+                    StatusCode::OK,
+                    Json(serde_json::json!({ "status": "revoked" })),
+                )
+                    .into_response()
+            }
+            Ok((_account, false)) => (
+                StatusCode::OK,
+                Json(serde_json::json!({ "status": "duplicate" })),
+            )
+                .into_response(),
+            Err(error) => {
+                error!("RevenueCat gem revocation failed: {error}");
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(ErrorResponse {
+                        error: "purchase revocation unavailable".to_string(),
+                    }),
+                )
+                    .into_response()
+            }
+        };
+    }
     match state
         .db
         .grant_revenuecat_gems(&event.id, &event.app_user_id, product_id)
@@ -408,6 +453,240 @@ async fn handle_revenuecat_webhook(
                 StatusCode::SERVICE_UNAVAILABLE,
                 Json(ErrorResponse {
                     error: "purchase grant unavailable".to_string(),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Shared ownership-proof gate for self-service account endpoints. The
+/// canonical account ID is a lookup key, not a secret — every mutating call
+/// must also present the one-time ownership secret minted at creation.
+async fn verify_self_service(
+    db: &sow_data::db::PlayerDb,
+    account_id: &str,
+    auth_secret: &str,
+) -> Result<(), String> {
+    db.verify_anonymous_secret(account_id, auth_secret)
+        .await
+        .map(|_| ())
+}
+
+/// POST /profile/anonymous/report — file a conduct report against another
+/// player. Ownership-proofed (reporter secret), rate-limited, and always
+/// activates a block. The moderation mailbox receives the report server-side;
+/// its address is never exposed to clients.
+#[derive(Deserialize)]
+struct ReportPlayerRequest {
+    account_id: String,
+    auth_secret: String,
+    reported_public_id: String,
+    #[serde(default)]
+    match_id: Option<String>,
+    reason: String,
+    #[serde(default)]
+    details: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ReportPlayerResponse {
+    report_id: String,
+    blocked: bool,
+}
+
+async fn handle_report_player(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<ReportPlayerRequest>,
+) -> impl IntoResponse {
+    let account_id = payload.account_id.trim();
+    if let Err(error) = verify_self_service(&state.db, account_id, &payload.auth_secret).await {
+        warn!("[moderation] report rejected auth: {error}");
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "account ownership proof failed".to_string(),
+            }),
+        )
+            .into_response();
+    }
+    let reported_public_id = payload.reported_public_id.trim().to_string();
+    let reported_account_id = match state.db.account_id_for_public_id(&reported_public_id) {
+        Ok(Some(id)) => id,
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "reported player not found".to_string(),
+                }),
+            )
+                .into_response();
+        }
+        Err(error) => {
+            error!("[moderation] report lookup failed: {error}");
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ErrorResponse {
+                    error: "report service unavailable".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+    match sow_data::moderation::submit_report(
+        &state.db,
+        sow_data::moderation::ReportInput {
+            reporter_account_id: account_id.to_string(),
+            reported_account_id,
+            reported_public_id,
+            match_id: payload.match_id,
+            reason: payload.reason.trim().to_string(),
+            details: payload.details,
+        },
+    )
+    .await
+    {
+        Ok(outcome) => {
+            info!(
+                "[moderation] report {} filed by {} email_sent={}",
+                outcome.report_id,
+                account_hint(Some(account_id)),
+                outcome.email_sent
+            );
+            (
+                StatusCode::OK,
+                Json(ReportPlayerResponse {
+                    report_id: outcome.report_id,
+                    blocked: outcome.blocked,
+                }),
+            )
+                .into_response()
+        }
+        Err(error) => {
+            let message = error.to_string();
+            let status = if message.contains("rate limit") {
+                StatusCode::TOO_MANY_REQUESTS
+            } else if message.contains("unknown report reason")
+                || message.contains("details are required")
+                || message.contains("own account")
+            {
+                StatusCode::BAD_REQUEST
+            } else {
+                StatusCode::SERVICE_UNAVAILABLE
+            };
+            warn!("[moderation] report failed: {message}");
+            (
+                status,
+                Json(ErrorResponse {
+                    error: "report could not be filed".to_string(),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// POST /profile/anonymous/blocks — owner-only read of the accounts this
+/// account blocked. Clients fetch it at boot to filter chat and presence.
+#[derive(Deserialize)]
+struct BlocksRequest {
+    account_id: String,
+    auth_secret: String,
+}
+
+#[derive(Serialize)]
+struct BlocksResponse {
+    blocked_ids: Vec<String>,
+}
+
+async fn handle_blocks(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<BlocksRequest>,
+) -> impl IntoResponse {
+    let account_id = payload.account_id.trim();
+    if let Err(error) = verify_self_service(&state.db, account_id, &payload.auth_secret).await {
+        warn!("[moderation] blocks read rejected auth: {error}");
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "account ownership proof failed".to_string(),
+            }),
+        )
+            .into_response();
+    }
+    match sow_data::moderation::blocked_ids(&state.db, account_id).await {
+        Ok(blocked_ids) => (
+            StatusCode::OK,
+            Json(BlocksResponse { blocked_ids }),
+        )
+            .into_response(),
+        Err(error) => {
+            error!("[moderation] blocks read failed: {error}");
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ErrorResponse {
+                    error: "block list unavailable".to_string(),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// POST /profile/anonymous/delete — self-service erasure. Same ownership
+/// proof as renames and store unlocks, same erasure engine as the operator
+/// endpoint. The client wipes local data on success and mints a fresh
+/// anonymous account on next boot.
+#[derive(Deserialize)]
+struct SelfDeleteRequest {
+    account_id: String,
+    auth_secret: String,
+}
+
+#[derive(Serialize)]
+struct SelfDeleteResponse {
+    deleted: bool,
+    keys_removed: u64,
+}
+
+async fn handle_self_delete(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<SelfDeleteRequest>,
+) -> impl IntoResponse {
+    let account_id = payload.account_id.trim();
+    if let Err(error) = verify_self_service(&state.db, account_id, &payload.auth_secret).await {
+        warn!("[privacy] self-delete rejected auth: {error}");
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "account ownership proof failed".to_string(),
+            }),
+        )
+            .into_response();
+    }
+    match state.db.delete_account(account_id).await {
+        Ok(report) => {
+            info!(
+                "[privacy] self-delete ok account={} keys={} sets={}",
+                account_hint(Some(&report.account_id)),
+                report.keys_removed,
+                report.analytics_sets_scrubbed
+            );
+            (
+                StatusCode::OK,
+                Json(SelfDeleteResponse {
+                    deleted: true,
+                    keys_removed: report.keys_removed,
+                }),
+            )
+                .into_response()
+        }
+        Err(error) => {
+            error!("[privacy] self-delete failed: {error}");
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ErrorResponse {
+                    error: "account deletion unavailable".to_string(),
                 }),
             )
                 .into_response()
@@ -754,6 +1033,9 @@ async fn main() {
             "/profile/anonymous/tutorial-complete",
             post(handle_anonymous_tutorial_complete),
         )
+        .route("/profile/anonymous/report", post(handle_report_player))
+        .route("/profile/anonymous/blocks", post(handle_blocks))
+        .route("/profile/anonymous/delete", post(handle_self_delete))
         .route("/match/start", post(handle_match_start))
         .route("/internal/match-finalize", post(handle_match_finalize))
         .route("/internal/save", post(handle_direct_save))

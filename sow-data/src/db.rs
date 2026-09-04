@@ -326,6 +326,14 @@ impl PlayerDb {
         self.client.get_multiplexed_async_connection().await
     }
 
+    /// Crate-internal connection accessor for sibling server modules
+    /// (moderation, future operator tooling). Auth stays with the callers.
+    pub(crate) async fn client_conn(
+        &self,
+    ) -> Result<redis::aio::MultiplexedConnection, redis::RedisError> {
+        self.get_connection().await
+    }
+
     pub fn save_player_account_to_redb(&self, account: &PlayerAccount) {
         if let Some(ref db) = self.metadata_db
             && let Ok(write_txn) = db.begin_write()
@@ -1299,6 +1307,10 @@ impl PlayerDb {
         let account: Option<PlayerAccount> = Self::load_account(&mut con, account_id).await.ok();
 
         let mut keys = vec![Self::account_key(account_id)];
+        // Owned block list and per-day report counters belong to the account
+        // and go with it. Memberships in *other* accounts' block sets are
+        // stale-but-harmless (they match a gone account) and are left alone.
+        keys.push(format!("sow:blocks:{account_id}"));
         if let Some(ref account) = account {
             for identity in &account.linked_identities {
                 keys.push(Self::identity_key(
@@ -2042,6 +2054,64 @@ impl PlayerDb {
             self.save_player_account_to_redb(&account);
         }
         Ok((account, granted))
+    }
+
+    /// Reverse a refunded, voided, or charged-back gem purchase: deduct the
+    /// bundle amount with a floor of zero. Deduplicated by refund event id in
+    /// the same `processed_revenuecat_events` set as grants, so a retried
+    /// notification cannot double-deduct. A matching grant is not required —
+    /// a refund for an already-spent bundle simply zeroes the balance and is
+    /// logged for operator review. Suspension for chargeback abuse stays a
+    /// manual operator decision, never automatic.
+    pub async fn revoke_revenuecat_gems(
+        &self,
+        event_id: &str,
+        purchase_user_id: &str,
+        product_id: &str,
+    ) -> Result<(PlayerAccount, bool), Box<dyn std::error::Error + Send + Sync>> {
+        let account_id = if is_valid_account_id(purchase_user_id) {
+            purchase_user_id.to_string()
+        } else {
+            self.account_id_for_public_id(purchase_user_id)?
+                .ok_or("app_user_id must be a known public profile ID")?
+        };
+        let event_id = event_id.trim();
+        if event_id.is_empty() || event_id.len() > 256 {
+            return Err("RevenueCat event id is invalid".into());
+        }
+        let product_id = product_id.trim();
+        let gems = crate::commerce::gem_amount_for_product(product_id)
+            .ok_or("unknown RevenueCat product")?;
+        let mut con = self.get_connection().await?;
+        let mut revoked = false;
+        let account = Self::update_account_atomic(
+            &mut con,
+            &Self::account_key(&account_id),
+            |account| {
+                if account
+                    .profile
+                    .processed_revenuecat_events
+                    .contains(event_id)
+                {
+                    return;
+                }
+                account
+                    .profile
+                    .processed_revenuecat_events
+                    .insert(event_id.to_string());
+                account.profile.gems = account.profile.gems.saturating_sub(gems);
+                account.updated_at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                revoked = true;
+            },
+        )
+        .await?;
+        if revoked {
+            self.save_player_account_to_redb(&account);
+        }
+        Ok((account, revoked))
     }
 
     /// Seed the persistent bot-account pool. For each external_id, performs
