@@ -1,6 +1,6 @@
 # iOS/TestFlight takeover record
 
-Status: operational record, updated 2026-09-02.
+Status: operational record, updated 2026-09-04.
 
 This document records the boundary between the iOS workflow on macOS and the
 Shadows of War production pipeline. It also records the evidence standard for
@@ -10,7 +10,7 @@ TestFlight claims so later agents do not confuse an upload with a testable build
 
 - iOS-only work runs on macOS with Xcode through
   `scripts/ios-testflight.sh`.
-- `./sow p` is the production pipeline for the web/backend/Android/FreeBSD
+- `./sow p` is the production pipeline for the web/backend/FreeBSD/Azure
   release. It is not the iOS validation command and must not be invoked merely
   to validate an iOS-only change on a Mac.
 - Do not create a FreeBSD VM, provision production keys, or configure Linux or
@@ -19,32 +19,38 @@ TestFlight claims so later agents do not confuse an upload with a testable build
   explicit App Store Connect upload credential. The FreeBSD/Linux `sow p`
   credentials are not a substitute.
 
-## Current Shadows of War upload
+## Current Shadows of War state
 
 - Bundle ID: `games.shadowsofwar.app`
 - App Store Connect app: Shadows of War
 - Marketing version: `0.1.2`
-- Build `402` is the superseded upload and remains `Missing Compliance`.
-- Build `403` is the active TestFlight build.
-- The archive/export path was repaired to register `Assets.xcassets` with
-  `AppIcon`, include the required iPhone/iPad icon sizes, and declare
-  `CFBundleIconName`.
-- The observed Xcode result for build `403` was `Upload succeeded` and App
-  Store Connect created the build under version `0.1.2`.
-- App Store Connect verification: build `0.1.2 (403)` is in the `Internal
-  Testers` group and its status is `Ready to Test`.
-- The `Internal Testers` group exists with automatic distribution enabled and
-  currently has zero testers; adding tester email addresses is the remaining
-  account-side action.
+- The last previously uploaded build was `0.1.2 (403)`; build `402` remains
+  `Missing Compliance`. Neither status is evidence that the newly fixed binary
+  is in TestFlight.
+- The reconciled source completed a signed local archive/export as
+  `0.1.2 (409)` on 2026-09-04. Xcode reported `ARCHIVE SUCCEEDED` and
+  `EXPORT SUCCEEDED`; nothing was uploaded.
+- A previous experiment built a standalone
+  `@rpath/libSOWRevenueCatBridge.dylib`; that design is retired. The current
+  design links `SOWStoreBridge.swift` and RevenueCat directly in the Xcode
+  target, with no manual dylib or IPA rewriting.
+- Physical-device launch, product loading, sandbox purchase, and post-webhook
+  gem refresh still require an attached iPhone or iPad.
+- Three App Store Connect consumables exist as drafts:
+  `sow_gems_500` (`6808291603`), `sow_gems_1200` (`6808291825`), and
+  `sow_gems_2600` (`6808294808`).
+- All three consumables now have verified availability in 173 of 175 Apple
+  territories: all selectable territories except Russia and Yemen. Iran, North
+  Korea, and Somalia are not selectable in this App Store Connect list.
+- The iOS version page now contains one real gameplay screenshot for iPhone
+  6.5-inch and one for iPad 13-inch. Both survived a page reload.
+- The native iOS RevenueCat bridge and temporary in-game store entry are
+  present in source. The public `appl_...` SDK key is supplied through the
+  signed build configuration; it is not hardcoded in source.
 
-The older 402 result proved receipt/acceptance only. The 403 group page is the
-authoritative evidence that a testable build is available.
-
-App Store Connect availability is configured for 173 of Apple's 175 offered
-territories. France and Nigeria are included; Russia and Yemen are explicitly
-excluded. Iran, North Korea, and Somalia are not offered as selectable Apple
-territories. Mac and Vision Pro distribution are disabled because this product
-is iOS-only.
+There is currently no evidence that build `407` has reached Apple, has been
+processed, or is available to testers. The only valid evidence for that claim
+will be the build status in App Store Connect after a real upload.
 
 ## App Store Connect status meanings
 
@@ -85,19 +91,23 @@ The client uses platform-specific standard TLS for WebSocket connections:
   `sow-client/src/net/update/mod.rs`.
 - The final IPA contains `ITSAppUsesNonExemptEncryption = false`.
 
-The build was uploaded only after this implementation and plist declaration
-were verified in the exported IPA. This is technical evidence for the
-non-exempt-encryption declaration, not a substitute for legal advice.
+The local exported IPA was inspected after this implementation and plist
+declaration were verified. It has not been uploaded. This is technical
+evidence for the non-exempt-encryption declaration, not a substitute for legal
+advice.
 
 ## Store metadata and screenshots
 
 - The iOS draft has a description, keywords, support URL, marketing URL, and
   copyright saved from the repository's existing launch/site copy.
-- Three 6.5-inch iPhone PNGs were generated from the repository's real gameplay
-  media at `2688x1242` and visually checked locally.
-- The current Codex in-app browser exposes the App Store Connect `Choose File`
-  control but not a file-chooser upload API, so those images were not claimed
-  as uploaded. TestFlight readiness does not depend on public store screenshots.
+- The local screenshot artifacts are
+  `dist/ios/screenshots/ShadowsOfWar-iPhone-6.5.png` and
+  `dist/ios/screenshots/ShadowsOfWar-iPad-13.png`. They were generated from
+  real gameplay frames, validated at Apple's accepted dimensions, uploaded
+  through the authenticated App Store Connect browser, and rechecked after a
+  reload.
+- Store screenshots are separate from TestFlight build processing: their
+  presence does not make an unuploaded build testable.
 
 ## Agent-Reach boundary
 

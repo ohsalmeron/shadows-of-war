@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Builds the Rust binary for the active Xcode SDK (device or simulator), then
-# `lipo`s per-arch artifacts into the path Xcode expects as the app executable.
+# Builds the Rust static library for the active Xcode SDK (device or simulator),
+# then lipo's per-arch artifacts for the Xcode linker.
 # Open: shadows-of-war/sow-dist/deploy/ios/sow_ios.xcodeproj
 
-set -eux
+set -euo pipefail
 
-PATH=$PATH:$HOME/.cargo/bin
+PATH="$PATH:$HOME/.cargo/bin"
 
 PROFILE=debug
 RELFLAG=
@@ -14,11 +14,10 @@ if [[ "$CONFIGURATION" != "Debug" ]]; then
     RELFLAG=--release
 fi
 
-set -euvx
-
 export PATH="$PATH:/opt/homebrew/bin"
 
-export CARGO_TARGET_DIR="$DERIVED_FILE_DIR/cargo"
+REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+export CARGO_TARGET_DIR="${SOW_IOS_CARGO_TARGET_DIR:-$REPO_ROOT/dist/ios/cargo-target}"
 export CARGO_HOME="${SOW_IOS_CARGO_HOME:-${CARGO_HOME:-$HOME/.cargo}}"
 
 # Avoid Rust + Xcode toolchain `ld: library 'System' not found` (rust#80817).
@@ -29,9 +28,7 @@ if [ "${LLVM_TARGET_TRIPLE_SUFFIX-}" = "-simulator" ]; then
   IS_SIMULATOR=1
 fi
 
-REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
-
-EXECUTABLES=
+LIBRARIES=
 for arch in $ARCHS; do
   case "$arch" in
     x86_64)
@@ -50,11 +47,17 @@ for arch in $ARCHS; do
         TARGET=aarch64-apple-ios-sim
       fi
       ;;
+
+    *)
+      echo "Unsupported Xcode architecture: $arch" >&2
+      exit 2
+      ;;
   esac
 
-  cargo build --locked $RELFLAG --target "$TARGET" -p sow-client --manifest-path "$REPO_ROOT/Cargo.toml"
+  cargo rustc --crate-type staticlib --locked $RELFLAG --target "$TARGET" \
+    -p sow-client --lib --manifest-path "$REPO_ROOT/Cargo.toml"
 
-  EXECUTABLES="$EXECUTABLES $DERIVED_FILE_DIR/cargo/$TARGET/$PROFILE/client"
+  LIBRARIES="$LIBRARIES $CARGO_TARGET_DIR/$TARGET/$PROFILE/libsow_client.a"
 done
 
-lipo -create -output "$TARGET_BUILD_DIR/$EXECUTABLE_PATH" $EXECUTABLES
+lipo -create -output "$DERIVED_FILE_DIR/libsow_client.a" $LIBRARIES

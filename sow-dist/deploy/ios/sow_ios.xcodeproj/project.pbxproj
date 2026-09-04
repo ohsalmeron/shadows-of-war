@@ -8,12 +8,18 @@
 
 /* Begin PBXBuildFile section */
 		A4F7B1C2D3E4F5061728394A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B5A8C2D3E4F5061728394A5B /* Assets.xcassets */; };
+		C6B9D3E4F5061728394A5B6C /* SOWStoreBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7CAE4F5061728394A5B6C7D /* SOWStoreBridge.swift */; };
+		F0AD28394A5B6C7D8E9F012 /* SOWMain.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1BE394A5B6C7D8E9F0123 /* SOWMain.swift */; };
+		E8DBF5061728394A5B6C7D8 /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = F9EC061728394A5B6C7D8E9 /* RevenueCat */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		55EAC02897847195D2F44C16 /* ShadowsOfWar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ShadowsOfWar.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B5A8C2D3E4F5061728394A5B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8EE7F1E3B0303533925D7E34 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		D7CAE4F5061728394A5B6C7D /* SOWStoreBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SOWStoreBridge.swift; sourceTree = "<group>"; };
+		EAFC1728394A5B6C7D8E9F0 /* SOWRust.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SOWRust.h; sourceTree = "<group>"; };
+		F1BE394A5B6C7D8E9F0123 /* SOWMain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SOWMain.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -30,6 +36,9 @@
 			children = (
 				8EE7F1E3B0303533925D7E34 /* Info.plist */,
 				B5A8C2D3E4F5061728394A5B /* Assets.xcassets */,
+				D7CAE4F5061728394A5B6C7D /* SOWStoreBridge.swift */,
+				EAFC1728394A5B6C7D8E9F0 /* SOWRust.h */,
+				F1BE394A5B6C7D8E9F0123 /* SOWMain.swift */,
 			);
 			path = "ios-src";
 			sourceTree = "<group>";
@@ -58,6 +67,8 @@
 			buildConfigurationList = E714A1AEAAE517C348B5BD27 /* Build configuration list for PBXNativeTarget "ShadowsOfWar" */;
 			buildPhases = (
 				ECFC92D02C6F14FA0095E5B1 /* Rust */,
+				A0FD28394A5B6C7D8E9F012 /* Sources */,
+				B1AE394A5B6C7D8E9F0123 /* Frameworks */,
 				57CD630D253C80E60098CD4A /* Resources */,
 			);
 			buildRules = (
@@ -67,6 +78,9 @@
 			name = ShadowsOfWar;
 			productName = ShadowsOfWar;
 			productReference = 55EAC02897847195D2F44C16 /* ShadowsOfWar.app */;
+			packageProductDependencies = (
+				F9EC061728394A5B6C7D8E9 /* RevenueCat */,
+			);
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -76,6 +90,15 @@
 			isa = PBXProject;
 			attributes = {
 				LastUpgradeCheck = 1240;
+				TargetAttributes = {
+					3BDB8152E4962373181B4FE5 = {
+						SystemCapabilities = {
+							com.apple.InAppPurchase = {
+								enabled = 1;
+							};
+						};
+					};
+				};
 			};
 			buildConfigurationList = 9D43D41707A5C30B227B83F9 /* Build configuration list for PBXProject "sow_ios" */;
 			compatibilityVersion = "Xcode 10.0";
@@ -85,6 +108,9 @@
 				en,
 			);
 			mainGroup = 8F2E3E6040EAD2EC9F3FA530;
+			packageReferences = (
+				C2B5A9F5061728394A5B6C7 /* RevenueCat */,
+			);
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -104,6 +130,29 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXFrameworksBuildPhase section */
+		B1AE394A5B6C7D8E9F0123 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E8DBF5061728394A5B6C7D8 /* RevenueCat in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A0FD28394A5B6C7D8E9F012 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C6B9D3E4F5061728394A5B6C /* SOWStoreBridge.swift in Sources */,
+				F0AD28394A5B6C7D8E9F012 /* SOWMain.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
 /* Begin PBXShellScriptBuildPhase section */
 		ECFC92D02C6F14FA0095E5B1 /* Rust */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -120,13 +169,32 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
-				$TARGET_BUILD_DIR/$EXECUTABLE_PATH,
+				"$(DERIVED_FILE_DIR)/libsow_client.a",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "./build_rust_deps.sh\n";
 		};
 /* End PBXShellScriptBuildPhase section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		C2B5A9F5061728394A5B6C7 /* RevenueCat */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/RevenueCat/purchases-ios-spm.git";
+			requirement = {
+				kind = exactVersion;
+				version = 5.88.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		F9EC061728394A5B6C7D8E9 /* RevenueCat */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C2B5A9F5061728394A5B6C7;
+			productName = RevenueCat;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 /* Begin XCBuildConfiguration section */
 		4AD7BC6FDD56FF18FA6DA7D7 /* Debug */ = {
@@ -202,14 +270,34 @@
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = "ios-src/Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(DERIVED_FILE_DIR)",
+				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-force_load",
+					"$(DERIVED_FILE_DIR)/libsow_client.a",
+					"-framework", UIKit,
+					"-framework", Metal,
+					"-framework", QuartzCore,
+					"-framework", CoreGraphics,
+					"-framework", Foundation,
+					"-framework", AVFoundation,
+					"-framework", AudioToolbox,
+					"-framework", GameController,
+					"-framework", Security,
+					"-framework", Network,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = games.shadowsofwar.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "ios-src/SOWRust.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
@@ -279,14 +367,34 @@
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = "ios-src/Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(DERIVED_FILE_DIR)",
+				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-force_load",
+					"$(DERIVED_FILE_DIR)/libsow_client.a",
+					"-framework", UIKit,
+					"-framework", Metal,
+					"-framework", QuartzCore,
+					"-framework", CoreGraphics,
+					"-framework", Foundation,
+					"-framework", AVFoundation,
+					"-framework", AudioToolbox,
+					"-framework", GameController,
+					"-framework", Security,
+					"-framework", Network,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = games.shadowsofwar.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "ios-src/SOWRust.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;

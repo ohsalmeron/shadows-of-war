@@ -10,6 +10,16 @@
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>SOWRevenueCatIOSPublicKey</key>
+	<string>$(SOW_REVENUECAT_IOS_PUBLIC_KEY)</string>
+	<key>SOW_WS_URL</key>
+	<string>https://shadowsofwar.io/ws/</string>
+	<key>SOW_MAPS_URL</key>
+	<string>https://shadowsofwar.io/maps</string>
+	<key>SOW_ASSETS_URL</key>
+	<string>https://shadowsofwar.io/assets</string>
+	<key>SOW_DATABASE_URL</key>
+	<string>https://shadowsofwar.io/api</string>
 	<key>CFBundleIconName</key>
 	<string>AppIcon</string>
 	<key>CFBundleInfoDictionaryVersion</key>
