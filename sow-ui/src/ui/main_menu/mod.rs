@@ -437,23 +437,37 @@ fn draw_home_content(
     // decision surface: matchmaking, private join, custom game, and store.
     // Keep that surface centered and bounded instead of creating a second
     // rail that competes with the live matchmaking card.
+    // The map is the width guide. The command frame only adds its horizontal
+    // padding, instead of expanding to the whole desktop viewport.
+    let map_guide_width = (ui.available_width() - 32.0).clamp(0.0, 560.0);
     let command_width = if metrics.is_phone() {
         ui.available_width()
     } else {
-        ui.available_width().min(520.0)
+        map_guide_width + 32.0
     };
-    ui.vertical_centered(|ui| {
-        ui.set_width(command_width);
-        draw_command_panel(
-            ui,
-            state,
-            asset_loader,
-            lang,
-            strings,
-            body_height,
-            action,
+    let draw_panel = |ui: &mut egui::Ui,
+                      state: &mut MainMenuState,
+                      asset_loader: &crate::ui::asset_loader::AssetLoader,
+                      action: &mut Option<UiAction>| {
+        draw_command_panel(ui, state, asset_loader, lang, strings, body_height, action);
+    };
+    if metrics.is_phone() {
+        // Portrait keeps the compact command surface centered.
+        ui.vertical_centered(|ui| {
+            ui.allocate_ui_with_layout(
+                egui::vec2(command_width, body_height),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| draw_panel(ui, state, asset_loader, action),
+            );
+        });
+    } else {
+        // Desktop and landscape use the left edge as the visual anchor.
+        ui.allocate_ui_with_layout(
+            egui::vec2(command_width, body_height),
+            egui::Layout::top_down(egui::Align::Min),
+            |ui| draw_panel(ui, state, asset_loader, action),
         );
-    });
+    }
 }
 
 fn draw_command_panel(
