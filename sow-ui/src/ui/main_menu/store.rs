@@ -35,18 +35,25 @@ fn draw_leader_card(
         .corner_radius(CornerRadius::same(10))
         .inner_margin(Margin::same(12))
         .show(ui, |ui| {
-            let art_size = Vec2::new(ui.available_width(), 132.0);
+            // The source portraits are 16:9. Size the art well to that ratio first;
+            // never let a shorter component crop or stretch the portrait.
+            let art_width = ui.available_width();
+            let art_size = Vec2::new(art_width, art_width * 9.0 / 16.0);
             let (art_rect, _) = ui.allocate_exact_size(art_size, egui::Sense::hover());
             ui.painter().rect_filled(
                 art_rect,
                 8.0,
                 Color32::from_rgb(24, 28, 38),
             );
-            if let Some(texture) = asset_loader.leader_portrait_texture(leader, false) {
+            let texture = asset_loader
+                .leader_portrait_texture(leader, false)
+                .or_else(|| asset_loader.avatars.get(&leader));
+            if let Some(texture) = texture {
                 ui.put(
                     art_rect,
                     egui::Image::new(texture)
                         .fit_to_exact_size(art_rect.size())
+                        .maintain_aspect_ratio(true)
                         .corner_radius(CornerRadius::same(8)),
                 );
             } else {
@@ -141,15 +148,11 @@ fn draw_skin_card(
         .corner_radius(CornerRadius::same(10))
         .inner_margin(Margin::same(12))
         .show(ui, |ui| {
-            let preview = ui.allocate_response(Vec2::new(ui.available_width(), 92.0), egui::Sense::hover());
-            ui.painter().rect_filled(preview.rect, 8.0, skin_color(skin.style));
-            ui.painter().text(
-                preview.rect.center(),
-                egui::Align2::CENTER_CENTER,
-                "✦",
-                egui::FontId::proportional(36.0),
-                Color32::from_white_alpha(210),
+            let preview = ui.allocate_response(
+                Vec2::new(ui.available_width(), 92.0),
+                egui::Sense::hover(),
             );
+            draw_skin_preview(ui, preview.rect, skin.style);
             ui.add_space(8.0);
             ui.label(RichText::new(&skin.name).strong().size(16.0));
             ui.label(RichText::new("ALL LEADERS · COSMETIC").size(10.0).color(palette::text_muted()));
@@ -178,12 +181,71 @@ fn draw_skin_card(
         });
 }
 
+fn draw_skin_preview(ui: &mut Ui, rect: egui::Rect, style: u8) {
+    let painter = ui.painter().with_clip_rect(rect);
+    let base = skin_color(style);
+    painter.rect_filled(rect, 8.0, base);
+    let light = Color32::from_white_alpha(46);
+    let bright = Color32::from_white_alpha(115);
+    match style {
+        1 => {
+            for offset in (-rect.height() as i32..rect.width() as i32).step_by(28) {
+                let x = offset as f32;
+                painter.line_segment(
+                    [
+                        egui::pos2(rect.left() + x, rect.bottom()),
+                        egui::pos2(rect.left() + x + rect.height(), rect.top()),
+                    ],
+                    Stroke::new(7.0_f32, light),
+                );
+            }
+            painter.circle_filled(
+                egui::pos2(rect.right() - 34.0, rect.top() + 30.0),
+                18.0,
+                bright,
+            );
+        }
+        2 => {
+            let step = 30.0;
+            let mut x = rect.left() - rect.height();
+            while x < rect.right() {
+                painter.line_segment(
+                    [egui::pos2(x, rect.top()), egui::pos2(x + rect.height(), rect.bottom())],
+                    Stroke::new(3.0_f32, bright),
+                );
+                painter.line_segment(
+                    [
+                        egui::pos2(x + rect.height(), rect.top()),
+                        egui::pos2(x, rect.bottom()),
+                    ],
+                    Stroke::new(1.0_f32, light),
+                );
+                x += step;
+            }
+        }
+        _ => {
+            painter.rect_stroke(
+                rect.shrink(18.0),
+                5.0,
+                Stroke::new(8.0_f32, light),
+                egui::StrokeKind::Inside,
+            );
+            painter.circle_stroke(
+                rect.center(),
+                24.0,
+                Stroke::new(5.0_f32, bright),
+            );
+        }
+    }
+}
+
 pub fn draw(
     root_ui: &mut Ui,
     state: &mut MainMenuState,
-    asset_loader: &AssetLoader,
+    asset_loader: &mut AssetLoader,
     action: &mut Option<UiAction>,
 ) {
+    asset_loader.ensure_store_leader_portraits_loaded(root_ui.ctx());
     let screen = root_ui.ctx().content_rect();
     root_ui.painter().rect_filled(
         screen,

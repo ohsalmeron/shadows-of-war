@@ -240,4 +240,150 @@ impl AssetLoader {
             self.request_leader_portrait_priority(leader, true);
         }
     }
+
+    /// Load the complete leader art set used by the native store. The menu hero only needs
+    /// the selected leader, while a store grid must never show a text placeholder for the
+    /// other offers.
+    pub fn ensure_store_leader_portraits_loaded(&mut self, ctx: &egui::Context) {
+        #[cfg(all(
+            not(target_arch = "wasm32"),
+            any(target_os = "ios", target_os = "macos")
+        ))]
+        {
+            let assets: &[(Leader, &[u8])] = &[
+                (
+                    Leader::Caesar,
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/../assets/shell/leaders/caesar_desktop.webp"
+                    )),
+                ),
+                (
+                    Leader::Cleopatra,
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/../assets/shell/leaders/cleopatra_desktop.webp"
+                    )),
+                ),
+                (
+                    Leader::Ragnar,
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/../assets/shell/leaders/ragnar_desktop.webp"
+                    )),
+                ),
+                (
+                    Leader::SunTzu,
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/../assets/shell/leaders/sun_tzu_desktop.webp"
+                    )),
+                ),
+                (
+                    Leader::Alexander,
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/../assets/shell/leaders/alexander_desktop.webp"
+                    )),
+                ),
+                (
+                    Leader::GenghisKhan,
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/../assets/shell/leaders/genghis_khan_desktop.webp"
+                    )),
+                ),
+                (
+                    Leader::RichardTheLionheart,
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/../assets/shell/leaders/richard_the_lionheart_desktop.webp"
+                    )),
+                ),
+                (
+                    Leader::Vercingetorix,
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/../assets/shell/leaders/vercingetorix_desktop.webp"
+                    )),
+                ),
+                (
+                    Leader::Boudica,
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/../assets/shell/leaders/boudica_desktop.webp"
+                    )),
+                ),
+                (
+                    Leader::LadySixSky,
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/../assets/shell/leaders/lady_six_sky_desktop.webp"
+                    )),
+                ),
+                (
+                    Leader::Leonidas,
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/../assets/shell/leaders/leonidas_desktop.webp"
+                    )),
+                ),
+                (
+                    Leader::Napoleon,
+                    include_bytes!(concat!(
+                        env!("CARGO_MANIFEST_DIR"),
+                        "/../assets/shell/leaders/napoleon_desktop.webp"
+                    )),
+                ),
+            ];
+            for &(leader, bytes) in assets {
+                if self.leader_desktop_images.contains_key(&leader) {
+                    continue;
+                }
+                if let Ok(color_image) = Self::decode_leader_portrait_bytes(bytes) {
+                    let texture = ctx.load_texture(
+                        format!("store_leader_{}", Self::leader_slug(leader)),
+                        color_image,
+                        egui::TextureOptions::LINEAR,
+                    );
+                    self.leader_desktop_images.insert(leader, texture);
+                }
+            }
+        }
+
+        #[cfg(all(
+            not(target_arch = "wasm32"),
+            not(any(target_os = "ios", target_os = "macos"))
+        ))]
+        {
+            use std::path::Path;
+            let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../assets/shell/leaders");
+            for leader in Leader::ALL {
+                if self.leader_desktop_images.contains_key(&leader) {
+                    continue;
+                }
+                let key = LeaderPortraitKey {
+                    leader,
+                    mobile: false,
+                };
+                let path = base.join(Self::leader_portrait_filename(key));
+                let Ok(bytes) = std::fs::read(path) else {
+                    continue;
+                };
+                if let Ok(color_image) = Self::decode_leader_portrait_bytes(&bytes) {
+                    let texture = ctx.load_texture(
+                        format!("store_leader_{}", Self::leader_slug(leader)),
+                        color_image,
+                        egui::TextureOptions::LINEAR,
+                    );
+                    self.leader_desktop_images.insert(leader, texture);
+                }
+            }
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        for leader in Leader::ALL {
+            self.request_leader_portrait(leader, false);
+        }
+    }
 }

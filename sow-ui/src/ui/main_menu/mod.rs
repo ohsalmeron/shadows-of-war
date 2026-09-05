@@ -6,6 +6,7 @@ mod modals;
 pub mod profile;
 pub mod queue_overlay;
 pub mod store;
+mod topbar;
 
 use crate::UiAction;
 use sow_core::protocol::LobbyInfo;
@@ -293,53 +294,27 @@ pub fn draw_terms_privacy_footer(
     };
 
     if narrow {
-        ui.vertical_centered(|ui| {
-            ui.spacing_mut().item_spacing.y = 2.0;
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
-                ui.label(
-                    egui::RichText::new(strings.by_playing_you_agree.trim_end())
-                        .font(sow_ui_kit::theme::font_regular(size))
-                        .color(text_color),
-                );
-                draw_terms_link(ui, action);
-                ui.label(
-                    egui::RichText::new(strings.and_the.trim())
-                        .font(sow_ui_kit::theme::font_regular(size))
-                        .color(text_color),
-                );
-                draw_privacy_link(ui, action);
-            });
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
-                ui.label(
-                    egui::RichText::new(&version)
-                        .font(sow_ui_kit::theme::font_regular(size))
-                        .color(text_color),
-                );
-                ui.label(
-                    egui::RichText::new("·")
-                        .font(sow_ui_kit::theme::font_regular(size))
-                        .color(text_color),
-                );
-                ui.label(
-                    egui::RichText::new(&credits.based_on_short)
-                        .font(sow_ui_kit::theme::font_regular(size))
-                        .color(text_color),
-                );
-                ui.label(
-                    egui::RichText::new("·")
-                        .font(sow_ui_kit::theme::font_regular(size))
-                        .color(text_color),
-                );
-                draw_discord_link(ui);
-                ui.label(
-                    egui::RichText::new("·")
-                        .font(sow_ui_kit::theme::font_regular(size))
-                        .color(text_color),
-                );
-                draw_github_link(ui);
-            });
+        // Mobile has only one footer row. Wrapping here increases the reserved
+        // bottom-panel height and steals the space needed by the fixed home UI.
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+            draw_terms_link(ui, action);
+            ui.label(
+                egui::RichText::new("·")
+                    .font(sow_ui_kit::theme::font_regular(9.0))
+                    .color(text_color),
+            );
+            draw_privacy_link(ui, action);
+            ui.label(
+                egui::RichText::new("·")
+                    .font(sow_ui_kit::theme::font_regular(9.0))
+                    .color(text_color),
+            );
+            ui.label(
+                egui::RichText::new(&version)
+                    .font(sow_ui_kit::theme::font_regular(9.0))
+                    .color(text_color),
+            );
         });
         return;
     }
@@ -420,145 +395,145 @@ fn draw_home(
 ) {
     let strings = &sow_i18n::get(lang).main_menu;
     let metrics = layout::main_menu_metrics(root_ui.ctx());
-    let muted = sow_ui_kit::theme::palette::text_muted();
     let header_frame = egui::Frame::NONE
         .fill(sow_ui_kit::theme::palette::surface_transparent())
         .inner_margin(egui::Margin::symmetric(metrics.outer_pad as i8, 8));
     header_frame.show(root_ui, |ui| {
-        if metrics.class == layout::ViewportClass::Wide {
-            ui.horizontal(|ui| {
-                let actions_w = 82.0 + 92.0 + metrics.touch_min + metrics.gap * 2.0;
-                let profile_w = (ui.available_width() - actions_w).max(260.0);
-                ui.allocate_ui_with_layout(
-                    egui::vec2(profile_w, 56.0),
-                    egui::Layout::top_down(egui::Align::Min),
-                    |ui| profile::draw_user_profile_header(ui, state, 56.0, asset_loader, lang, action),
-                );
-                ui.add_space(metrics.gap);
-                draw_menu_actions(ui, metrics, action);
-            });
-        } else {
-            profile::draw_user_profile_header(
-                ui,
-                state,
-                if metrics.is_phone() { 52.0 } else { 56.0 },
-                asset_loader,
-                lang,
-                action,
-            );
-            ui.add_space(metrics.gap * 0.5);
-            draw_menu_actions(ui, metrics, action);
-        }
+        topbar::draw(ui, state, asset_loader, lang, action);
     });
 
-    egui::ScrollArea::vertical()
-        .id_salt("home_body_scroll")
-        .auto_shrink([false, false])
-        .show(root_ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.add_space(4.0);
-            ui.label(
-                egui::RichText::new(&strings.quick_match_label)
-                    .size(12.0)
-                    .strong()
-                    .color(muted),
-            );
-            ui.add_space(4.0);
-
-            let quick_w = if metrics.class == layout::ViewportClass::Wide {
-                (ui.available_width() * 0.58).min(420.0)
-            } else {
-                ui.available_width()
-            };
-            ui.horizontal(|ui| {
-                ui.allocate_ui_with_layout(
-                    egui::vec2(quick_w, 0.0),
-                    egui::Layout::top_down(egui::Align::Min),
-                    |ui| {
-                        browser::draw_left_column(
-                            ui,
-                            state,
-                            metrics.is_compact(),
-                            0.0,
-                            action,
-                            asset_loader,
-                            lang,
-                        );
-                    },
-                );
-                if metrics.class == layout::ViewportClass::Wide {
-                    ui.add_space(metrics.gap);
-                    let create = crate::widgets::ThemeButton::new(&strings.create_game_btn)
-                        .style(crate::widgets::ThemeButtonStyle::Secondary)
-                        .min_size(egui::vec2(ui.available_width(), 52.0))
-                        .text_size(18.0);
-                    if ui.add(create).clicked() {
-                        state.open_route(MainMenuRoute::Create);
-                        state.custom_game_is_sp = false;
-                    }
-                }
+    let body_rect = root_ui.available_rect_before_wrap();
+    root_ui.allocate_ui_with_layout(
+        body_rect.size(),
+        egui::Layout::top_down(egui::Align::Min),
+        |ui| {
+            // The bottom footer has already reserved this rect. Clip the home
+            // viewport to it so an over-tall child can never paint over it.
+            ui.set_clip_rect(body_rect);
+            let shell_width = ui.available_width().min(1440.0);
+            ui.vertical_centered(|ui| {
+                ui.set_width(shell_width);
+                draw_home_content(ui, state, asset_loader, lang, strings, metrics, action);
             });
-
-            if metrics.class != layout::ViewportClass::Wide {
-                ui.add_space(metrics.gap);
-                let create = crate::widgets::ThemeButton::new(&strings.create_game_btn)
-                    .style(crate::widgets::ThemeButtonStyle::Secondary)
-                    .min_size(egui::vec2(ui.available_width(), 52.0))
-                    .text_size(18.0);
-                if ui.add(create).clicked() {
-                    state.open_route(MainMenuRoute::Create);
-                    state.custom_game_is_sp = false;
-                }
-            }
-
-            ui.add_space(metrics.gap);
-            ui.label(
-                egui::RichText::new(&strings.game_browser_title)
-                    .size(12.0)
-                    .strong()
-                    .color(muted),
-            );
-            ui.add_space(4.0);
-            join_browser::draw_filter_pills(ui, state, strings);
-            ui.add_space(metrics.gap * 0.5);
-            join_browser::draw_private_join_row(ui, state, strings, action);
-            ui.add_space(metrics.gap);
-            join_browser::draw_lobby_rows(ui, state, asset_loader, action, strings);
-        });
+        },
+    );
 }
 
-fn draw_menu_actions(
+fn draw_home_content(
     ui: &mut egui::Ui,
+    state: &mut MainMenuState,
+    asset_loader: &mut crate::ui::asset_loader::AssetLoader,
+    lang: sow_i18n::Language,
+    strings: &sow_i18n::MainMenuStrings,
     metrics: layout::MainMenuMetrics,
     action: &mut Option<UiAction>,
 ) {
-    ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing.x = metrics.gap;
-        let store = crate::widgets::ThemeButton::new("STORE")
-            .style(crate::widgets::ThemeButtonStyle::Secondary)
-            .min_size(egui::vec2(82.0, metrics.touch_min))
-            .text_size(12.0);
-        if ui.add(store).clicked() {
-            #[cfg(target_os = "ios")]
-            { *action = Some(UiAction::OpenStore); }
-            #[cfg(not(target_os = "ios"))]
-            { *action = Some(UiAction::OpenStorePage); }
-        }
-        let profile = crate::widgets::ThemeButton::new("PROFILE")
-            .style(crate::widgets::ThemeButtonStyle::Tertiary)
-            .min_size(egui::vec2(92.0, metrics.touch_min))
-            .text_size(11.0);
-        if ui.add(profile).clicked() {
-            *action = Some(UiAction::OpenProfilePage);
-        }
-        let gear = crate::widgets::ThemeButton::new("⚙")
-            .style(crate::widgets::ThemeButtonStyle::Tertiary)
-            .min_size(egui::vec2(metrics.touch_min, metrics.touch_min))
-            .text_size(24.0);
-        if ui.add(gear).clicked() {
-            *action = Some(UiAction::ToggleSettings);
-        }
+    ui.add_space(8.0);
+    let body_height = ui.available_height();
+    // Public Games belongs to the browser screen. The home screen is the
+    // decision surface: matchmaking, private join, custom game, and store.
+    // Keep that surface centered and bounded instead of creating a second
+    // rail that competes with the live matchmaking card.
+    let command_width = if metrics.is_phone() {
+        ui.available_width()
+    } else {
+        ui.available_width().min(520.0)
+    };
+    ui.vertical_centered(|ui| {
+        ui.set_width(command_width);
+        draw_command_panel(
+            ui,
+            state,
+            asset_loader,
+            lang,
+            strings,
+            body_height,
+            action,
+        );
     });
+}
+
+fn draw_command_panel(
+    ui: &mut egui::Ui,
+    state: &mut MainMenuState,
+    asset_loader: &crate::ui::asset_loader::AssetLoader,
+    lang: sow_i18n::Language,
+    strings: &sow_i18n::MainMenuStrings,
+    body_height: f32,
+    action: &mut Option<UiAction>,
+) {
+    let phone = layout::main_menu_metrics(ui.ctx()).is_phone();
+    let dense = body_height < 760.0;
+    let control_h = if dense { 40.0 } else { 44.0 };
+    egui::Frame::NONE
+        .fill(egui::Color32::from_rgba_unmultiplied(9, 11, 15, 190))
+        .stroke(egui::Stroke::new(
+            1.0_f32,
+            sow_ui_kit::theme::palette::field_border(),
+        ))
+        .corner_radius(egui::CornerRadius::same(8))
+        .inner_margin(egui::Margin::symmetric(16, if dense { 10 } else { 14 }))
+        .show(ui, |ui| {
+            ui.label(
+                egui::RichText::new("QUICK MATCH")
+                    .size(11.0)
+                    .strong()
+                    .color(sow_ui_kit::theme::palette::text_muted()),
+            );
+            ui.vertical_centered(|ui| {
+                // The home screen is deliberately non-scrollable. Keep the
+                // 16:9 card inside the real body budget, with an additional
+                // portrait cap so it cannot push the actions into the footer.
+                let reserved = if dense { 270.0 } else { 330.0 };
+                let max_map_height = if phone { 190.0 } else { f32::INFINITY };
+                let map_width = ui
+                    .available_width()
+                    .min((body_height - reserved).max(110.0) * (16.0 / 9.0))
+                    .min(max_map_height * (16.0 / 9.0));
+                ui.set_width(map_width);
+                browser::draw_left_column(ui, state, true, 0.0, action, asset_loader, lang);
+            });
+            ui.add_space(if dense { 2.0 } else { 4.0 });
+
+            let browser = crate::widgets::ThemeButton::new("LOBBY BROWSER  →")
+                .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                .min_size(egui::vec2(ui.available_width(), control_h))
+                .text_size(12.0);
+            if ui.add(browser).clicked() {
+                *action = Some(UiAction::OpenJoinBrowser);
+            }
+            ui.add_space(if dense { 4.0 } else { 6.0 });
+            join_browser::draw_private_join_row(ui, state, strings, action);
+            ui.add_space(if dense { 4.0 } else { 6.0 });
+
+            let create = crate::widgets::ThemeButton::new("CREATE CUSTOM GAME  +")
+                .style(crate::widgets::ThemeButtonStyle::Tertiary)
+                .min_size(egui::vec2(ui.available_width(), control_h))
+                .text_size(12.0);
+            if ui.add(create).clicked() {
+                state.open_route(MainMenuRoute::Create);
+                state.custom_game_is_sp = false;
+            }
+            ui.add_space(if dense { 4.0 } else { 6.0 });
+            draw_store_home_button(ui, control_h, action);
+        });
+}
+
+fn draw_store_home_button(ui: &mut egui::Ui, height: f32, action: &mut Option<UiAction>) {
+    let store = crate::widgets::ThemeButton::new("STORE  ↗")
+        .style(crate::widgets::ThemeButtonStyle::Tertiary)
+        .min_size(egui::vec2(ui.available_width(), height))
+        .text_size(15.0);
+    if ui.add(store).clicked() {
+        #[cfg(target_os = "ios")]
+        {
+            *action = Some(UiAction::OpenStore);
+        }
+        #[cfg(not(target_os = "ios"))]
+        {
+            *action = Some(UiAction::OpenStorePage);
+        }
+    }
 }
 
 pub fn draw(
@@ -598,7 +573,11 @@ pub fn draw(
         .frame(
             egui::Frame::NONE
                 .fill(sow_ui_kit::theme::palette::surface())
-                .inner_margin(egui::Margin::symmetric(16, 4)),
+                .inner_margin(if metrics.is_phone() {
+                    egui::Margin::symmetric(8, 2)
+                } else {
+                    egui::Margin::symmetric(16, 4)
+                }),
         )
         .show_inside(root_ui, |ui| {
             draw_terms_privacy_footer(ui, lang, &mut action);

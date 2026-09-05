@@ -53,12 +53,6 @@ fn draw_lobby_list(
         } else {
             parent_w
         };
-        // Cap height so the Quick Match card stays a compact hero, not a giant banner.
-        // On short viewports (CrazyGames embeds), scale down proportionally to avoid pushing
-        // the Public Games section off screen.
-        let scale = super::layout::main_menu_metrics(ui.ctx()).scale;
-        let base_h = if parent_w > 640.0 { 150.0 } else { 160.0 };
-        let card_h = (base_h * scale).clamp(96.0, 168.0);
         let display_name = asset_loader
             .map_catalog
             .as_ref()
@@ -68,7 +62,6 @@ fn draw_lobby_list(
         let response = ui.add(
             LobbyCard::new(lobby, thumbnail)
                 .width(card_w)
-                .side(card_h)
                 .display_name(display_name),
         );
         if response.clicked() {
