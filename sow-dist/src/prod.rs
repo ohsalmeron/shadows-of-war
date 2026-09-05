@@ -1133,6 +1133,7 @@ fn build_web(paths: &Paths, version: &str) -> Result<()> {
             &paths.assets_gameplay,
             &paths.assets_site,
             &paths.assets_maps,
+            &paths.map_sources,
             &paths.root.join("sow-i18n/src"),
             &paths.root.join("sow-i18n/strings"),
             &paths.root.join("sow-web/site"),
@@ -1150,7 +1151,14 @@ fn build_web(paths: &Paths, version: &str) -> Result<()> {
         return Ok(());
     }
     package_self(paths, &paths.dist_web, version)?;
-    package_cg(&paths.dist_web, &paths.dist_cg, paths, version)?;
+    let maps_cache_bust = thumbnail_cache_bust(&paths.dist_web.join("maps"))?;
+    package_cg(
+        &paths.dist_web,
+        &paths.dist_cg,
+        paths,
+        version,
+        &maps_cache_bust,
+    )?;
     fs::create_dir_all(cache.parent().context("web cache parent missing")?)?;
     fs::write(cache, format!("{fingerprint}\n"))?;
     Ok(())

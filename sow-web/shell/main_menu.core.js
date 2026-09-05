@@ -227,7 +227,9 @@
 
     function lobbyThumb(lobby) {
         var base = String(window.SOW_MAPS_URL || "/maps").replace(/\/$/, "");
-        return base + "/" + encodeURIComponent((lobby && lobby.map_name) || "world") + "/thumbnail.webp";
+        var bust = String(window.SOW_MAPS_CACHE_BUST || window.SOW_BUILD_TS || "");
+        return base + "/" + encodeURIComponent((lobby && lobby.map_name) || "world") + "/thumbnail.webp" +
+            (bust ? "?v=" + encodeURIComponent(bust) : "");
     }
 
     function stableLobby(lobby) {

@@ -186,6 +186,7 @@
     <script type="text/javascript">
         window.SOW_BUILD_TS = "__BUILD_TS__";
         window.SOW_BUILD_VERSION = "__VERSION__";
+        window.SOW_MAPS_CACHE_BUST = "__MAPS_CACHE_BUST__";
         /* All endpoints (SOW_WS_URL / SOW_MAPS_URL / SOW_ASSETS_URL /
            SOW_DATABASE_URL) are injected strictly by sow-dist at the
            PORTAL_BOOT_SLOT line below. No defaults and no hostname/referrer

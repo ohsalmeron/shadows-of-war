@@ -143,6 +143,27 @@ pub(crate) fn fill_terrain_buffer(
             let dst = (y * terrain_bytes_per_row + x * 4) as usize;
 
             let terrain_byte = terrain[src];
+            if terrain_byte & 0xa0 == 0x20 {
+                // Ocean RGB occupies the unused normal/noise channels. Build a
+                // visible shore-to-abyss ramp once at upload, without per-fragment math.
+                let depth = terrain_byte & 0x1f;
+                let color = if terrain_byte & 0x40 != 0 {
+                    [100, 143, 255] // shoreline
+                } else if depth <= 2 {
+                    [78, 151, 208] // shallow
+                } else if depth <= 6 {
+                    [63, 132, 188] // coastal shelf
+                } else if depth <= 12 {
+                    [52, 115, 170] // mid water
+                } else if depth <= 20 {
+                    [43, 97, 151] // deep water
+                } else {
+                    [34, 80, 132] // deep ocean
+                };
+                terrain_slice[dst] = terrain_byte;
+                terrain_slice[dst + 1..dst + 4].copy_from_slice(&color);
+                continue;
+            }
             let (dx, dy) = compute_terrain_gradient(x, y, width, height, terrain);
 
             let packed_dx = (((dx + 8.0) / 16.0) * 255.0).round().clamp(0.0, 255.0) as u8;

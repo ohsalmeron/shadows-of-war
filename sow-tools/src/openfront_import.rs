@@ -49,7 +49,7 @@ pub fn run_import(args: ImportArgs) -> Result<(), Box<dyn std::error::Error>> {
 
     let thumb_path = out_dir.join("thumbnail.webp");
     if let Ok(img) = image::open(input.join("image.png")) {
-        sow_map::write_square_thumbnail(&img, &thumb_path)
+        sow_map::write_wide_thumbnail(&img, &thumb_path)
             .map_err(|e| format!("thumbnail: {e}"))?;
     } else {
         write_placeholder_thumbnail(&map_file, &thumb_path)?;

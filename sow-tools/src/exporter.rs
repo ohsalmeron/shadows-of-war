@@ -73,7 +73,7 @@ pub fn export_map(ctx: ExportMapCtx) -> Result<(), Box<dyn std::error::Error>> {
     fs::write(output_dir.join("map.bin.br"), out)?;
 
     let preview = sow_map::terrain_preview_image(width, height, &map_file.terrain);
-    sow_map::write_square_thumbnail(&preview, &output_dir.join("thumbnail.webp"))
+    sow_map::write_wide_thumbnail(&preview, &output_dir.join("thumbnail.webp"))
         .map_err(|e| format!("write thumbnail: {e}"))?;
 
     if let Err(e) = refresh_catalog(&maps_root()) {
