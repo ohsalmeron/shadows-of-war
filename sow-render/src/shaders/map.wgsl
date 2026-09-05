@@ -194,8 +194,7 @@ fn shade_map(in: VertexOutput) -> vec3<f32> {
         var mag_center = f32(terrain_byte & 0x1Fu);
 
         let land_noise = terrain_rgba.w;
-        let organic_wave = sin(world_x * 0.20) * cos(world_y * 0.20) * 0.04;
-        let noise_offset = (land_noise - 0.5) * 0.03 + organic_wave; // Gentle organic landscape variation
+        let noise_offset = (land_noise - 0.5) * 0.03; // Stable per-tile variation; no diagonal wave pattern
 
         if is_shoreline {
             let base = vec3<f32>(204.0 / 255.0, 203.0 / 255.0, 158.0 / 255.0);

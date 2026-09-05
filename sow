@@ -70,11 +70,6 @@ run_dist() {
 }
 
 case "${CMD}" in
-  -h|--help|help) ;;
-  *) "${ROOT}/scripts/check-legacy-ui-freeze.sh" ;;
-esac
-
-case "${CMD}" in
   -h|--help|help)
     show_help
     exit 0

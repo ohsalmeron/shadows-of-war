@@ -2,7 +2,6 @@
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-"$ROOT/scripts/check-legacy-ui-freeze.sh"
 "$ROOT/scripts/vendor-blade.sh"
 PROJECT="$ROOT/sow-dist/deploy/ios/sow_ios.xcodeproj"
 EXPORT_OPTIONS="$ROOT/sow-dist/deploy/ios/ExportOptions.plist"

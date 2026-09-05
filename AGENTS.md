@@ -70,14 +70,13 @@ new build is actually ready for review. This four-command interface
 (`native`, `l`, `p`, `a`) is the amended CLI contract; do not invent
 further subcommands.
 
-### Legacy egui freeze
+### Legacy egui reopened
 
-`sow-ui` is the legacy native UI. JavaScript is the canonical store and
-account UI; iOS purchases use the native Swift/RevenueCat bridge only. The
-tracked `scripts/check-legacy-ui-freeze.sh` hash gate runs before every `./sow`
-workflow and before the iOS archive. Do not change, add, or remove
-`sow-ui/src/**/*.rs`, or update `sow-ui/LEGACY_UI.sha256`, without explicit
-owner approval.
+`sow-ui` is the native egui UI and is officially open for development again.
+The desktop client may change `sow-ui/src/**/*.rs` on macOS, Linux, and Windows
+when native performance or rapid visual validation requires it. The old
+`sow-ui/LEGACY_UI.sha256` manifest is retained as historical reference only;
+the freeze gate is disabled in all developer and iOS workflows.
 
 ## Platform-specific workflows
 

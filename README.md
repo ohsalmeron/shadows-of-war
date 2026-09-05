@@ -66,6 +66,11 @@ Shadows of War is full-stack Rust, optimized for determinism and performance.
 *   **[egui](https://github.com/emilk/egui):** immediate-mode UI overlay.
 *   **[winit](https://github.com/rust-windowing/winit):** cross-platform windowing/input.
 
+Native egui development is officially reopened for rapid performance and visual
+validation on macOS, Linux, and Windows. The previous legacy UI hash manifest is
+kept as historical reference; developer and iOS workflows no longer freeze
+`sow-ui` source changes.
+
 ### Simulation & Networking
 *   **Deterministic Engine (`sow-core`):** `wasm32-unknown-unknown`, integer math + custom RNG for lockstep.
 *   **Relay (`sow-relay` + `fstack-bridge`):** DPDK/F-Stack userspace TCP, `rustls` TLS, WebSocket intent broadcast — no heavy server physics.
