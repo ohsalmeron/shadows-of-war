@@ -7,6 +7,8 @@ pub mod profile;
 pub mod queue_overlay;
 pub mod store;
 mod topbar;
+#[cfg(test)]
+mod layout_tests;
 
 use crate::UiAction;
 use sow_core::protocol::LobbyInfo;
@@ -384,8 +386,7 @@ pub fn draw_terms_privacy_footer(
     );
 }
 
-/// Home shell. The identity bar stays outside the single body scroll region;
-/// every control below is width-bounded by the current viewport metrics.
+/// Fixed home viewport between the identity bar and the reserved footer.
 fn draw_home(
     root_ui: &mut egui::Ui,
     state: &mut MainMenuState,
@@ -410,11 +411,7 @@ fn draw_home(
             // The bottom footer has already reserved this rect. Clip the home
             // viewport to it so an over-tall child can never paint over it.
             ui.set_clip_rect(body_rect);
-            let shell_width = ui.available_width().min(1440.0);
-            ui.vertical_centered(|ui| {
-                ui.set_width(shell_width);
-                draw_home_content(ui, state, asset_loader, lang, strings, metrics, action);
-            });
+            draw_home_content(ui, state, asset_loader, lang, strings, metrics, action);
         },
     );
 }
@@ -428,46 +425,40 @@ fn draw_home_content(
     metrics: layout::MainMenuMetrics,
     action: &mut Option<UiAction>,
 ) {
-    ui.add_space(8.0);
-    // Keep a real breathing room between the fixed home surface and the
-    // bottom panel, especially when the viewport switches to portrait.
-    let footer_gap = if metrics.is_phone() { 12.0 } else { 8.0 };
-    let body_height = (ui.available_height() - footer_gap).max(0.0);
-    // Public Games belongs to the browser screen. The home screen is the
-    // decision surface: matchmaking, private join, custom game, and store.
-    // Keep that surface centered and bounded instead of creating a second
-    // rail that competes with the live matchmaking card.
-    // The map is the width guide. The command frame only adds its horizontal
-    // padding, instead of expanding to the whole desktop viewport.
-    let map_guide_width = (ui.available_width() - 32.0).clamp(0.0, 560.0);
-    let command_width = if metrics.is_phone() {
-        ui.available_width()
+    let portrait = sow_ui_kit::theme::portrait_layout(ui.ctx());
+    let mut body = ui.available_rect_before_wrap();
+    body.min.x += metrics.outer_pad;
+    body.max.x -= metrics.outer_pad;
+    body.min.y += 8.0;
+    body.max.y -= 12.0;
+    let body_height = body.height().max(0.0);
+
+    // Choose the map size once; the frame and every action use that same
+    // content width. Frame padding (16) and stroke (1) add 17 per side.
+    let reserved = if body_height < 760.0 { 270.0 } else { 330.0 };
+    let map_height_cap = if portrait { 190.0 } else { 560.0 * 9.0 / 16.0 };
+    let map_width = (body.width() - 34.0).max(0.0).min(
+        (body_height - reserved).max(0.0).min(map_height_cap) * (16.0 / 9.0),
+    );
+    let panel_width = map_width + 34.0;
+    let panel_x = if portrait {
+        body.center().x - panel_width * 0.5
     } else {
-        map_guide_width + 32.0
+        body.left()
     };
-    let draw_panel = |ui: &mut egui::Ui,
-                      state: &mut MainMenuState,
-                      asset_loader: &crate::ui::asset_loader::AssetLoader,
-                      action: &mut Option<UiAction>| {
-        draw_command_panel(ui, state, asset_loader, lang, strings, body_height, action);
-    };
-    if metrics.is_phone() {
-        // Portrait keeps the compact command surface centered.
-        ui.vertical_centered(|ui| {
-            ui.allocate_ui_with_layout(
-                egui::vec2(command_width, body_height),
-                egui::Layout::top_down(egui::Align::Min),
-                |ui| draw_panel(ui, state, asset_loader, action),
-            );
-        });
-    } else {
-        // Desktop and landscape use the left edge as the visual anchor.
-        ui.allocate_ui_with_layout(
-            egui::vec2(command_width, body_height),
-            egui::Layout::top_down(egui::Align::Min),
-            |ui| draw_panel(ui, state, asset_loader, action),
-        );
-    }
+    let panel_bounds = egui::Rect::from_min_size(
+        egui::pos2(panel_x, body.top()),
+        egui::vec2(panel_width, body_height),
+    );
+    ui.scope_builder(
+        egui::UiBuilder::new()
+            .max_rect(panel_bounds)
+            .layout(egui::Layout::top_down(egui::Align::Min)),
+        |ui| {
+            ui.set_clip_rect(ui.clip_rect().intersect(panel_bounds));
+            draw_command_panel(ui, state, asset_loader, lang, strings, body_height, action);
+        },
+    );
 }
 
 fn draw_command_panel(
@@ -479,7 +470,6 @@ fn draw_command_panel(
     body_height: f32,
     action: &mut Option<UiAction>,
 ) {
-    let phone = layout::main_menu_metrics(ui.ctx()).is_phone();
     let dense = body_height < 760.0;
     let control_h = if dense { 40.0 } else { 44.0 };
     let vertical_gap = 0.0;
@@ -493,19 +483,7 @@ fn draw_command_panel(
         .inner_margin(egui::Margin::symmetric(16, if dense { 10 } else { 14 }))
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = vertical_gap;
-            ui.vertical_centered(|ui| {
-                // The home screen is deliberately non-scrollable. Keep the
-                // 16:9 card inside the real body budget, with an additional
-                // portrait cap so it cannot push the actions into the footer.
-                let reserved = if dense { 270.0 } else { 330.0 };
-                let max_map_height = if phone { 190.0 } else { f32::INFINITY };
-                let map_width = ui
-                    .available_width()
-                    .min((body_height - reserved).max(110.0) * (16.0 / 9.0))
-                    .min(max_map_height * (16.0 / 9.0));
-                ui.set_width(map_width);
-                browser::draw_left_column(ui, state, true, 0.0, action, asset_loader, lang);
-            });
+            browser::draw_left_column(ui, state, true, 0.0, action, asset_loader, lang);
             ui.add_space(vertical_gap);
 
             let browser = crate::widgets::ThemeButton::new("LOBBY BROWSER  →")

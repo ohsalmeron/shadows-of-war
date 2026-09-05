@@ -192,7 +192,8 @@ pub fn draw_private_join_row(
         ui.set_width(ui.available_width());
         ui.horizontal(|ui| {
             let join_w = 104.0;
-            let field_w = (ui.available_width() - join_w - 6.0).max(60.0);
+            ui.spacing_mut().item_spacing.x = 6.0;
+            let field_w = (ui.available_width() - join_w - 6.0).max(0.0);
             let field_frame = Frame::NONE
                 .fill(sow_ui_kit::theme::palette::field_bg())
                 .stroke(Stroke::new(
@@ -201,18 +202,18 @@ pub fn draw_private_join_row(
                 ))
                 .corner_radius(CornerRadius::same(6))
                 .inner_margin(Margin::symmetric(8, 4));
+            let input_w = (field_w - field_frame.total_margin().sum().x).max(0.0);
             field_frame.show(ui, |ui| {
-                ui.set_width(field_w - 16.0);
+                ui.set_width(input_w);
                 ui.add(
                     egui::TextEdit::singleline(&mut state.join_lobby_code)
                         .hint_text(&strings.lobby_code_hint)
-                        .desired_width(field_w - 32.0)
+                        .desired_width(input_w)
                         .frame(Frame::NONE)
                         .font(egui::FontId::proportional(14.0))
                         .text_color(Color32::WHITE),
                 );
             });
-            ui.add_space(6.0);
             let join_btn = crate::widgets::ThemeButton::new(&strings.join_private_btn)
                 .style(crate::widgets::ThemeButtonStyle::Secondary)
                 .min_size(egui::vec2(join_w, 44.0));

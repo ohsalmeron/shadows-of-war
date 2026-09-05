@@ -59,9 +59,10 @@ baac1faf166e48bd18fab6b24a46687a97434f1b9f40776315effd16364b3860  sow-ui/src/ui/
 bd26378b36aa7fc751d7c1d115bc8890b0cbd63ea8f31a8ab676fa14db141737  sow-ui/src/ui/loading_screen/mod.rs
 fa9185e70e518199a9c3c1271718ac00b7622292b14f21c099506191fb425d82  sow-ui/src/ui/main_menu/browser.rs
 8cfe54f80471917f9cabfcc1c965655b0c9af0487c3fb927765de04c1fc8bb39  sow-ui/src/ui/main_menu/custom_game.rs
-be0a2ff6b6c4af01b80fd80c7246001dffc693a99be64c9f361f767ea2877137  sow-ui/src/ui/main_menu/join_browser.rs
+bbf61b52358055d9287c32b1e15ef455b5408f34490fb26ef0253d67dff93a58  sow-ui/src/ui/main_menu/join_browser.rs
 982d3cb6104bebbc0ff4bd3484cbfd559e1b74e255e20e001c8f3d80882050a9  sow-ui/src/ui/main_menu/layout.rs
-522e7716ad39912a149bea75a7e9fd922892cd2b8617ae4653d41f70d24e4a3b  sow-ui/src/ui/main_menu/mod.rs
+3d48ca15f8470baacdb97e583da7103c0c641a74560e9dba6c8a168b7c9431e0  sow-ui/src/ui/main_menu/layout_tests.rs
+e512010fd8edd4c77342d9c63f3ef6451baa8277c941911419107ea55abc55f9  sow-ui/src/ui/main_menu/mod.rs
 62c787500bac89b08f26d6f4981b462630459f5e656edf4e00d48046f57b7189  sow-ui/src/ui/main_menu/modals.rs
 ac37453e576cb690cb410e839881f8c3c1a58093a57b01c36e7dadf44db2d1dd  sow-ui/src/ui/main_menu/profile.rs
 0a413f8595b95c94aec2cbcfba5e9aab76d128505d5c872277987e82ca990f14  sow-ui/src/ui/main_menu/queue_overlay.rs
