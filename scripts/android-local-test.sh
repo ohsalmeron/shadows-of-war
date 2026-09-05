@@ -4,6 +4,16 @@ set -Eeuo pipefail
 # Local Android smoke test. ./sow a calls this before publishing the AAB.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PROJECT="$ROOT/sow-dist/deploy/android"
+
+# Keep direct local USB tests consistent with ./sow a without coupling them to
+# the Play publication step. The public key is stored in the ignored dist env.
+if [[ -f "$ROOT/sow-dist/.env" ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "$ROOT/sow-dist/.env"
+    set +a
+fi
+
 VARIANT="${SOW_ANDROID_TEST_VARIANT:-debug}"
 ACTIVITY="com.google.androidbrowserhelper.trusted.LauncherActivity"
 OUT="$ROOT/dist/android/local-test"
@@ -13,6 +23,7 @@ START="$OUT/start-$STAMP.txt"
 VERSION_NAME="${SOW_ANDROID_TEST_VERSION_NAME:-$(tr -d '[:space:]' <"$ROOT/.version")}"
 VERSION_CODE="${SOW_ANDROID_TEST_VERSION_CODE:-$(tr -d '[:space:]' <"$ROOT/.android-version-code")}"
 SKIP_BUILD="${SOW_ANDROID_SKIP_BUILD:-0}"
+WEB_CACHE_BUST="${SOW_ANDROID_TEST_CACHE_BUST:-local-$STAMP}"
 
 die() {
     echo "ERROR: $*" >&2
@@ -50,11 +61,21 @@ if ! adb get-state 2>/dev/null | grep -qx device; then
     exit 1
 fi
 
+POWER_STATE="$(adb shell dumpsys power 2>/dev/null | tr -d '\r' || true)"
+if grep -Eq 'mWakefulness=(Asleep|Dozing)|Display Power: state=OFF' <<<"$POWER_STATE"; then
+    die "Android device screen is off; wake and unlock it before the local test"
+fi
+WINDOW_STATE="$(adb shell dumpsys window 2>/dev/null | tr -d '\r' || true)"
+if grep -q 'mDreamingLockscreen=true' <<<"$WINDOW_STATE"; then
+    die "Android device is locked; unlock it before the local test"
+fi
+
 if [[ "$SKIP_BUILD" != "1" ]]; then
     (
         cd "$PROJECT"
         ./gradlew --warning-mode fail --no-daemon --no-configuration-cache "$TASK" \
-            "-PsowVersionName=$VERSION_NAME" "-PsowVersionCode=$VERSION_CODE" "$REVENUECAT_KEY_ARG"
+            "-PsowVersionName=$VERSION_NAME" "-PsowVersionCode=$VERSION_CODE" \
+            "-PsowWebCacheBust=$WEB_CACHE_BUST" "$REVENUECAT_KEY_ARG"
     )
 fi
 
@@ -72,7 +93,13 @@ timeout 15s adb logcat -v threadtime -b main -b system -b crash >"$LOG" &
 LOGGER_PID=$!
 trap 'kill "$LOGGER_PID" 2>/dev/null || true; wait "$LOGGER_PID" 2>/dev/null || true' EXIT
 
-adb shell am start -n "$PACKAGE/$ACTIVITY" >"$START"
+if ! adb shell am start -W -n "$PACKAGE/$ACTIVITY" >"$START"; then
+    die "Android activity failed to start; see $START"
+fi
+if ! grep -q '^Status: ok' "$START"; then
+    cat "$START" >&2
+    die "Android activity did not report a successful launch; see $START"
+fi
 wait "$LOGGER_PID" || true
 trap - EXIT
 

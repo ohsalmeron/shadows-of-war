@@ -1254,6 +1254,8 @@
     }
 
     .sow-menu__topbar {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
         gap: 7px;
         min-height: 52px;
         padding: 5px 6px;
@@ -1267,9 +1269,10 @@
     .sow-menu__profile small { display: none; }
 
     .sow-menu__identity {
-        flex: 1 1 auto;
+        width: 100%;
+        min-width: 0;
+        flex: 0 1 auto;
         gap: 5px;
-        width: auto;
     }
 
     .sow-menu__avatar,
@@ -1285,18 +1288,47 @@
     .sow-menu__join input,
     .sow-menu__field,
     .sow-menu__select { width: 100%; min-width: 0; min-height: 44px; font-size: 16px; }
-    .sow-menu__top-actions { gap: 4px; }
+    .sow-menu__top-actions {
+        width: 100%;
+        min-width: 0;
+        margin-left: 0;
+        justify-content: flex-end;
+        gap: 4px;
+    }
     .sow-menu__signin { min-height: 44px; padding: 0 8px; font-size: 8px; }
 
     .sow-menu__main {
+        width: 100%;
+        min-width: 0;
         flex: 0 0 auto;
         gap: 12px;
     }
 
+    .sow-menu__main,
+    .sow-menu__main--custom,
+    .sow-menu__main--queue {
+        display: flex;
+        flex-direction: column;
+        grid-template-columns: none;
+    }
+
     .sow-menu__command {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
         justify-content: flex-start;
         padding: 16px;
         overflow: hidden;
+    }
+
+    .sow-menu__battlefield,
+    .sow-menu__public,
+    .sow-menu__custom-grid,
+    .sow-menu__queue-summary-card,
+    .sow-menu__queue-players-card {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
     }
 
     .sow-menu__menu-logo {

@@ -13,6 +13,7 @@ if (sowVersionCodeProperty == null) {
 }
 def sowVersionCode = sowVersionCodeProperty.toString().toInteger()
 def sowVersionName = (project.findProperty("sowVersionName") ?: "0.2.0").toString()
+def sowWebCacheBust = (project.findProperty("sowWebCacheBust") ?: sowVersionCode.toString()).toString()
 def revenueCatPublicKey = (project.findProperty("revenueCatAndroidPublicKey") ?: "").toString()
 def escapedRevenueCatPublicKey = revenueCatPublicKey.replace("\\", "\\\\").replace('"', '\\"')
 
@@ -32,7 +33,7 @@ android {
         
         manifestPlaceholders = [
             hostName: "shadowsofwar.io",
-            defaultUrl: "https://shadowsofwar.io/play/?sow_platform=android",
+            defaultUrl: "https://shadowsofwar.io/play/?sow_platform=android&sow_build=${sowWebCacheBust}",
             launcherName: "Shadows of War",
             enableNotification: "false"
         ]
