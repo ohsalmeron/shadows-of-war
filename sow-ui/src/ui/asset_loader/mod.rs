@@ -50,6 +50,8 @@ pub struct AssetLoader {
     pub thumbnail_errors: HashMap<String, String>,
     /// Queued thumbnail keys; drained by sow-client each frame.
     pub thumbnails_fetch_pending: Vec<String>,
+    /// Prevents repeatedly queueing the same rotation thumbnails every frame.
+    matchmaking_thumbnails_prefetched: bool,
     /// Pre-loaded avatar textures
     pub avatars: HashMap<sow_core::player::Leader, TextureHandle>,
     pub avatar_fallback: Option<TextureHandle>,
@@ -171,6 +173,7 @@ impl AssetLoader {
             thumbnails_in_flight: HashSet::new(),
             thumbnail_errors: HashMap::new(),
             thumbnails_fetch_pending: Vec::new(),
+            matchmaking_thumbnails_prefetched: false,
             avatars: HashMap::new(),
             avatar_fallback: None,
             ui_loader_empty: None,
@@ -385,6 +388,34 @@ mod tests {
     fn test_thumbnail_decoding() {
         let bytes = sow_ui_kit::repo_asset_bytes!("maps/world/thumbnail.webp");
         assert!(image::load_from_memory(bytes).is_ok());
+    }
+
+    #[test]
+    fn matchmaking_thumbnail_prefetch_is_idempotent() {
+        let mut loader = AssetLoader::new();
+        loader.map_catalog = Some(vec![
+            sow_core::maps::MapCatalogEntry {
+                key: "world".to_string(),
+                display_name: "World".to_string(),
+                width: 100,
+                height: 100,
+                num_land_tiles: 5_000,
+                multiplayer_frequency: 1,
+            },
+            sow_core::maps::MapCatalogEntry {
+                key: "singleplayer".to_string(),
+                display_name: "Singleplayer".to_string(),
+                width: 100,
+                height: 100,
+                num_land_tiles: 5_000,
+                multiplayer_frequency: 0,
+            },
+        ]);
+
+        loader.prefetch_matchmaking_thumbnails();
+        loader.prefetch_matchmaking_thumbnails();
+
+        assert_eq!(loader.thumbnails_fetch_pending, vec!["world"]);
     }
 
     #[test]

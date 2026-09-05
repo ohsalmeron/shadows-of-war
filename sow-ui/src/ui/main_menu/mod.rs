@@ -55,6 +55,10 @@ pub struct MainMenuState {
     pub wait_timer_secs: f32,
     pub server_address: String,
     pub lobbies: Vec<LobbyInfo>,
+    /// Last valid matchmaking lobby shown on the home screen. A connected
+    /// client may receive an empty snapshot while the server rotates lobbies;
+    /// keep that transition invisible until the replacement arrives.
+    pub last_matchmaking_lobby: Option<LobbyInfo>,
     pub player_name: String,
     /// Portal SDK locked the display name (CrazyGames username, etc.).
     pub name_locked: bool,
@@ -134,6 +138,7 @@ impl Default for MainMenuState {
             server_address: std::env::var("SOW_WS_URL")
                 .unwrap_or_else(|_| "wss://ws.shadowsofwar.io/ws/".to_string()),
             lobbies: Vec::new(),
+            last_matchmaking_lobby: None,
             player_name: format!("ANON{:03}", ms % 1000),
             clan_tag: "".to_string(),
             selected_leader: leader,
@@ -425,6 +430,10 @@ fn draw_home_content(
     metrics: layout::MainMenuMetrics,
     action: &mut Option<UiAction>,
 ) {
+    // Warm every eligible rotation thumbnail while the current lobby is still
+    // on screen, so a new lobby never appears before its preview is decoded.
+    asset_loader.prefetch_matchmaking_thumbnails();
+
     let portrait = sow_ui_kit::theme::portrait_layout(ui.ctx());
     let mut body = ui.available_rect_before_wrap();
     body.min.x += metrics.outer_pad;

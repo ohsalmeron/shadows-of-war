@@ -153,3 +153,130 @@ fn home_resize_keeps_panel_bound_to_map_and_clear_of_footer() {
         }
     }
 }
+
+#[test]
+fn home_rotation_keeps_quick_match_geometry_stable() {
+    let ctx = egui::Context::default();
+    crate::theme::apply_theme(&ctx);
+    let mut assets = crate::ui::asset_loader::AssetLoader::new();
+    let texture = ctx.load_texture(
+        "rotation_map",
+        egui::ColorImage::filled([16, 9], Color32::BLUE),
+        Default::default(),
+    );
+    let texture_id = texture.id();
+    assets.thumbnails.insert("world".into(), texture);
+    let mut state = MainMenuState::default();
+    state.is_connected = true;
+
+    let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(1440.0, 810.0));
+    let mut expected: Option<(Rect, Rect, Rect, Vec<Rect>)> = None;
+
+    for lobbies in [
+        vec![LobbyInfo {
+            id: 1,
+            num_players: 8,
+            max_players: 15,
+            is_counting_down: true,
+            timer_secs: 8.0,
+            map_name: "world".into(),
+            game_mode: "FFA".into(),
+            players: vec![],
+            has_password: false,
+            host_name: String::new(),
+            bot_count: 420,
+            nation_count: 128,
+            bot_difficulty: Default::default(),
+            kind: sow_core::protocol::LobbyKind::Matchmaking,
+        }],
+        vec![LobbyInfo {
+            id: 2,
+            num_players: 4,
+            max_players: 10,
+            is_counting_down: true,
+            timer_secs: 8.0,
+            map_name: "rotated_map".into(),
+            game_mode: "Teams".into(),
+            players: vec![],
+            has_password: false,
+            host_name: String::new(),
+            bot_count: 420,
+            nation_count: 128,
+            bot_difficulty: Default::default(),
+            kind: sow_core::protocol::LobbyKind::Matchmaking,
+        }],
+        Vec::new(),
+    ] {
+        state.lobbies = lobbies;
+        let mut painted = Vec::new();
+        for _ in 0..3 {
+            let output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(screen),
+                    ..Default::default()
+                },
+                |ui| {
+                    super::draw(
+                        ui,
+                        &mut state,
+                        &mut assets,
+                        sow_i18n::Language::English,
+                        true,
+                    );
+                },
+            );
+            painted.clear();
+            for clipped in &output.shapes {
+                rects(&clipped.shape, &mut painted);
+            }
+        }
+
+        let panel = painted
+            .iter()
+            .find(|r| r.fill == Color32::from_rgba_unmultiplied(9, 11, 15, 190))
+            .expect("command panel must be drawn")
+            .rect;
+        let footer = painted
+            .iter()
+            .find(|r| {
+                r.fill == crate::theme::palette::surface() && (r.rect.bottom() - 810.0).abs() < 1.0
+            })
+            .expect("footer must be drawn")
+            .rect;
+        let map = painted
+            .iter()
+            .find(|r| {
+                r.brush
+                    .as_ref()
+                    .is_some_and(|b| b.fill_texture_id == texture_id)
+                    || (r.fill == crate::theme::palette::button_inactive()
+                        && r.rect.width() > 300.0
+                        && r.rect.height() > 200.0)
+            })
+            .expect("quick-match slot must be drawn")
+            .rect;
+        let actions: Vec<Rect> = painted
+            .iter()
+            .filter(|r| {
+                r.rect.top() >= map.bottom()
+                    && r.rect.bottom() <= panel.bottom()
+                    && r.rect.width() > map.width() * 0.8
+                    && r.rect.height() >= 35.0
+                    && r.rect.height() <= 50.0
+            })
+            .map(|r| r.rect)
+            .collect();
+
+        if let Some((old_panel, old_map, old_footer, old_actions)) = expected.as_ref() {
+            assert_eq!(panel, *old_panel, "panel moved during lobby rotation");
+            assert_eq!(map, *old_map, "map slot changed during lobby rotation");
+            assert_eq!(footer, *old_footer, "footer moved during lobby rotation");
+            assert_eq!(
+                &actions, old_actions,
+                "action rows reflowed during lobby rotation"
+            );
+        } else {
+            expected = Some((panel, map, footer, actions));
+        }
+    }
+}

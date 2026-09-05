@@ -70,6 +70,30 @@ impl AssetLoader {
         self.thumbnails_fetch_pending.push(key);
     }
 
+    /// Queue thumbnails for every map eligible for matchmaking before the
+    /// rotating lobby can select one. Native egui owns these previews; the
+    /// browser menu has its own asset pipeline.
+    pub fn prefetch_matchmaking_thumbnails(&mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if self.matchmaking_thumbnails_prefetched {
+                return;
+            }
+            let Some(catalog) = self.map_catalog.as_ref() else {
+                return;
+            };
+            let keys: Vec<String> = catalog
+                .iter()
+                .filter(|entry| entry.multiplayer_frequency > 0)
+                .map(|entry| entry.key.clone())
+                .collect();
+            for key in keys {
+                self.request_thumbnail(&key);
+            }
+            self.matchmaking_thumbnails_prefetched = true;
+        }
+    }
+
     pub fn drain_thumbnail_fetch_pending(&mut self) -> Vec<String> {
         self.thumbnails_fetch_pending.drain(..).collect()
     }

@@ -29,8 +29,8 @@ e02059a4ece860e300f29747dc1fad8b83359375688177bdc41255e63d260f73  sow-ui/src/kit
 e7671f375b6ab08f18e6e162e4bae2fdfdf2cacb6b1047c31752236f578a2010  sow-ui/src/ui/asset_loader/avatars.rs
 b4368af376836e2f0be478fd83c867dce02af38bd7bead416513ffeb64147f06  sow-ui/src/ui/asset_loader/boot.rs
 e6df0f7ccc4351428c15b0ac4144bebc52ce7cfb099f9c48402a56837fdb4567  sow-ui/src/ui/asset_loader/leaders.rs
-d05c7e891b7d5799b809c09dd44316bc3a1ef9c2310d549f3b6eb8c0be0bc94f  sow-ui/src/ui/asset_loader/maps.rs
-b1042e75d07a58fab6b0b15bd1f52fd26de0552db50c09993725ff6b1cf1dfd9  sow-ui/src/ui/asset_loader/mod.rs
+7036b8002161bbd8911587320ca8e26bbee4708eebd00d0c88389a594841cca9  sow-ui/src/ui/asset_loader/maps.rs
+d9f8c5e0de922149aee63b2cd611c074cd4ecf8f8516c21ffd698e72d14280fd  sow-ui/src/ui/asset_loader/mod.rs
 4157e8079f63f99f774ce2d72f1fb00afcf71f977112e0c5900600c511d7f106  sow-ui/src/ui/asset_loader/retry.rs
 ad0f53f14ae9631530f5200b7d33ee6d2503824bf6988cc9d29c8d60d19211a8  sow-ui/src/ui/credits/mod.rs
 c6244dd4f0fd2e16995553a8a04f02787cb4689194627777f6fd688cf0f1edb9  sow-ui/src/ui/hud/draw/attack_ratio.rs
@@ -57,12 +57,12 @@ ae73476f23c5157259385524b7dbea5c66357f2ed79c596d304237617f8bb90e  sow-ui/src/ui/
 739d95235ff2220764cdc8b0a944124ce5a83e0434036e69299cb41a3b00039e  sow-ui/src/ui/hud/tabs/mod.rs
 baac1faf166e48bd18fab6b24a46687a97434f1b9f40776315effd16364b3860  sow-ui/src/ui/legal_doc/mod.rs
 bd26378b36aa7fc751d7c1d115bc8890b0cbd63ea8f31a8ab676fa14db141737  sow-ui/src/ui/loading_screen/mod.rs
-fa9185e70e518199a9c3c1271718ac00b7622292b14f21c099506191fb425d82  sow-ui/src/ui/main_menu/browser.rs
+b48f8860bcf153be7f44cfeb3d82a6afd0156bad6b2bd79f1f603bb596091e88  sow-ui/src/ui/main_menu/browser.rs
 8cfe54f80471917f9cabfcc1c965655b0c9af0487c3fb927765de04c1fc8bb39  sow-ui/src/ui/main_menu/custom_game.rs
 bbf61b52358055d9287c32b1e15ef455b5408f34490fb26ef0253d67dff93a58  sow-ui/src/ui/main_menu/join_browser.rs
 982d3cb6104bebbc0ff4bd3484cbfd559e1b74e255e20e001c8f3d80882050a9  sow-ui/src/ui/main_menu/layout.rs
-3d48ca15f8470baacdb97e583da7103c0c641a74560e9dba6c8a168b7c9431e0  sow-ui/src/ui/main_menu/layout_tests.rs
-e512010fd8edd4c77342d9c63f3ef6451baa8277c941911419107ea55abc55f9  sow-ui/src/ui/main_menu/mod.rs
+efdefd57ad9838b71288944acd8cf1d1ef36df7d82c815c9e1c4fe55c622e2ac  sow-ui/src/ui/main_menu/layout_tests.rs
+ab9ff317c148714816b3a837b4fe44e3289a4dccad5c2dd7677f0c0186ed616b  sow-ui/src/ui/main_menu/mod.rs
 62c787500bac89b08f26d6f4981b462630459f5e656edf4e00d48046f57b7189  sow-ui/src/ui/main_menu/modals.rs
 ac37453e576cb690cb410e839881f8c3c1a58093a57b01c36e7dadf44db2d1dd  sow-ui/src/ui/main_menu/profile.rs
 0a413f8595b95c94aec2cbcfba5e9aab76d128505d5c872277987e82ca990f14  sow-ui/src/ui/main_menu/queue_overlay.rs
