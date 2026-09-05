@@ -5,7 +5,7 @@ use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::{env, fs};
+use std::{collections::HashMap, env, fs};
 
 mod prod;
 
@@ -60,6 +60,7 @@ struct Paths {
     assets_gameplay: PathBuf,
     assets_site: PathBuf,
     assets_maps: PathBuf,
+    map_sources: PathBuf,
     dist_web: PathBuf,
     dist_cg: PathBuf,
     wasm_input: PathBuf,
@@ -83,6 +84,7 @@ impl Paths {
             assets_gameplay: root.join("assets/gameplay"),
             assets_site: root.join("assets/site"),
             assets_maps: root.join("assets/maps"),
+            map_sources: root.join("assets/map_sources"),
             dist_web: root.join("dist/web"),
             dist_cg: root.join("dist/crazygames"),
             root,
@@ -120,7 +122,35 @@ fn copy_dir(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
-fn refresh_map_thumbnails(maps_root: &Path) -> Result<()> {
+fn refresh_map_thumbnails(maps_root: &Path, map_sources: &Path) -> Result<()> {
+    let manifest_path = map_sources.join("thumbnail_frames.json");
+    let manifest = if manifest_path.is_file() {
+        let value: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(&manifest_path)
+                .with_context(|| format!("read {}", manifest_path.display()))?,
+        )
+        .with_context(|| format!("parse {}", manifest_path.display()))?;
+        if value.get("version").and_then(|v| v.as_u64()) != Some(1) {
+            bail!("unsupported thumbnail frame manifest: {}", manifest_path.display());
+        }
+        if let Some(sources) = value.get("sources").and_then(|v| v.as_object()) {
+            for (name, metadata) in sources {
+                let path = map_sources.join(name);
+                require_file(&path, "thumbnail source")?;
+                if let Some(expected) = metadata.get("sha256").and_then(|v| v.as_str()) {
+                    let actual = file_sha256(&path)?;
+                    if actual != expected {
+                        bail!("thumbnail source hash mismatch for {}", path.display());
+                    }
+                }
+            }
+        }
+        Some(value)
+    } else {
+        None
+    };
+
+    let mut rendered_sources = HashMap::new();
     let mut map_dirs = fs::read_dir(maps_root)
         .with_context(|| format!("read maps directory {}", maps_root.display()))?
         .filter_map(|entry| entry.ok())
@@ -138,10 +168,70 @@ fn refresh_map_thumbnails(maps_root: &Path) -> Result<()> {
             .with_context(|| format!("read map {}", map_path.display()))?;
         let map = sow_core::map_file::parse(&bytes)
             .map_err(|error| anyhow::anyhow!("parse {}: {error}", map_path.display()))?;
-        sow_map::write_map_thumbnail(&map, &dir.join("thumbnail.webp"))
-            .map_err(|error| anyhow::anyhow!("write {} thumbnail: {error}", dir.display()))?;
+        let thumbnail = dir.join("thumbnail.webp");
+        let frame = manifest
+            .as_ref()
+            .and_then(|value| value.get("maps"))
+            .and_then(|maps| maps.get(entry.file_name().to_string_lossy().as_ref()))
+            .and_then(|map| map.get("frame"))
+            .and_then(|frame| frame.as_array())
+            .and_then(|frame| {
+                let values = frame
+                    .iter()
+                    .map(|value| value.as_i64())
+                    .collect::<Option<Vec<_>>>()?;
+                (values.len() == 4 && values[2] > 0 && values[3] > 0).then_some(
+                    sow_map::SourceFrame {
+                        x: values[0],
+                        y: values[1],
+                        width: values[2] as u32,
+                        height: values[3] as u32,
+                    },
+                )
+            });
+        let source = manifest
+            .as_ref()
+            .and_then(|value| value.get("maps"))
+            .and_then(|maps| maps.get(entry.file_name().to_string_lossy().as_ref()))
+            .and_then(|map| map.get("source"))
+            .and_then(|source| source.as_str());
+
+        if let (Some(frame), Some(source)) = (frame, source) {
+            let source_path = map_sources.join(source);
+            if !rendered_sources.contains_key(&source_path) {
+                let rendered = sow_map::render_source_file(&source_path)
+                    .map_err(|error| anyhow::anyhow!("render {}: {error}", source_path.display()))?;
+                rendered_sources.insert(source_path.clone(), rendered);
+            }
+            let rendered = rendered_sources
+                .get(&source_path)
+                .expect("source inserted above");
+            sow_map::write_rendered_source_thumbnail(rendered, frame, &thumbnail)
+                .map_err(|error| anyhow::anyhow!("write {} thumbnail: {error}", dir.display()))?;
+        } else {
+            sow_map::write_map_thumbnail(&map, &thumbnail)
+                .map_err(|error| anyhow::anyhow!("write {} thumbnail: {error}", dir.display()))?;
+        }
     }
     Ok(())
+}
+
+fn thumbnail_cache_bust(maps_root: &Path) -> Result<String> {
+    let mut files = fs::read_dir(maps_root)?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path().join("thumbnail.webp"))
+        .filter(|path| path.is_file())
+        .collect::<Vec<_>>();
+    files.sort();
+    if files.is_empty() {
+        bail!("no generated map thumbnails found in {}", maps_root.display());
+    }
+    let mut hash = Sha256::new();
+    for path in files {
+        hash.update(path.strip_prefix(maps_root)?.to_string_lossy().as_bytes());
+        hash.update(fs::read(path)?);
+    }
+    Ok(format!("{:x}", hash.finalize())[..12].to_string())
 }
 
 fn require_file(path: &Path, label: &str) -> Result<()> {
@@ -335,6 +425,7 @@ fn build_index(
     js: &str,
     wasm: &str,
     ts: &str,
+    maps_cache_bust: &str,
     cg: bool,
 ) -> Result<()> {
     let tpl = fs::read_to_string(paths.shell.join("index.html.template"))?;
@@ -368,6 +459,7 @@ fn build_index(
         .replace("__JS_FILE__", js)
         .replace("__WASM_FILE__", wasm)
         .replace("__BUILD_TS__", ts)
+        .replace("__MAPS_CACHE_BUST__", maps_cache_bust)
         .replace(
             "__REVENUECAT_WEB_PURCHASE_LINK__",
             &web_purchase_link_js,
@@ -702,11 +794,21 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
     if paths.assets_maps.is_dir() {
         copy_dir(&paths.assets_maps, &maps)?;
     }
-    refresh_map_thumbnails(&maps)?;
+    refresh_map_thumbnails(&maps, &paths.map_sources)?;
+    let maps_cache_bust = thumbnail_cache_bust(&maps)?;
 
     run_bindgen(&paths.wasm_input, out, &format!("sow_client_{ts}"))?;
     copy_shell(paths, out)?;
-    build_index(paths, out, version, &js, &wasm, &ts, false)?;
+    build_index(
+        paths,
+        out,
+        version,
+        &js,
+        &wasm,
+        &ts,
+        &maps_cache_bust,
+        false,
+    )?;
     export_locales(out)?;
 
     minify_js(&out.join(&js))?;
@@ -790,7 +892,13 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
     Ok(())
 }
 
-fn package_cg(play_dir: &Path, out: &Path, paths: &Paths, version: &str) -> Result<()> {
+fn package_cg(
+    play_dir: &Path,
+    out: &Path,
+    paths: &Paths,
+    version: &str,
+    maps_cache_bust: &str,
+) -> Result<()> {
     // The portal bundle is a strict whitelist: index.html, the brotli client
     // pair, and the shell essentials. Everything else (maps, assets, admin)
     // streams from the production CDN at runtime. Never clone dist/web here.
@@ -843,6 +951,7 @@ fn package_cg(play_dir: &Path, out: &Path, paths: &Paths, version: &str) -> Resu
         &format!("sow_client_{jh}.js"),
         &format!("sow_client_{wh}_bg.wasm"),
         &jh,
+        maps_cache_bust,
         true,
     )?;
 
@@ -1156,6 +1265,7 @@ mod tests {
             "sow_client_test.js",
             "sow_client_test_bg.wasm",
             "test",
+            "test-maps",
             false,
         )?;
         let html = fs::read_to_string(out.path().join("play/index.html"))?;

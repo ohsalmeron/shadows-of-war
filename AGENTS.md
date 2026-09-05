@@ -8,6 +8,8 @@ hostnames, paths and compatibility behavior are not production instructions.
 - Execute exactly the requested scope; do not invent adjacent work.
 - Verify before making claims. Distinguish current runtime facts from historical
   evidence and roadmap design.
+- Before map or thumbnail work, read `docs/maps.md` for the reviewed framing,
+  current generator limitations, and independent mobile terrain budgets.
 - Infrastructure decisions, firewall/PF/NSG changes and new resources require
   explicit user approval.
 - The deploy pipeline is the only deployment interface. Never activate a

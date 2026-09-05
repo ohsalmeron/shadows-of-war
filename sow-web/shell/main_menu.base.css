@@ -624,17 +624,20 @@
 .sow-menu__lobby {
     position: relative;
     min-width: 0;
+    aspect-ratio: 16 / 9;
     padding: 0;
     border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: 5px;
     cursor: pointer;
     overflow: hidden;
+    background: #3d7bab;
 }
 
 .sow-menu__lobby-art {
     display: block;
     width: 100%;
-    height: auto;
+    height: 100%;
+    object-fit: cover;
 }
 
 .sow-menu__lobby::after {

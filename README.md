@@ -99,6 +99,8 @@ Custom harmonic synthesizer — layered sine harmonics, key derived from match s
 
 ## Developer Guide
 
+Map authoring, 16:9 thumbnail framing, and mobile terrain budgets: [Maps workflow](docs/maps.md).
+
 The project uses `./sow` as single entrypoint:
 
 ```bash
