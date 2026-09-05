@@ -361,7 +361,7 @@ fn draw_summary_content(
         details.push((&strings.nations_count, lobby.nation_count.to_string()));
     }
     if lobby.has_password {
-        details.push((&strings.password_label, "🔒".to_string()));
+        details.push((&strings.password_label, "LOCKED".to_string()));
     }
 
     let details_h = details.len() as f32 * 20.0;

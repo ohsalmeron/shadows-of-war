@@ -5,6 +5,7 @@ mod layout;
 mod modals;
 pub mod profile;
 pub mod queue_overlay;
+pub(crate) mod shell;
 pub mod store;
 mod topbar;
 #[cfg(test)]
@@ -44,6 +45,16 @@ pub enum MainMenuRoute {
     Browser,
     Create,
     Queue,
+    Heroes,
+    Store,
+    Profile,
+}
+
+/// Destinations exposed by the persistent native menu navigation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MainMenuSection {
+    Battle,
+    Heroes,
     Store,
     Profile,
 }
@@ -196,7 +207,15 @@ impl Default for MainMenuState {
 
 impl MainMenuState {
     pub fn visible_route(&self) -> MainMenuRoute {
-        if self.is_waiting {
+        if self.is_waiting
+            && matches!(
+                self.route,
+                MainMenuRoute::Home
+                    | MainMenuRoute::Browser
+                    | MainMenuRoute::Create
+                    | MainMenuRoute::Queue
+            )
+        {
             MainMenuRoute::Queue
         } else {
             self.route
@@ -211,6 +230,27 @@ impl MainMenuState {
 
     pub fn go_home(&mut self) {
         self.route = MainMenuRoute::Home;
+    }
+
+    pub fn active_section(&self) -> MainMenuSection {
+        match self.visible_route() {
+            MainMenuRoute::Heroes => MainMenuSection::Heroes,
+            MainMenuRoute::Store => MainMenuSection::Store,
+            MainMenuRoute::Profile => MainMenuSection::Profile,
+            MainMenuRoute::Home
+            | MainMenuRoute::Browser
+            | MainMenuRoute::Create
+            | MainMenuRoute::Queue => MainMenuSection::Battle,
+        }
+    }
+
+    pub fn open_section(&mut self, section: MainMenuSection) {
+        self.route = match section {
+            MainMenuSection::Battle => MainMenuRoute::Home,
+            MainMenuSection::Heroes => MainMenuRoute::Heroes,
+            MainMenuSection::Store => MainMenuRoute::Store,
+            MainMenuSection::Profile => MainMenuRoute::Profile,
+        };
     }
 
     pub fn apply_map_catalog_custom(&mut self, catalog: &[sow_core::maps::MapCatalogEntry]) {
@@ -395,36 +435,6 @@ pub fn draw_terms_privacy_footer(
     );
 }
 
-/// Fixed home viewport between the identity bar and the reserved footer.
-fn draw_home(
-    root_ui: &mut egui::Ui,
-    state: &mut MainMenuState,
-    asset_loader: &mut crate::ui::asset_loader::AssetLoader,
-    lang: sow_i18n::Language,
-    action: &mut Option<UiAction>,
-) {
-    let strings = &sow_i18n::get(lang).main_menu;
-    let metrics = layout::main_menu_metrics(root_ui.ctx());
-    let header_frame = egui::Frame::NONE
-        .fill(sow_ui_kit::theme::palette::surface_transparent())
-        .inner_margin(egui::Margin::symmetric(metrics.outer_pad as i8, 8));
-    header_frame.show(root_ui, |ui| {
-        topbar::draw(ui, state, asset_loader, lang, action);
-    });
-
-    let body_rect = root_ui.available_rect_before_wrap();
-    root_ui.allocate_ui_with_layout(
-        body_rect.size(),
-        egui::Layout::top_down(egui::Align::Min),
-        |ui| {
-            // The bottom footer has already reserved this rect. Clip the home
-            // viewport to it so an over-tall child can never paint over it.
-            ui.set_clip_rect(body_rect);
-            draw_home_content(ui, state, asset_loader, lang, strings, metrics, action);
-        },
-    );
-}
-
 fn draw_home_content(
     ui: &mut egui::Ui,
     state: &mut MainMenuState,
@@ -438,7 +448,7 @@ fn draw_home_content(
     // on screen, so a new lobby never appears before its preview is decoded.
     asset_loader.prefetch_matchmaking_thumbnails();
 
-    let portrait = sow_ui_kit::theme::portrait_layout(ui.ctx());
+    let portrait = metrics.is_phone();
     let mut body = ui.available_rect_before_wrap();
     body.min.x += metrics.outer_pad;
     body.max.x -= metrics.outer_pad;
@@ -547,114 +557,7 @@ pub fn draw(
     lang: sow_i18n::Language,
     reduced_motion: bool,
 ) -> Option<UiAction> {
-    let mut action = None;
-    let metrics = layout::main_menu_metrics(root_ui.ctx());
-    let compact = metrics.is_compact();
-    let strings = &sow_i18n::get(lang).main_menu;
-
-    // Draw the full-bleed backdrop first so that all panels (including the footer)
-    // are drawn on top of it.
-    if matches!(state.visible_route(), MainMenuRoute::Home | MainMenuRoute::Browser | MainMenuRoute::Queue)
-        && !state.show_leader_picker
-    {
-        let backdrop_rect = root_ui.ctx().content_rect();
-        let use_portrait = backdrop_rect.width() < backdrop_rect.height();
-        crate::widgets::draw_leader_hero_backdrop(
-            root_ui,
-            &mut crate::widgets::LeaderHeroBackdropCtx {
-                screen_rect: backdrop_rect,
-                selected: state.selected_leader,
-                mobile: use_portrait,
-                asset_loader,
-                transition: &mut state.leader_backdrop,
-                loading_label: &strings.loading_leader_portrait,
-                draw_picker_gradient: false,
-            },
-        );
-    }
-
-    egui::Panel::bottom("main_menu_footer_panel")
-        .frame(
-            egui::Frame::NONE
-                .fill(sow_ui_kit::theme::palette::surface())
-                .inner_margin(if metrics.is_phone() {
-                    egui::Margin::symmetric(8, 2)
-                } else {
-                    egui::Margin::symmetric(16, 4)
-                }),
-        )
-        .show_inside(root_ui, |ui| {
-            draw_terms_privacy_footer(ui, lang, &mut action);
-        });
-
-    match state.visible_route() {
-        MainMenuRoute::Store => store::draw(root_ui, state, asset_loader, &mut action),
-        MainMenuRoute::Profile => {
-            profile::draw_native(root_ui, state, asset_loader, &mut action)
-        }
-        MainMenuRoute::Create => custom_game::draw(
-            root_ui,
-            state,
-            asset_loader,
-            &mut action,
-            lang,
-            reduced_motion,
-        ),
-        MainMenuRoute::Queue => {
-            let (_, action_min_h, _, _) = layout::menu_layout_chrome(
-                root_ui.ctx(),
-                root_ui.available_height(),
-                root_ui.available_width(),
-                compact,
-            );
-            queue_overlay::draw_queue_overlay(
-                root_ui,
-                state,
-                action_min_h,
-                &mut action,
-                asset_loader,
-                lang,
-            );
-        }
-        MainMenuRoute::Browser => draw_browser(root_ui, state, asset_loader, lang, &mut action),
-        MainMenuRoute::Home => draw_home(root_ui, state, asset_loader, lang, &mut action),
-    }
-
-    modals::draw_connecting_indicator(root_ui.ctx(), state, lang, compact);
-    modals::draw_map_download_indicator(root_ui.ctx(), state, lang, compact);
-
-    // Password prompt for joining a protected Public Games lobby (inline browser).
-    if let Some(target_id) = state.join_password_for_lobby {
-        join_browser::draw_password_modal(root_ui, state, target_id, &mut action, strings, compact);
-    }
-
-    if state.show_leader_picker
-        && crate::widgets::draw_leader_picker_modal(
-            root_ui.ctx(),
-            &mut state.selected_leader,
-            &mut state.selected_civilization,
-            asset_loader,
-            &mut state.leader_backdrop,
-            lang,
-        )
-    {
-        state.show_leader_picker = false;
-    }
-
-
-    if let Some(notice) = state.notice {
-        let now = root_ui.input(|i| i.time);
-        let shown_at = *state.notice_at.get_or_insert(now);
-        let dismissed = modals::draw_lobby_notice(root_ui, notice, strings, compact);
-        // Keep repainting so the 3s auto-dismiss fires even without further input.
-        root_ui.ctx().request_repaint();
-        if dismissed || now - shown_at >= 3.0 {
-            state.notice = None;
-            state.notice_at = None;
-        }
-    }
-
-    action
+    shell::draw(root_ui, state, asset_loader, lang, reduced_motion)
 }
 
 fn draw_browser(
@@ -669,25 +572,19 @@ fn draw_browser(
     egui::Frame::NONE
         .inner_margin(egui::Margin::symmetric(metrics.outer_pad as i8, 10))
         .show(root_ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                if ui
-                    .add(crate::widgets::ThemeButton::new("← BACK")
-                    .style(crate::widgets::ThemeButtonStyle::Tertiary)
-                    .min_size(egui::vec2(92.0, metrics.touch_min))
-                    .text_size(13.0))
-                    .clicked()
-                {
-                    state.go_home();
-                }
-                ui.label(egui::RichText::new("PUBLIC GAMES").strong().size(22.0));
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new("BATTLE / LOBBY BROWSER")
+                        .strong()
+                        .size(if metrics.is_phone() { 18.0 } else { 24.0 })
+                        .color(sow_ui_kit::theme::palette::neon_cyan()),
+                );
             });
             ui.add_space(metrics.gap);
             egui::ScrollArea::vertical()
                 .id_salt("browser_body_scroll")
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    join_browser::draw_filter_pills(ui, state, strings);
-                    ui.add_space(metrics.gap * 0.5);
                     join_browser::draw_private_join_row(ui, state, strings, action);
                     ui.add_space(metrics.gap);
                     join_browser::draw_lobby_rows(ui, state, asset_loader, action, strings);

@@ -121,11 +121,13 @@ pub fn draw(
     }
 
     // ── Top: title + SP/MP toggle ─────────────────────────────────
-    sow_ui_kit::theme::screen_panel_frame().show(root_ui, |ui| {
+    Frame::NONE
+        .inner_margin(egui::Margin::symmetric(16, 8))
+        .show(root_ui, |ui| {
             if compact {
                 ui.vertical(|ui| {
                     ui.heading(&strings.custom_game_title);
-                    ui.add_space(6.0);
+                    ui.add_space(4.0);
                     mode_toggle(ui, state, strings);
                 });
             } else {
@@ -133,21 +135,12 @@ pub fn draw(
                     ui.heading(&strings.custom_game_title);
                     ui.add_space(16.0);
                     mode_toggle(ui, state, strings);
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let back = crate::widgets::ThemeButton::new(&strings.back)
-                            .style(crate::widgets::ThemeButtonStyle::Tertiary)
-                            .min_size(Vec2::new(96.0, 44.0));
-                        if ui.add(back).clicked() {
-                            state.go_home();
-                        }
-                    });
                 });
             }
         });
 
     // ── Central: settings panels ───────────────────────────────────
-    Frame::new()
-        .fill(Color32::from_rgb(8, 10, 14))
+    Frame::NONE
         .inner_margin(egui::Margin::symmetric(16, 12))
         .show(root_ui, |ui| {
             let is_sp = state.custom_game_is_sp;
@@ -187,8 +180,6 @@ pub fn draw(
                         draw_sliders_card(ui, state, strings);
                         ui.add_space(12.0);
                         draw_action_button(ui, state, action, is_sp, strings, compact);
-                        ui.add_space(4.0);
-                        draw_back_button(ui, state, strings);
                     });
             } else {
                 egui::ScrollArea::vertical()
@@ -214,8 +205,6 @@ pub fn draw(
                                 draw_sliders_card(ui, state, strings);
                                 ui.add_space(16.0);
                                 draw_action_button(ui, state, action, is_sp, strings, compact);
-                                ui.add_space(4.0);
-                                draw_back_button(ui, state, strings);
                             });
                         });
                     });
@@ -258,19 +247,6 @@ fn draw_action_button(
         .text_size(20.0);
     if ui.add(start).clicked() {
         action_btn_clicked(state, action, is_sp);
-    }
-}
-
-fn draw_back_button(
-    ui: &mut egui::Ui,
-    state: &mut MainMenuState,
-    strings: &sow_i18n::MainMenuStrings,
-) {
-    let back = crate::widgets::ThemeButton::new(&strings.back)
-        .style(crate::widgets::ThemeButtonStyle::Tertiary)
-        .min_size(Vec2::new(ui.available_width(), 44.0));
-    if ui.add(back).clicked() {
-        state.go_home();
     }
 }
 

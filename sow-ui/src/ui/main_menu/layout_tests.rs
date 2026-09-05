@@ -92,13 +92,17 @@ fn home_resize_keeps_panel_bound_to_map_and_clear_of_footer() {
             })
             .expect("live map must be drawn")
             .rect;
-        let footer = painted
-            .iter()
-            .find(|r| {
-                r.fill == crate::theme::palette::surface() && (r.rect.bottom() - h).abs() < 1.0
-            })
-            .expect("footer must be drawn")
-            .rect;
+        let phone = layout::viewport_class(w, h) == layout::ViewportClass::Phone;
+        let footer = painted.iter().find(|r| {
+            r.fill == crate::theme::palette::surface()
+                && (r.rect.bottom() - h).abs() < 1.0
+                && r.rect.height() <= 30.0
+        });
+        let mobile_nav = painted.iter().find(|r| {
+            r.fill == Color32::from_rgba_unmultiplied(7, 9, 13, 242)
+                && (r.rect.bottom() - h).abs() < 1.0
+                && r.rect.height() >= 60.0
+        });
 
         assert!(
             (map.width() / map.height() - 16.0 / 9.0).abs() < 0.02,
@@ -108,16 +112,27 @@ fn home_resize_keeps_panel_bound_to_map_and_clear_of_footer() {
             (panel.width() - map.width() - 34.0).abs() < 1.0,
             "{w}x{h}: panel {panel:?} expanded beyond map {map:?}"
         );
-        if w < h {
+        if phone {
             assert!(
                 (panel.center().x - w * 0.5).abs() < 1.0,
                 "portrait is not centered: {panel:?}"
             );
+            let nav = mobile_nav
+                .expect("portrait must have one fixed bottom nav row")
+                .rect;
+            assert!(
+                nav.height() <= 74.0,
+                "portrait nav expanded into multiple rows: {nav:?}"
+            );
+            assert!(
+                panel.bottom() <= nav.top() - 11.0,
+                "portrait panel touches bottom nav: {panel:?} / {nav:?}"
+            );
         } else {
             let pad = layout::main_menu_metrics(&ctx).outer_pad;
             assert!(
-                (panel.left() - pad).abs() < 1.0,
-                "desktop is not left aligned: {panel:?}"
+                panel.left() >= 96.0 + pad - 2.0,
+                "desktop panel escaped the fixed rail: {panel:?}"
             );
             if h >= 810.0 {
                 assert!(
@@ -126,11 +141,13 @@ fn home_resize_keeps_panel_bound_to_map_and_clear_of_footer() {
                 );
             }
         }
-        assert!(
-            panel.bottom() <= footer.top() - 11.0,
-            "{w}x{h}: panel {panel:?} touches footer {footer:?}"
-        );
-        assert!(footer.height() <= 24.0, "footer wrapped: {footer:?}");
+        if let Some(footer) = footer {
+            assert!(
+                panel.bottom() <= footer.rect.top() - 11.0,
+                "{w}x{h}: panel {panel:?} touches footer {footer:?}"
+            );
+            assert!(footer.rect.height() <= 30.0, "footer wrapped: {footer:?}");
+        }
         let actions: Vec<_> = painted
             .iter()
             .filter(|r| {
@@ -279,4 +296,25 @@ fn home_rotation_keeps_quick_match_geometry_stable() {
             expected = Some((panel, map, footer, actions));
         }
     }
+}
+
+#[test]
+fn waiting_keeps_queue_alive_while_navigation_changes_sections() {
+    let mut state = MainMenuState::default();
+    state.is_waiting = true;
+
+    assert_eq!(state.visible_route(), MainMenuRoute::Queue);
+    assert_eq!(state.active_section(), MainMenuSection::Battle);
+
+    state.open_section(MainMenuSection::Store);
+    assert_eq!(state.visible_route(), MainMenuRoute::Store);
+    assert_eq!(state.active_section(), MainMenuSection::Store);
+
+    state.open_section(MainMenuSection::Profile);
+    assert_eq!(state.visible_route(), MainMenuRoute::Profile);
+    assert_eq!(state.active_section(), MainMenuSection::Profile);
+
+    state.open_section(MainMenuSection::Battle);
+    assert_eq!(state.visible_route(), MainMenuRoute::Queue);
+    assert_eq!(state.active_section(), MainMenuSection::Battle);
 }

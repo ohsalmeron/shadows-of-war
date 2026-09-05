@@ -14,7 +14,6 @@ pub(crate) enum ViewportClass {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct MainMenuMetrics {
     pub class: ViewportClass,
-    pub width: f32,
     pub scale: f32,
     pub outer_pad: f32,
     pub gap: f32,
@@ -53,7 +52,6 @@ pub(crate) fn main_menu_metrics(ctx: &Context) -> MainMenuMetrics {
     };
     MainMenuMetrics {
         class,
-        width,
         scale,
         outer_pad,
         gap,
@@ -62,7 +60,7 @@ pub(crate) fn main_menu_metrics(ctx: &Context) -> MainMenuMetrics {
 }
 
 pub(crate) fn viewport_class(width: f32, height: f32) -> ViewportClass {
-    if width < 640.0 || width < height {
+    if width < height {
         ViewportClass::Phone
     } else if width >= 1024.0 && width >= height * 1.25 {
         ViewportClass::Wide

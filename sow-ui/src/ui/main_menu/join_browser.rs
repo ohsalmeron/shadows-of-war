@@ -47,6 +47,40 @@ fn section_header(ui: &mut egui::Ui, label: &str) {
     ui.add_space(4.0);
 }
 
+fn paint_lock_icon(painter: &egui::Painter, rect: egui::Rect, color: Color32) {
+    let stroke = Stroke::new(1.5_f32, color);
+    let body = egui::Rect::from_min_max(
+        egui::pos2(rect.left() + 3.0, rect.center().y - 1.0),
+        egui::pos2(rect.right() - 3.0, rect.bottom() - 2.0),
+    );
+    painter.rect_filled(body, 3.0, color.gamma_multiply(0.18));
+    painter.rect_stroke(body, 3.0, stroke, egui::StrokeKind::Inside);
+    let shackle_y = rect.center().y - 1.0;
+    let shackle_top = rect.top() + 5.0;
+    painter.line_segment(
+        [
+            egui::pos2(rect.left() + 6.0, shackle_y),
+            egui::pos2(rect.left() + 6.0, shackle_top),
+        ],
+        stroke,
+    );
+    painter.line_segment(
+        [
+            egui::pos2(rect.right() - 6.0, shackle_y),
+            egui::pos2(rect.right() - 6.0, shackle_top),
+        ],
+        stroke,
+    );
+    painter.line_segment(
+        [
+            egui::pos2(rect.left() + 6.0, shackle_top),
+            egui::pos2(rect.right() - 6.0, shackle_top),
+        ],
+        stroke,
+    );
+    painter.circle_filled(egui::pos2(rect.center().x, rect.center().y + 3.0), 1.2, color);
+}
+
 /// Inline Public Games list — FFA + Teams sections filtered by [`MainMenuState::join_mode_filter`],
 /// or a muted empty-state hint. The caller owns any surrounding scroll area / frame so this can be
 /// dropped straight into the home screen (desktop column scroll, or the mobile page scroll).
@@ -237,7 +271,7 @@ fn draw_lobby_row(
     let card_w = side * (16.0 / 9.0);
     let response = ui.add(LobbyCard::new(lobby, thumbnail).width(card_w).side(side));
 
-    // Draw 🔒 badge overlay if password-protected
+    // Draw a glyph-free lock badge if password-protected.
     if lobby.has_password {
         let painter = ui.painter();
         let card_rect = response.rect;
@@ -245,10 +279,7 @@ fn draw_lobby_row(
         let lock_rect = egui::Rect::from_min_size(lock_pos, egui::vec2(28.0, 24.0));
         painter.rect_filled(lock_rect, 4.0, Color32::from_black_alpha(180));
         let icon_rect = egui::Rect::from_center_size(lock_rect.center(), egui::vec2(16.0, 16.0));
-        if !crate::widgets::try_paint_emoji(painter, "🔒", icon_rect, Color32::WHITE) {
-            let font_id = egui::FontId::proportional(14.0);
-            painter.text(lock_rect.center(), egui::Align2::CENTER_CENTER, "🔒", font_id, Color32::WHITE); // emoji-ok: fallback when try_paint_emoji misses
-        }
+        paint_lock_icon(painter, icon_rect, Color32::WHITE);
     }
 
     // Host name badge (top center area, below mode badge)

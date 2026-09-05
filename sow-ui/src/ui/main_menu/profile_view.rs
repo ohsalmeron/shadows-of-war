@@ -1,4 +1,5 @@
-use super::{MainMenuState, NativeProfileTab};
+use super::super::MainMenuState;
+use super::NativeProfileTab;
 use crate::kit::components::{Button, Card, Heading};
 use crate::ui::asset_loader::AssetLoader;
 use crate::ui::main_menu::layout;
@@ -9,7 +10,6 @@ use egui::{
 use sow_core::player::Leader;
 use sow_ui_kit::theme::palette;
 
-const MAX_WIDTH: f32 = 1180.0;
 const GAP: f32 = 8.0;
 const SECTION_GAP: f32 = 16.0;
 
@@ -730,59 +730,6 @@ fn draw_tab_content(
     }
 }
 
-fn draw_page_header(
-    ui: &mut Ui,
-    state: &mut MainMenuState,
-    name: &str,
-    handle: Option<&String>,
-    phone: bool,
-) {
-    Card::surface()
-        .padding(Margin::symmetric(if phone { 10 } else { 12 }, 8))
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.horizontal(|ui| {
-                if Button::ghost("BACK")
-                    .small()
-                    .min_size(Vec2::new(if phone { 68.0 } else { 76.0 }, 40.0))
-                    .show(ui)
-                    .clicked()
-                {
-                    state.go_home();
-                }
-                ui.add_space(10.0);
-                ui.vertical(|ui| {
-                    ui.label(
-                        RichText::new("PLAYER PROFILE")
-                            .size(10.0)
-                            .strong()
-                            .color(palette::neon_gold()),
-                    );
-                    ui.label(
-                        RichText::new(name.to_uppercase())
-                            .size(if phone { 18.0 } else { 22.0 })
-                            .strong(),
-                    );
-                    if let Some(handle) = handle {
-                        ui.label(
-                            RichText::new(handle)
-                                .size(10.0)
-                                .color(palette::text_muted()),
-                        );
-                    }
-                });
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    ui.label(
-                        RichText::new(format!("LEVEL {}", state.account_level))
-                            .size(11.0)
-                            .strong()
-                            .color(palette::neon_cyan()),
-                    );
-                });
-            });
-        });
-}
-
 fn draw_match_detail(
     root_ui: &mut Ui,
     screen: Rect,
@@ -888,17 +835,8 @@ pub fn draw_native(
     let screen = root_ui.available_rect_before_wrap();
     let metrics = layout::main_menu_metrics(root_ui.ctx());
     let phone = metrics.is_phone();
-    let mobile = screen.width() < screen.height();
+    let mobile = phone;
     let pad = metrics.outer_pad;
-    let content_width = (screen.width() - pad * 2.0).min(MAX_WIDTH).max(1.0);
-    let left = screen.min.x + ((screen.width() - content_width) * 0.5).max(0.0);
-    let profile_rect = Rect::from_min_size(
-        egui::pos2(left, screen.min.y),
-        Vec2::new(content_width, screen.height()),
-    );
-    root_ui
-        .painter()
-        .rect_filled(screen, 0.0, Color32::from_rgba_unmultiplied(5, 7, 12, 232));
 
     let name = state
         .profile
@@ -906,82 +844,92 @@ pub fn draw_native(
         .as_ref()
         .map(|view| view.display_name.clone())
         .unwrap_or_else(|| state.player_name.clone());
-    let handle = state.profile.view.as_ref().map(|view| view.handle.clone());
-
+    let body_rect = screen.shrink2(Vec2::new(pad, 8.0));
     root_ui.scope_builder(
         egui::UiBuilder::new()
-            .max_rect(profile_rect)
+            .max_rect(body_rect)
             .layout(Layout::top_down(Align::Min)),
         |ui| {
-            draw_page_header(ui, state, &name, handle.as_ref(), phone);
+            ui.set_clip_rect(ui.clip_rect().intersect(body_rect));
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new("PROFILE")
+                        .size(if phone { 20.0 } else { 28.0 })
+                        .strong()
+                        .color(palette::neon_cyan()),
+                );
+                ui.add_space(10.0);
+                ui.label(
+                    RichText::new(name.to_uppercase())
+                        .size(11.0)
+                        .strong()
+                        .color(palette::text_muted()),
+                );
+            });
             ui.add_space(8.0);
-            let body_rect = ui.available_rect_before_wrap();
-            ui.scope_builder(
-                egui::UiBuilder::new()
-                    .max_rect(body_rect)
-                    .layout(Layout::top_down(Align::Min)),
-                |ui| {
-                    ui.set_clip_rect(body_rect);
-                    egui::ScrollArea::vertical()
-                        .id_salt("native_profile_body")
-                        .auto_shrink([false, false])
-                        .max_height(body_rect.height())
-                        .show(ui, |ui| {
-                            let view = state.profile.view.clone();
-                            let profile_id = state.profile.public_id.clone();
-                            draw_identity(ui, view.as_ref(), state, assets, mobile, phone);
-                            ui.add_space(SECTION_GAP);
-                            draw_stats(ui, view.as_ref(), phone);
-                            ui.add_space(SECTION_GAP);
-                            draw_search(ui, state, action, phone);
-                            ui.add_space(SECTION_GAP);
-                            draw_tabs(ui, state, phone);
-                            ui.add_space(SECTION_GAP);
-                            draw_tab_content(
-                                ui,
-                                state,
-                                view.as_ref(),
-                                assets,
-                                action,
-                                phone,
-                                mobile,
-                            );
+            let view = state.profile.view.clone();
+            let profile_id = state.profile.public_id.clone();
 
-                            if let Some(error) = &state.profile.error {
-                                ui.add_space(SECTION_GAP);
-                                ui.label(RichText::new(error).color(palette::danger()));
-                            }
-                            if action.is_none()
-                                && state.profile.view.is_none()
-                                && !state.profile.loading
-                                && state.profile.error.is_none()
-                            {
-                                *action = Some(crate::UiAction::LoadOwnProfile);
-                                state.profile.loading = true;
-                            }
-                            if state.profile.loading {
-                                ui.add_space(GAP);
-                                ui.horizontal(|ui| {
-                                    ui.spinner();
-                                    ui.label("Loading...");
-                                });
-                            }
-                            if state.profile.error.is_some() {
-                                if let Some(profile_id) = profile_id
-                                    && Button::secondary("RETRY")
-                                        .small()
-                                        .min_size(Vec2::new(ui.available_width(), 40.0))
-                                        .show(ui)
-                                        .clicked()
-                                    && action.is_none()
-                                {
-                                    *action =
-                                        Some(crate::UiAction::OpenPublicProfilePage(profile_id));
-                                }
-                            }
+            // Identity, stats, search, and tabs are the fixed profile chrome.
+            // Only the selected tab's data scrolls, so changing tabs never
+            // makes the navigation disappear below a long history list.
+            draw_identity(ui, view.as_ref(), state, assets, mobile, phone);
+            ui.add_space(SECTION_GAP);
+            draw_stats(ui, view.as_ref(), phone);
+            ui.add_space(SECTION_GAP);
+            draw_search(ui, state, action, phone);
+            ui.add_space(SECTION_GAP);
+            draw_tabs(ui, state, phone);
+            ui.add_space(GAP);
+
+            if action.is_none()
+                && state.profile.view.is_none()
+                && !state.profile.loading
+                && state.profile.error.is_none()
+            {
+                *action = Some(crate::UiAction::LoadOwnProfile);
+                state.profile.loading = true;
+            }
+
+            egui::ScrollArea::vertical()
+                .id_salt("native_profile_tab_content")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    draw_tab_content(
+                        ui,
+                        state,
+                        view.as_ref(),
+                        assets,
+                        action,
+                        phone,
+                        mobile,
+                    );
+
+                    if let Some(error) = &state.profile.error {
+                        ui.add_space(SECTION_GAP);
+                        ui.label(RichText::new(error).color(palette::danger()));
+                    }
+                    if state.profile.loading {
+                        ui.add_space(GAP);
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label("Loading...");
                         });
-                },
-            );
+                    }
+                    if state.profile.error.is_some() {
+                        if let Some(profile_id) = profile_id
+                            && Button::secondary("RETRY")
+                                .small()
+                                .min_size(Vec2::new(ui.available_width(), 40.0))
+                                .show(ui)
+                                .clicked()
+                            && action.is_none()
+                        {
+                            *action = Some(crate::UiAction::OpenPublicProfilePage(profile_id));
+                        }
+                    }
+                });
         },
     );
 

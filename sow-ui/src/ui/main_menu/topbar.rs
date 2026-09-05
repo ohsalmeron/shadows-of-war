@@ -32,11 +32,12 @@ pub fn draw(
                 draw_avatar(ui, state, asset_loader);
                 draw_identity(ui, state, strings, if phone { 112.0 } else { 190.0 }, phone, action);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let settings = crate::widgets::ThemeButton::new("⚙")
-                        .style(crate::widgets::ThemeButtonStyle::Tertiary)
-                        .min_size(egui::vec2(AVATAR_SIZE, 42.0))
-                        .text_size(22.0);
-                    if ui.add(settings).clicked() {
+                    let (settings_rect, settings_response) = ui.allocate_exact_size(
+                        egui::vec2(AVATAR_SIZE, 42.0),
+                        egui::Sense::click(),
+                    );
+                    paint_settings_icon(ui, settings_rect, settings_response.hovered());
+                    if settings_response.clicked() {
                         *action = Some(crate::UiAction::ToggleSettings);
                     }
 
@@ -290,9 +291,39 @@ fn draw_progression(ui: &mut Ui, state: &MainMenuState) -> egui::Response {
     ui.painter().text(
         egui::pos2(xp_right + 10.0, rect.center().y),
         egui::Align2::LEFT_CENTER,
-        format!("◈ {}", state.laurels),
+        format!("{} L", state.laurels),
         egui::FontId::proportional(12.0),
         crate::kit::theme::palette::neon_gold(),
     );
     response
+}
+
+fn paint_settings_icon(ui: &mut Ui, rect: Rect, hovered: bool) {
+    let color = if hovered {
+        crate::kit::theme::palette::neon_cyan()
+    } else {
+        crate::kit::theme::palette::text_muted()
+    };
+    let stroke = Stroke::new(2.0_f32, color);
+    ui.painter().rect(
+        rect,
+        egui::CornerRadius::same(8),
+        if hovered {
+            Color32::from_white_alpha(18)
+        } else {
+            Color32::TRANSPARENT
+        },
+        Stroke::new(1.0_f32, Color32::from_white_alpha(24)),
+        egui::StrokeKind::Inside,
+    );
+    ui.painter().circle_stroke(rect.center(), 8.0, stroke);
+    ui.painter().circle_filled(rect.center(), 3.0, color);
+    for (dx, dy) in [(0.0, -11.0), (0.0, 11.0), (-11.0, 0.0), (11.0, 0.0)] {
+        let center = rect.center() + egui::vec2(dx, dy);
+        ui.painter().line_segment(
+            [center - egui::vec2(if dx == 0.0 { 2.0 } else { 0.0 }, if dy == 0.0 { 2.0 } else { 0.0 }),
+             center + egui::vec2(if dx == 0.0 { 2.0 } else { 0.0 }, if dy == 0.0 { 2.0 } else { 0.0 })],
+            stroke,
+        );
+    }
 }

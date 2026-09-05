@@ -246,122 +246,100 @@ pub fn draw(
     action: &mut Option<UiAction>,
 ) {
     asset_loader.ensure_store_leader_portraits_loaded(root_ui.ctx());
-    let screen = root_ui.ctx().content_rect();
-    root_ui.painter().rect_filled(
-        screen,
-        0.0,
-        Color32::from_rgba_unmultiplied(5, 7, 12, 230),
-    );
-
     let metrics = super::layout::main_menu_metrics(root_ui.ctx());
     Frame::NONE
-        .inner_margin(Margin::symmetric(metrics.outer_pad as i8, 12))
+        .inner_margin(Margin::symmetric(metrics.outer_pad as i8, 10))
         .show(root_ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                if Button::ghost("← BACK")
-                    .small()
-                    .min_size(egui::vec2(96.0, 44.0))
-                    .show(ui)
-                    .clicked()
-                {
-                    state.go_home();
-                }
-                ui.add_space(12.0);
+            ui.horizontal(|ui| {
                 ui.vertical(|ui| {
                     ui.label(RichText::new("STORE").size(11.0).strong().color(palette::neon_gold()));
                     ui.label(RichText::new("Build your war chest").size(24.0).strong());
                 });
                 ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(RichText::new(format!("◈ {} LAURELS", state.store_catalog.laurels)).strong().color(palette::neon_gold()));
+                    ui.label(RichText::new(format!("{} LAURELS", state.store_catalog.laurels)).strong().color(palette::neon_gold()));
                     ui.add_space(18.0);
-                    ui.label(RichText::new(format!("✦ {} GEMS", state.store_catalog.gems)).strong().color(palette::neon_cyan()));
+                    ui.label(RichText::new(format!("{} GEMS", state.store_catalog.gems)).strong().color(palette::neon_cyan()));
                 });
             });
-        });
-
-    Frame::NONE
-        .inner_margin(Margin::symmetric(metrics.outer_pad as i8, 8))
-        .show(root_ui, |ui| {
+            ui.add_space(8.0);
             egui::ScrollArea::vertical()
                 .id_salt("store_body_scroll")
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    ui.set_width(ui.available_width().min(1180.0));
-                    ui.vertical_centered(|ui| {
-                        ui.horizontal(|ui| {
-                            Heading::new("LEADERS").cyan().show(ui);
-                            ui.add_space(8.0);
-                            Subtitle::new("WEEKLY ROTATION · DISTINCT PERKS").muted().show(ui);
-                        });
+                    ui.set_width(ui.available_width());
+                    ui.horizontal(|ui| {
+                        Heading::new("LEADERS").cyan().show(ui);
                         ui.add_space(8.0);
-                        let leaders = &state.store_catalog.leaders;
-                        let columns = super::layout::main_menu_metrics(ui.ctx()).columns();
-                        ui.columns(columns, |columns| {
-                            let column_count = columns.len();
-                            for (idx, offer) in leaders.iter().enumerate() {
-                                draw_leader_card(&mut columns[idx % column_count], offer, asset_loader, action, state.store_busy);
-                            }
-                        });
-
-                        ui.add_space(18.0);
-                        ui.horizontal(|ui| {
-                            Heading::new("SKINS").cyan().show(ui);
-                            ui.add_space(8.0);
-                            Subtitle::new("COSMETICS · ALL LEADERS").muted().show(ui);
-                        });
-                        ui.add_space(8.0);
-                        let skins = &state.store_catalog.skins;
-                        let columns = super::layout::main_menu_metrics(ui.ctx()).columns();
-                        ui.columns(columns, |columns| {
-                            let column_count = columns.len();
-                            for (idx, skin) in skins.iter().enumerate() {
-                                draw_skin_card(
-                                    &mut columns[idx % column_count],
-                                    skin,
-                                    state.selected_skin.as_deref(),
-                                    action,
-                                    state.store_busy,
-                                );
-                            }
-                        });
-
-                        ui.add_space(18.0);
-                        ui.horizontal(|ui| {
-                            Heading::new("GEM BUNDLES").cyan().show(ui);
-                            ui.add_space(8.0);
-                            Subtitle::new("ONE-TIME PURCHASES").muted().show(ui);
-                        });
-                        ui.add_space(8.0);
-                        ui.horizontal_wrapped(|ui| {
-                            for bundle in &state.store_catalog.gem_bundles {
-                                Card::surface().show(ui, |ui| {
-                                    ui.set_min_width(220.0);
-                                    ui.vertical_centered(|ui| {
-                                        ui.label(RichText::new(format!("✦ {} GEMS", bundle.gems)).size(20.0).strong().color(palette::neon_cyan()));
-                                        ui.label(RichText::new("RevenueCat checkout").size(11.0).color(palette::text_muted()));
-                                        ui.add_space(8.0);
-                                        if Button::primary("BUY ONLINE")
-                                            .disabled(state.store_busy)
-                                            .small()
-                                            .min_size(egui::vec2(0.0, 44.0))
-                                            .show(ui)
-                                            .clicked()
-                                        {
-                                            *action = Some(UiAction::BuyGems(bundle.product_id.clone()));
-                                        }
-                                    });
-                                });
-                            }
-                        });
-                        if let Some(message) = &state.error_message {
-                            ui.add_space(12.0);
-                            ui.label(RichText::new(message).color(palette::danger()));
-                        }
-                        ui.add_space(24.0);
-                        BodyText::new("Digital items are delivered to your player account after the server confirms the purchase.")
-                            .muted()
-                            .show(ui);
+                        Subtitle::new("WEEKLY ROTATION · DISTINCT PERKS").muted().show(ui);
                     });
+                    ui.add_space(6.0);
+                    let leaders = &state.store_catalog.leaders;
+                    let columns = super::layout::main_menu_metrics(ui.ctx()).columns();
+                    ui.columns(columns, |columns| {
+                        let column_count = columns.len();
+                        for (idx, offer) in leaders.iter().enumerate() {
+                            draw_leader_card(&mut columns[idx % column_count], offer, asset_loader, action, state.store_busy);
+                        }
+                    });
+
+                    ui.add_space(14.0);
+                    ui.horizontal(|ui| {
+                        Heading::new("SKINS").cyan().show(ui);
+                        ui.add_space(8.0);
+                        Subtitle::new("COSMETICS · ALL LEADERS").muted().show(ui);
+                    });
+                    ui.add_space(6.0);
+                    let skins = &state.store_catalog.skins;
+                    let columns = super::layout::main_menu_metrics(ui.ctx()).columns();
+                    ui.columns(columns, |columns| {
+                        let column_count = columns.len();
+                        for (idx, skin) in skins.iter().enumerate() {
+                            draw_skin_card(
+                                &mut columns[idx % column_count],
+                                skin,
+                                state.selected_skin.as_deref(),
+                                action,
+                                state.store_busy,
+                            );
+                        }
+                    });
+
+                    ui.add_space(14.0);
+                    ui.horizontal(|ui| {
+                        Heading::new("GEM BUNDLES").cyan().show(ui);
+                        ui.add_space(8.0);
+                        Subtitle::new("ONE-TIME PURCHASES").muted().show(ui);
+                    });
+                    ui.add_space(6.0);
+                    ui.horizontal_wrapped(|ui| {
+                        for bundle in &state.store_catalog.gem_bundles {
+                            Card::surface().show(ui, |ui| {
+                                ui.set_min_width(220.0);
+                                ui.vertical_centered(|ui| {
+                                    ui.label(RichText::new(format!("{} GEMS", bundle.gems)).size(20.0).strong().color(palette::neon_cyan()));
+                                    ui.label(RichText::new("RevenueCat checkout").size(11.0).color(palette::text_muted()));
+                                    ui.add_space(6.0);
+                                    if Button::primary("BUY ONLINE")
+                                        .disabled(state.store_busy)
+                                        .small()
+                                        .min_size(egui::vec2(0.0, 44.0))
+                                        .show(ui)
+                                        .clicked()
+                                    {
+                                        *action = Some(UiAction::BuyGems(bundle.product_id.clone()));
+                                    }
+                                });
+                            });
+                        }
+                    });
+                    if let Some(message) = &state.error_message {
+                        ui.add_space(10.0);
+                        ui.label(RichText::new(message).color(palette::danger()));
+                    }
+                    ui.add_space(16.0);
+                    BodyText::new("Digital items are delivered to your player account after the server confirms the purchase.")
+                        .muted()
+                        .show(ui);
                 });
         });
 }
