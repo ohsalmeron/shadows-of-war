@@ -120,6 +120,30 @@ fn copy_dir(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
+fn refresh_map_thumbnails(maps_root: &Path) -> Result<()> {
+    let mut map_dirs = fs::read_dir(maps_root)
+        .with_context(|| format!("read maps directory {}", maps_root.display()))?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.path().is_dir())
+        .collect::<Vec<_>>();
+    map_dirs.sort_by_key(|entry| entry.file_name());
+
+    for entry in map_dirs {
+        let dir = entry.path();
+        let map_path = dir.join("map.bin");
+        if !map_path.is_file() {
+            continue;
+        }
+        let bytes = fs::read(&map_path)
+            .with_context(|| format!("read map {}", map_path.display()))?;
+        let map = sow_core::map_file::parse(&bytes)
+            .map_err(|error| anyhow::anyhow!("parse {}: {error}", map_path.display()))?;
+        sow_map::write_map_thumbnail(&map, &dir.join("thumbnail.webp"))
+            .map_err(|error| anyhow::anyhow!("write {} thumbnail: {error}", dir.display()))?;
+    }
+    Ok(())
+}
+
 fn require_file(path: &Path, label: &str) -> Result<()> {
     if !path.is_file() {
         bail!("{label} missing: {}", path.display());
@@ -678,6 +702,7 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
     if paths.assets_maps.is_dir() {
         copy_dir(&paths.assets_maps, &maps)?;
     }
+    refresh_map_thumbnails(&maps)?;
 
     run_bindgen(&paths.wasm_input, out, &format!("sow_client_{ts}"))?;
     copy_shell(paths, out)?;

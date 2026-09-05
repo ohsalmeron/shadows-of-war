@@ -345,9 +345,7 @@ fn write_placeholder_thumbnail(
     map_file: &MapFile,
     path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let preview =
-        sow_map::terrain_preview_image(map_file.width, map_file.height, &map_file.terrain);
-    sow_map::write_square_thumbnail(&preview, path).map_err(|e| e.into())
+    sow_map::write_map_thumbnail(map_file, path).map_err(|e| e.into())
 }
 
 pub fn refresh_catalog(maps_root: &Path) -> Result<(), Box<dyn std::error::Error>> {

@@ -375,11 +375,32 @@
     justify-content: center;
 }
 
-.sow-menu__menu-logo {
-    display: block;
-    width: min(250px, 82%);
-    height: auto;
-    margin: 0 auto 28px;
+.sow-menu__home-public {
+    order: 0;
+    width: 100%;
+}
+
+.sow-menu__home-public .sow-menu__public {
+    width: 100%;
+    min-height: 0;
+    max-height: none;
+    overflow: visible;
+}
+
+.sow-menu__home-public .sow-menu__lobbies {
+    max-height: none;
+    overflow: visible;
+}
+
+.sow-menu__home-actions {
+    order: 1;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+#sow-menu[data-screen="home"] .sow-menu__command {
+    justify-content: flex-start;
 }
 
 .sow-menu__eyebrow,
@@ -525,11 +546,6 @@
     box-shadow: 0 0 10px rgba(191, 82, 69, 0.7);
 }
 
-.sow-menu__status[data-connected="true"]::before {
-    background: #8ed36b;
-    box-shadow: 0 0 10px rgba(142, 211, 107, 0.7);
-}
-
 .sow-menu__status--error {
     color: #ffab9b;
 }
@@ -591,41 +607,12 @@
     backdrop-filter: blur(12px);
 }
 
-.sow-menu__public-head,
 .sow-menu__modal-head,
 .sow-menu__queue-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-}
-
-.sow-menu__public-head {
-    margin-bottom: 12px;
-}
-
-.sow-menu__filters {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-}
-
-.sow-menu__filter {
-    padding: 5px 8px;
-    border: 1px solid var(--sow-line);
-    border-radius: 3px;
-    background: transparent;
-    color: var(--sow-muted);
-    cursor: pointer;
-    font-size: 9px;
-    font-weight: 900;
-    letter-spacing: 0.1em;
-}
-
-.sow-menu__filter[data-active="true"] {
-    border-color: var(--sow-gold);
-    background: var(--sow-gold);
-    color: #19140c;
 }
 
 .sow-menu__lobbies {
@@ -636,28 +623,50 @@
 
 .sow-menu__lobby {
     position: relative;
-    min-height: 124px;
-    padding: 12px;
+    min-width: 0;
+    padding: 0;
     border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: 5px;
-    background: linear-gradient(135deg, rgba(17, 20, 26, 0.84), rgba(17, 20, 26, 0.5));
-    background-position: center;
-    background-size: cover;
     cursor: pointer;
     overflow: hidden;
+}
+
+.sow-menu__lobby-art {
+    display: block;
+    width: 100%;
+    height: auto;
 }
 
 .sow-menu__lobby::after {
     content: "";
     position: absolute;
-    inset: 0;
-    background: linear-gradient(0deg, rgba(8, 10, 14, 0.96), rgba(8, 10, 14, 0.2));
+    inset: 36% 0 0;
+    z-index: 1;
+    background: linear-gradient(0deg, rgba(8, 10, 14, 0.94), rgba(8, 10, 14, 0));
     pointer-events: none;
 }
 
-.sow-menu__lobby > * {
-    position: relative;
-    z-index: 1;
+.sow-menu__lobby-top,
+.sow-menu__lobby h3,
+.sow-menu__lobby-bottom {
+    position: absolute;
+    z-index: 2;
+    left: 12px;
+    right: 12px;
+}
+
+.sow-menu__lobby-top {
+    top: 12px;
+}
+
+.sow-menu__lobby h3 {
+    right: 12px;
+    bottom: 34px;
+    margin: 0;
+}
+
+.sow-menu__lobby-bottom {
+    bottom: 12px;
 }
 
 .sow-menu__lobby:hover {
@@ -691,7 +700,6 @@
 }
 
 .sow-menu__lobby h3 {
-    margin: 28px 0 8px;
     font-size: 16px;
     text-transform: uppercase;
 }
@@ -1850,15 +1858,16 @@
 }
 
 #sow-menu[data-screen="home"] .sow-menu__main {
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
 }
 
 #sow-menu[data-screen="home"] .sow-menu__public {
     min-height: 0;
     overflow-x: hidden;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
+    overflow-y: visible;
 }
 
 #sow-menu .sow-menu__mobile-nav {
@@ -1868,6 +1877,7 @@
 #sow-menu[data-screen="browser"] .sow-menu__main,
 #sow-menu[data-screen="create"] .sow-menu__main,
 #sow-menu[data-screen="queue"] .sow-menu__main,
+#sow-menu[data-screen="heroes"] .sow-menu__main,
 #sow-menu[data-screen="store"] .sow-menu__main {
     overflow-x: hidden;
     overflow-y: auto;
@@ -1912,6 +1922,7 @@
     #sow-menu[data-screen="browser"] .sow-menu__main,
     #sow-menu[data-screen="create"] .sow-menu__main,
     #sow-menu[data-screen="queue"] .sow-menu__main,
+    #sow-menu[data-screen="heroes"] .sow-menu__main,
     #sow-menu[data-screen="store"] .sow-menu__main {
         overflow-y: auto;
     }
@@ -1986,22 +1997,33 @@
         outline-offset: -2px;
     }
 
-    #sow-menu[data-screen="home"] .sow-menu__menu-logo,
-    #sow-menu[data-screen="home"] .sow-menu__public {
-        display: none;
-    }
-
     #sow-menu[data-screen="home"] .sow-menu__main {
-        overflow: hidden;
+        overflow-x: hidden;
+        overflow-y: auto;
     }
 
     #sow-menu[data-screen="home"] .sow-menu__command {
         flex: 1 1 auto;
-        justify-content: center;
-        overflow: hidden;
+        justify-content: flex-start;
+        overflow: visible;
         padding: 14px;
         border-top: 2px solid var(--sow-gold);
         border-left: 0;
+    }
+
+    #sow-menu[data-screen="home"] .sow-menu__home-public {
+        order: 0;
+        margin-top: 0;
+        padding-top: 0;
+    }
+
+    #sow-menu[data-screen="home"] .sow-menu__home-actions {
+        order: 1;
+    }
+
+    #sow-menu[data-screen="home"] .sow-menu__lobbies {
+        max-height: none;
+        overflow: visible;
     }
 
     #sow-menu[data-screen="home"] .sow-menu__battlefield {
@@ -2011,6 +2033,7 @@
     #sow-menu[data-screen="browser"] .sow-menu__main,
     #sow-menu[data-screen="create"] .sow-menu__main,
     #sow-menu[data-screen="queue"] .sow-menu__main,
+    #sow-menu[data-screen="heroes"] .sow-menu__main,
     #sow-menu[data-screen="store"] .sow-menu__main {
         padding-right: 1px;
         padding-bottom: 2px;

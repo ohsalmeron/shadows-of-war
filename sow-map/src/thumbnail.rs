@@ -5,6 +5,8 @@ use image::imageops::FilterType;
 use image::{DynamicImage, ExtendedColorType, RgbaImage};
 use std::path::Path;
 
+use sow_core::map_file::MapFile;
+
 /// Lobby / catalog preview edge length (keep small for WASM/catalog fetch).
 pub const THUMBNAIL_SIZE: u32 = 512;
 
@@ -18,6 +20,12 @@ pub fn encode_square_thumbnail_webp(img: &DynamicImage) -> Result<Vec<u8>, Strin
 pub fn write_square_thumbnail(img: &DynamicImage, path: &Path) -> Result<(), String> {
     let bytes = encode_square_thumbnail_webp(img)?;
     std::fs::write(path, bytes).map_err(|e| e.to_string())
+}
+
+/// Generate the canonical lobby thumbnail from packed terrain data.
+pub fn write_map_thumbnail(map: &MapFile, path: &Path) -> Result<(), String> {
+    let preview = terrain_preview_image(map.width, map.height, &map.terrain);
+    write_square_thumbnail(&preview, path)
 }
 
 pub fn write_square_thumbnail_from_rgba(rgba: &RgbaImage, path: &Path) -> Result<(), String> {

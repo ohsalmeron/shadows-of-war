@@ -79,17 +79,18 @@
     function renderCommandPanel() {
         return "" +
             "<section class='sow-menu__command'>" +
-                "<img class='sow-menu__menu-logo' src='/sow-long.svg' alt='Shadows of War'>" +
-                "<button class='sow-menu__primary' type='button' data-command='quick_match'>QUICK MATCH <span>↗</span></button>" +
-                "<button class='sow-menu__secondary' type='button' data-command='open_browser'>LOBBY BROWSER <span>→</span></button>" +
-                "<form class='sow-menu__join' data-form='join'>" +
-                    "<input name='code' inputmode='numeric' autocomplete='off' placeholder='LOBBY CODE' aria-label='Lobby code'>" +
-                    "<button type='submit'>JOIN</button>" +
-                "</form>" +
-                "<button class='sow-menu__secondary' type='button' data-command='open_create'>CREATE CUSTOM GAME <span>+</span></button>" +
-                "<button class='sow-menu__secondary' type='button' data-command='mobile_nav' data-mobile-screen='store'>STORE <span>↗</span></button>" +
-                "<div class='sow-menu__status' data-connection data-connected='false'>CONNECTING...</div>" +
-                renderFeedback() +
+                "<div class='sow-menu__home-public'>" + renderPublicPanel() + "</div>" +
+                "<div class='sow-menu__home-actions'>" +
+                    "<button class='sow-menu__primary' type='button' data-command='quick_match'>QUICK MATCH <span>↗</span></button>" +
+                    "<button class='sow-menu__secondary' type='button' data-command='open_browser'>LOBBY BROWSER <span>→</span></button>" +
+                    "<form class='sow-menu__join' data-form='join'>" +
+                        "<input name='code' inputmode='numeric' autocomplete='off' placeholder='LOBBY CODE' aria-label='Lobby code'>" +
+                        "<button type='submit'>JOIN</button>" +
+                    "</form>" +
+                    "<button class='sow-menu__secondary' type='button' data-command='open_create'>CREATE CUSTOM GAME <span>+</span></button>" +
+                    "<button class='sow-menu__secondary' type='button' data-command='mobile_nav' data-mobile-screen='store'>STORE <span>↗</span></button>" +
+                    renderFeedback() +
+                "</div>" +
             "</section>";
     }
 
@@ -121,16 +122,8 @@
             } else if (lobby.kind !== "Custom" || lobby.is_private) {
                 return false;
             }
-            if (filter === "all") return true;
-            if (filter === "ffa") return lobby.game_mode === "FFA";
-            if (filter === "teams") return lobby.game_mode === "Teams";
-            return lobby.game_mode === "HumansVsNations";
+            return true;
         });
-    }
-
-    function filterButton(id, label) {
-        return "<button class='sow-menu__filter' type='button' data-command='filter' data-filter='" + id +
-            "' data-active='" + (filter === id) + "'>" + label + "</button>";
     }
 
     function lobbyTimerText(lobby) {
@@ -143,7 +136,8 @@
         var label = (lobby.game_mode || "FFA") + " " + (lobby.map_name || "WORLD MAP");
         return "" +
             "<article class='sow-menu__lobby' role='button' tabindex='0' aria-label='" + esc(label) + "' data-command='join_lobby' data-lobby-id='" + lobby.id +
-                "' style=\"background-image:url('" + esc(lobbyThumb(lobby)) + "')\">" +
+                "'>" +
+                "<img class='sow-menu__lobby-art' src='" + esc(lobbyThumb(lobby)) + "' alt='' loading='lazy' decoding='async'>" +
                 "<div class='sow-menu__lobby-top'><span>" + esc(lobby.game_mode || "FFA") + "</span><span data-timer-for='" + lobby.id + "'></span>" + lock + "</div>" +
                 "<h3>" + esc(lobby.map_name || "WORLD MAP") + "</h3>" +
                 "<div class='sow-menu__lobby-bottom'><span>" + esc(lobby.host_name || "OPEN LOBBY") + "</span><span>JOIN ↗</span></div>" +
@@ -158,11 +152,6 @@
         }
         return "" +
             "<section class='sow-menu__public'>" +
-                "<div class='sow-menu__public-head'>" +
-                    "<p class='sow-menu__panel-label'>PUBLIC GAMES</p>" +
-                    "<div class='sow-menu__filters'>" + filterButton("all", "ALL") + filterButton("ffa", "FFA") +
-                        filterButton("teams", "TEAMS") + filterButton("hvn", "HVN") + "</div>" +
-                "</div>" +
                 "<div class='sow-menu__lobbies'>" + cards + "</div>" +
             "</section>";
     }
@@ -201,7 +190,6 @@
                     "<section class='sow-menu__battlefield'>" +
                         "<div class='sow-menu__leader-copy'><small>" + esc(leader.civilization) + "</small><h2>" + esc(leader.name) +
                             "</h2><p>" + esc(leader.perk) + "</p></div>" +
-                        renderPublicPanel() +
                     "</section>" +
                 "</main>" +
                 renderFooter("") + renderMobileNav("battle") +
@@ -241,15 +229,6 @@
                     "</section>" +
                     "<section class='sow-menu__battlefield'>" +
                         "<section class='sow-menu__public'>" +
-                            "<div class='sow-menu__public-head'>" +
-                                "<p class='sow-menu__panel-label'>PUBLIC GAMES (" + lobbies.length + ")</p>" +
-                                "<div class='sow-menu__filters'>" +
-                                    filterButton("all", "ALL") +
-                                    filterButton("ffa", "FFA") +
-                                    filterButton("teams", "TEAMS") +
-                                    filterButton("hvn", "HVN") +
-                                "</div>" +
-                            "</div>" +
                             "<div class='sow-menu__browser-search'>" +
                                 "<input data-role='browser-search' type='search' placeholder='Search by map or host name...' value=\"" + esc(browserSearchQuery) + "\">" +
                             "</div>" +
@@ -354,6 +333,37 @@
                     "<p class='sow-store__fineprint'>Digital items delivered instantly to your account. <strong>All sales are final — no refunds.</strong> Buying means you consent to immediate delivery and give up the statutory withdrawal right where applicable. See <a href='https://shadowsofwar.io/terms/' target='_blank' rel='noopener'>Terms</a>.</p></section>" +
                 "</section></main>" +
                 renderFooter("STORE") + renderMobileNav("store") +
+            "</div>";
+    }
+
+    function renderHeroesCard(leader, activeId) {
+        var selected = leader.id === activeId;
+        var avatarUrl = asset("gameplay/avatars/" + leader.slug + ".webp");
+        return "<button class='sow-heroes__card" + (selected ? " is-selected" : "") + "' type='button' data-command='preview_leader' data-leader-id='" + esc(leader.id) + "' aria-pressed='" + selected + "'>" +
+            "<span class='sow-heroes__card-art' style=\"background-image:url('" + esc(avatarUrl) + "')\"></span>" +
+            "<span class='sow-heroes__card-copy'><strong>" + esc(leader.name) + "</strong><small>" + esc(leader.civilization) + "</small><em>" + esc(leader.perk || "Command trait") + "</em></span>" +
+            (selected ? "<span class='sow-heroes__card-state'>SELECTED</span>" : "") +
+            "</button>";
+    }
+
+    function renderHeroes() {
+        var leaders = state && Array.isArray(state.leaders) ? state.leaders : [];
+        var activeId = tempSelectedLeader || (state && state.selected_leader) || "Caesar";
+        var activeLeader = leaderById(activeId);
+        var heroPortrait = asset("shell/leaders/" + activeLeader.slug + "_desktop.webp");
+        var mobilePortrait = asset("shell/leaders/" + activeLeader.slug + "_mobile.webp");
+        return "" +
+            "<div class='sow-menu__backdrop sow-heroes__backdrop'></div>" +
+            "<div class='sow-menu__shell sow-menu__heroes'>" +
+                renderTopbar() +
+                "<main class='sow-menu__main sow-menu__main--heroes'><section class='sow-menu__heroes-slot' aria-label='Heroes'>" +
+                    "<header class='sow-heroes__heading'><div><p class='sow-heroes__eyebrow'>COMMAND ROSTER</p><h1>Heroes</h1><p>Choose the commander who defines your campaign.</p></div><span class='sow-heroes__count'>" + leaders.length + " HISTORICAL LEADERS</span></header>" +
+                    "<div class='sow-heroes__workspace'>" +
+                        "<section class='sow-heroes__featured' aria-labelledby='sow-heroes-selected'><picture><source media='(max-width: 700px)' srcset='" + esc(mobilePortrait) + "'><img src='" + esc(heroPortrait) + "' alt='" + esc(activeLeader.name) + "' width='720' height='480' fetchpriority='high'></picture><div class='sow-heroes__featured-copy'><p class='sow-heroes__featured-label'>SELECTED COMMANDER</p><h2 id='sow-heroes-selected'>" + esc(activeLeader.name) + "</h2><p class='sow-heroes__civilization'>" + esc(activeLeader.civilization) + "</p><p class='sow-heroes__perk'>" + esc(activeLeader.perk || "Enhanced military & empire bonuses.") + "</p><button class='sow-menu__primary sow-heroes__confirm' type='button' data-command='confirm_leader' data-leader-id='" + esc(activeLeader.id) + "'>CONFIRM " + esc(activeLeader.name.toUpperCase()) + " <span>✓</span></button></div></section>" +
+                        "<section class='sow-heroes__roster' aria-labelledby='sow-heroes-roster-title'><div class='sow-heroes__section-head'><h2 id='sow-heroes-roster-title'>All heroes</h2><span>Tap a commander to preview</span></div><div class='sow-heroes__grid'>" + (leaders.map(function (leader) { return renderHeroesCard(leader, activeId); }).join("") || "<p class='sow-menu__empty'>No heroes available.</p>") + "</div></section>" +
+                    "</div>" +
+                "</section></main>" +
+                renderFooter("HEROES") + renderMobileNav("heroes") +
             "</div>";
     }
 
@@ -925,6 +935,7 @@
         else if (screen === "create") root.innerHTML = renderCreate();
         else if (screen === "queue") root.innerHTML = renderQueue();
         else if (screen === "profile") root.innerHTML = renderProfile();
+        else if (screen === "heroes") root.innerHTML = renderHeroes();
         else if (screen === "store") root.innerHTML = renderStore();
         else root.innerHTML = "";
 
@@ -960,11 +971,6 @@
 
     function updateDynamic() {
         if (!state || root.hidden) return;
-        var connection = root.querySelector("[data-connection]");
-        if (connection) {
-            connection.dataset.connected = String(!!state.connected);
-            connection.textContent = state.connected ? "ONLINE" : (state.connecting ? "CONNECTING..." : "OFFLINE · RETRYING");
-        }
         var progression = root.querySelector("[data-progression]");
         if (progression) {
             var progressionXp = Math.max(0, Number(state.xp) || 0);
@@ -1009,7 +1015,7 @@
                 profilePublicId = null;
                 profileMatchDetail = null;
                 mobileStoreOpen = false;
-                leaderPickerOpen = true;
+                mobileHeroesOpen = true;
                 tempSelectedLeader = state ? state.selected_leader : "Caesar";
                 render();
                 return;
@@ -1025,6 +1031,7 @@
             }
             if (mobileScreen === "store") {
                 profileOpen = false;
+                mobileHeroesOpen = false;
                 mobileStoreOpen = true;
                 render();
                 return;
@@ -1032,6 +1039,7 @@
             profileOpen = false;
             profilePublicId = null;
             profileMatchDetail = null;
+            mobileHeroesOpen = false;
             mobileStoreOpen = false;
             if (state.show_browser || state.show_create) {
                 send("close_overlay");
@@ -1042,12 +1050,14 @@
         }
         if (command === "open_profile" || command === "open_public_profile") {
             mobileStoreOpen = false;
+            mobileHeroesOpen = false;
             openProfile(target.dataset.profileId || null);
             return;
         }
         if (command === "close_profile") {
             profileOpen = false;
             mobileStoreOpen = false;
+            mobileHeroesOpen = false;
             profilePublicId = null;
             profileData = null;
             profileSearchResults = [];
@@ -1171,7 +1181,8 @@
         }
         if (command === "open_leader_picker") {
             mobileStoreOpen = false;
-            leaderPickerOpen = true;
+            mobileHeroesOpen = true;
+            leaderPickerOpen = false;
             tempSelectedLeader = state ? state.selected_leader : "Caesar";
             settingsOpen = false;
             render();
@@ -1179,6 +1190,7 @@
         }
         if (command === "close_leader_picker") {
             leaderPickerOpen = false;
+            mobileHeroesOpen = false;
             tempSelectedLeader = null;
             render();
             return;
@@ -1193,6 +1205,7 @@
             if (leaderId) {
                 send("set_leader", { leader_id: leaderId });
                 leaderPickerOpen = false;
+                mobileHeroesOpen = false;
                 tempSelectedLeader = null;
                 render();
             }
@@ -1296,11 +1309,6 @@
             render();
             return;
         }
-        if (command === "filter") {
-            filter = target.dataset.filter || "all";
-            render();
-            return;
-        }
         if (command === "close_password") {
             passwordLobbyId = null;
             passwordDraft = "";
@@ -1349,6 +1357,7 @@
         if (command === "set_leader") {
             if (send("set_leader", { leader_id: target.dataset.leaderId })) {
                 leaderPickerOpen = false;
+                mobileHeroesOpen = false;
             }
             return;
         }
@@ -1496,8 +1505,6 @@
                 if (!cards) cards = "<div class='sow-menu__empty'>No public games match your search.</div>";
                 var lobbiesContainer = publicPanel.querySelector(".sow-menu__lobbies");
                 if (lobbiesContainer) lobbiesContainer.innerHTML = cards;
-                var label = publicPanel.querySelector(".sow-menu__panel-label");
-                if (label) label.textContent = "PUBLIC GAMES (" + lobbies.length + ")";
             }
         }
         var createForm = input.closest("form[data-form='create']");

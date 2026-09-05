@@ -8,7 +8,6 @@
     var lastRaw = "";
     var lastRenderKey = "";
     var previousScreen = null;
-    var filter = "all";
     var leaderPickerOpen = false;
     var tempSelectedLeader = null;
     var browserSearchQuery = "";
@@ -25,6 +24,7 @@
     var profileLoading = false;
     var profileError = "";
     var mobileStoreOpen = false;
+    var mobileHeroesOpen = false;
     var createDraft = null;
     var createOffline = false;
     var createPrivate = false;
@@ -87,6 +87,7 @@
     function currentScreen() {
         if (!state) return "boot";
         if (profileOpen) return "profile";
+        if (mobileHeroesOpen) return "heroes";
         if (mobileStoreOpen) return "store";
         if (state.waiting) return "queue";
         if (state.show_create) return "create";
@@ -253,8 +254,6 @@
             waiting: state.waiting,
             browser: state.show_browser,
             create: state.show_create,
-            connected: state.connected,
-            connecting: state.connecting,
             name: state.player_name,
             locked: state.name_locked,
             leader: state.selected_leader,
