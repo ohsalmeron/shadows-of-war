@@ -62,9 +62,10 @@ f50016188c128b1dfe15418e3fdbf68ac97204050016f14cb7a65a0e9095a036  sow-ui/src/ui/
 bbf61b52358055d9287c32b1e15ef455b5408f34490fb26ef0253d67dff93a58  sow-ui/src/ui/main_menu/join_browser.rs
 982d3cb6104bebbc0ff4bd3484cbfd559e1b74e255e20e001c8f3d80882050a9  sow-ui/src/ui/main_menu/layout.rs
 efdefd57ad9838b71288944acd8cf1d1ef36df7d82c815c9e1c4fe55c622e2ac  sow-ui/src/ui/main_menu/layout_tests.rs
-71461eb65bbf1f6bab433c9d37e3ce5bec5110dd9f11c15ae805abb9bcacdc37  sow-ui/src/ui/main_menu/mod.rs
+6225aab8d89ace556aa8d1c77eaede9026fc09f1c793ba39a611cc989f087fd1  sow-ui/src/ui/main_menu/mod.rs
 62c787500bac89b08f26d6f4981b462630459f5e656edf4e00d48046f57b7189  sow-ui/src/ui/main_menu/modals.rs
-ac37453e576cb690cb410e839881f8c3c1a58093a57b01c36e7dadf44db2d1dd  sow-ui/src/ui/main_menu/profile.rs
+47dcbb14d85a630d0cfcae95292cf09e955926a058be6395b9455399d40914fe  sow-ui/src/ui/main_menu/profile.rs
+3553ab390dabffaa9365b89ff94a5a608e77f805c7ab28554d7671f01fcfff8c  sow-ui/src/ui/main_menu/profile_view.rs
 0a413f8595b95c94aec2cbcfba5e9aab76d128505d5c872277987e82ca990f14  sow-ui/src/ui/main_menu/queue_overlay.rs
 488838e8b9744c7c35857c6773b2af63f5607f0083b07ce9908b871dc694fa09  sow-ui/src/ui/main_menu/store.rs
 a3592f0efc09e39e3202e5384fd8be2e32a8856b6c64bae039b4161f7145be92  sow-ui/src/ui/main_menu/topbar.rs

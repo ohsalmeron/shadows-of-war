@@ -589,7 +589,9 @@ pub fn draw(
 
     match state.visible_route() {
         MainMenuRoute::Store => store::draw(root_ui, state, asset_loader, &mut action),
-        MainMenuRoute::Profile => profile::draw_native(root_ui, state, &mut action),
+        MainMenuRoute::Profile => {
+            profile::draw_native(root_ui, state, asset_loader, &mut action)
+        }
         MainMenuRoute::Create => custom_game::draw(
             root_ui,
             state,
