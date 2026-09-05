@@ -143,6 +143,19 @@ pub(crate) fn fill_terrain_buffer(
             let dst = (y * terrain_bytes_per_row + x * 4) as usize;
 
             let terrain_byte = terrain[src];
+            if terrain_byte & 0xa0 == 0x20 {
+                // Ocean RGB occupies the unused normal/noise channels. Match the
+                // thumbnail palette once at upload, without per-fragment math.
+                let adj = (1.0 - ((terrain_byte & 0x1f) as f32 / 2.0).min(10.0)) as i16;
+                let color = if terrain_byte & 0x40 != 0 {
+                    [100, 143, 255]
+                } else {
+                    [(70 + adj) as u8, (132 + adj) as u8, (180 + adj) as u8]
+                };
+                terrain_slice[dst] = terrain_byte;
+                terrain_slice[dst + 1..dst + 4].copy_from_slice(&color);
+                continue;
+            }
             let (dx, dy) = compute_terrain_gradient(x, y, width, height, terrain);
 
             let packed_dx = (((dx + 8.0) / 16.0) * 255.0).round().clamp(0.0, 255.0) as u8;

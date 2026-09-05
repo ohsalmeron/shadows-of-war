@@ -227,7 +227,7 @@ fn shade_map(in: VertexOutput) -> vec3<f32> {
         let is_ocean_water = (terrain_byte & 0x20u) != 0u;
 
         // Flat water — no procedural waves (they moiré into diagonal scanlines when zoomed out)
-        var color_flat = vec3<f32>(65.0 / 255.0, 128.0 / 255.0, 175.0 / 255.0);
+        var color_flat = terrain_rgba.yzw; // Ocean palette baked into the existing terrain texel
         if !is_ocean_water {
             // Fresh teal/cyan inland water (lakes & rivers) contrasting clearly with land
             color_flat = vec3<f32>(52.0 / 255.0, 160.0 / 255.0, 196.0 / 255.0);

@@ -92,38 +92,47 @@
             + '  <label class="sow-hud__setting-row"><span>Reduced motion</span><input type="checkbox" data-hud-setting="reduced_motion"></label>'
             + '</aside>'
             + '<footer class="sow-hud__dock" id="sow-hud-dock">'
-            + '  <div class="sow-hud__dock-resources">'
-            + '    <div class="sow-hud__resource sow-hud__gold" title="Gold Treasury"><span class="sow-hud__icon">🪙</span> <b data-role="gold">0</b></div>'
-            + '    <div class="sow-hud__resource sow-hud__troops" title="Troop Pool"><span class="sow-hud__icon">🌾</span> <b data-role="troops">0</b></div>'
-            + '    <div class="sow-hud__resource sow-hud__prod" title="Production"><span class="sow-hud__icon">⚙️</span> <b data-role="prod">+0/s</b></div>'
-            + '  </div>'
-            + '  <div class="sow-hud__dock-inner">'
-            + '    <button type="button" class="sow-hud__deploy-btn" data-command="spawn_troops" id="sow-hud-deploy-btn">'
-            + '      <span>DEPLOY REINFORCEMENTS</span>'
-            + '      <small id="sow-hud-deploy-timer">READY</small>'
-            + '    </button>'
-            + '    <div class="sow-hud__buildings-strip" id="sow-hud-buildings-strip">'
-            + '      <button type="button" class="sow-hud__bld-btn" data-command="build_structure" data-kind="City" id="sow-hud-bld-city">'
-            + '        <span class="sow-hud__bld-icon">🏛️</span>'
-            + '        <b class="sow-hud__bld-name">City</b>'
-            + '        <small class="sow-hud__bld-cost" id="sow-hud-cost-city">100g</small>'
-            + '      </button>'
-            + '      <button type="button" class="sow-hud__bld-btn" data-command="build_structure" data-kind="Factory" id="sow-hud-bld-factory">'
-            + '        <span class="sow-hud__bld-icon">🏭</span>'
-            + '        <b class="sow-hud__bld-name">Factory</b>'
-            + '        <small class="sow-hud__bld-cost" id="sow-hud-cost-factory">200g</small>'
-            + '      </button>'
-            + '      <button type="button" class="sow-hud__bld-btn" data-command="build_structure" data-kind="Port" id="sow-hud-bld-port">'
-            + '        <span class="sow-hud__bld-icon">⚓</span>'
-            + '        <b class="sow-hud__bld-name">Port</b>'
-            + '        <small class="sow-hud__bld-cost" id="sow-hud-cost-port">150g</small>'
-            + '      </button>'
-            + '      <button type="button" class="sow-hud__bld-btn" data-command="build_structure" data-kind="Bunker" id="sow-hud-bld-bunker">'
-            + '        <span class="sow-hud__bld-icon">🛡️</span>'
-            + '        <b class="sow-hud__bld-name">Bunker</b>'
-            + '        <small class="sow-hud__bld-cost" id="sow-hud-cost-bunker">75g</small>'
-            + '      </button>'
-            + '      <button type="button" class="sow-hud__cancel-btn hidden" data-command="cancel_placement" id="sow-hud-cancel-placement">✕ Cancel</button>'
+            + '  <div class="sow-hud__dock-inner" id="sow-hud-dock-inner">'
+            + '    <div class="sow-hud__dock-actions">'
+            + '      <div class="sow-hud__deploy-panel hidden" id="sow-hud-deploy-btn">'
+            + '        <span class="sow-hud__deploy-title">CHOOSE SPAWN LOCATION</span>'
+            + '        <b class="sow-hud__deploy-timer" id="sow-hud-deploy-timer">READY</b>'
+            + '      </div>'
+            + '      <div class="sow-hud__buildings-strip" id="sow-hud-buildings-strip">'
+            + '        <button type="button" class="sow-hud__bld-btn" data-command="build_structure" data-kind="City" id="sow-hud-bld-city">'
+            + '          <span class="sow-hud__bld-icon">🏛️</span>'
+            + '          <b class="sow-hud__bld-name">City</b>'
+            + '          <small class="sow-hud__bld-cost" id="sow-hud-cost-city">100g</small>'
+            + '        </button>'
+            + '        <button type="button" class="sow-hud__bld-btn" data-command="build_structure" data-kind="Factory" id="sow-hud-bld-factory">'
+            + '          <span class="sow-hud__bld-icon">🏭</span>'
+            + '          <b class="sow-hud__bld-name">Factory</b>'
+            + '          <small class="sow-hud__bld-cost" id="sow-hud-cost-factory">200g</small>'
+            + '        </button>'
+            + '        <button type="button" class="sow-hud__bld-btn" data-command="build_structure" data-kind="Port" id="sow-hud-bld-port">'
+            + '          <span class="sow-hud__bld-icon">⚓</span>'
+            + '          <b class="sow-hud__bld-name">Port</b>'
+            + '          <small class="sow-hud__bld-cost" id="sow-hud-cost-port">150g</small>'
+            + '        </button>'
+            + '        <button type="button" class="sow-hud__bld-btn" data-command="build_structure" data-kind="Bunker" id="sow-hud-bld-bunker">'
+            + '          <span class="sow-hud__bld-icon">🛡️</span>'
+            + '          <b class="sow-hud__bld-name">Bunker</b>'
+            + '          <small class="sow-hud__bld-cost" id="sow-hud-cost-bunker">75g</small>'
+            + '        </button>'
+            + '        <button type="button" class="sow-hud__cancel-btn hidden" data-command="cancel_placement" id="sow-hud-cancel-placement">✕ Cancel</button>'
+            + '      </div>'
+            + '    </div>'
+            + '    <div class="sow-hud__resource-row" id="sow-hud-resource-row">'
+            + '      <div class="sow-hud__res-rate" id="sow-hud-res-rate" title="Troop Production Rate">'
+            + '        <span class="sow-hud__rate-text" data-role="prod">⚔ +0/s</span>'
+            + '      </div>'
+            + '      <div class="sow-hud__res-bar-wrap" title="Troop Pool / Capacity">'
+            + '        <div class="sow-hud__res-bar-fill" id="sow-hud-troop-fill" style="width: 0%;"></div>'
+            + '        <span class="sow-hud__res-bar-text" data-role="troops">0 / 0 ⚔</span>'
+            + '      </div>'
+            + '      <div class="sow-hud__res-gold" id="sow-hud-res-gold" title="Gold Treasury">'
+            + '        <span class="sow-hud__gold-text" data-role="gold">🪙 0</span>'
+            + '      </div>'
             + '    </div>'
             + '  </div>'
             + '</footer>'
@@ -224,8 +233,10 @@
             devSidebar: document.getElementById("sow-hud-dev-sidebar"),
             devBtn: document.getElementById("sow-hud-dev-btn"),
             settings: document.getElementById("sow-hud-settings"),
+            dockInner: document.getElementById("sow-hud-dock-inner"),
             deployBtn: document.getElementById("sow-hud-deploy-btn"),
             deployTimer: document.getElementById("sow-hud-deploy-timer"),
+            troopFill: document.getElementById("sow-hud-troop-fill"),
             bldStrip: document.getElementById("sow-hud-buildings-strip"),
             bldCity: document.getElementById("sow-hud-bld-city"),
             bldFactory: document.getElementById("sow-hud-bld-factory"),
@@ -467,20 +478,28 @@
         var isDeploying = spawnSecs != null && spawnSecs > 0;
 
         if (hudRefs.gold && hudRefs.gold.dataset.val !== String(gold)) {
-            hudRefs.gold.textContent = gold.toLocaleString();
+            hudRefs.gold.textContent = '🪙 ' + gold.toLocaleString();
             hudRefs.gold.dataset.val = String(gold);
         }
 
         if (hudRefs.troops) {
-            var troopText = maxTroops > 0 ? troops.toLocaleString() + ' / ' + maxTroops.toLocaleString() : troops.toLocaleString();
+            var troopText = maxTroops > 0 ? troops.toLocaleString() + ' / ' + maxTroops.toLocaleString() + ' ⚔' : troops.toLocaleString() + ' ⚔';
             if (hudRefs.troops.dataset.val !== troopText) {
                 hudRefs.troops.textContent = troopText;
                 hudRefs.troops.dataset.val = troopText;
             }
         }
 
+        if (hudRefs.troopFill) {
+            var fillPct = maxTroops > 0 ? Math.min(100, Math.max(0, (troops / maxTroops) * 100)) : 0;
+            var fillStr = fillPct.toFixed(1) + '%';
+            if (hudRefs.troopFill.style.width !== fillStr) {
+                hudRefs.troopFill.style.width = fillStr;
+            }
+        }
+
         if (hudRefs.prod && hudRefs.prod.dataset.val !== String(prod)) {
-            hudRefs.prod.textContent = '+' + prod + '/s';
+            hudRefs.prod.textContent = '⚔ +' + prod.toLocaleString() + '/s';
             hudRefs.prod.dataset.val = String(prod);
         }
 
@@ -532,8 +551,12 @@
             if (hudRefs.bldFactory) hudRefs.bldFactory.classList.toggle("active", selBld === "Factory");
             if (hudRefs.bldPort) hudRefs.bldPort.classList.toggle("active", selBld === "Port");
             if (hudRefs.bldBunker) hudRefs.bldBunker.classList.toggle("active", selBld === "Bunker");
+            var hasSelection = Boolean(selBld || hud.selected_nuke);
             if (hudRefs.cancelPlacement) {
-                hudRefs.cancelPlacement.classList.toggle("hidden", !selBld && !hud.selected_nuke);
+                hudRefs.cancelPlacement.classList.toggle("hidden", !hasSelection);
+            }
+            if (hudRefs.dockInner) {
+                hudRefs.dockInner.classList.toggle("has-selection", hasSelection);
             }
             if (hud.building_costs) {
                 if (hudRefs.costCity) hudRefs.costCity.textContent = Math.floor(hud.building_costs.city) + 'g';
