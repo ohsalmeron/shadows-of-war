@@ -57,12 +57,12 @@ ae73476f23c5157259385524b7dbea5c66357f2ed79c596d304237617f8bb90e  sow-ui/src/ui/
 739d95235ff2220764cdc8b0a944124ce5a83e0434036e69299cb41a3b00039e  sow-ui/src/ui/hud/tabs/mod.rs
 baac1faf166e48bd18fab6b24a46687a97434f1b9f40776315effd16364b3860  sow-ui/src/ui/legal_doc/mod.rs
 bd26378b36aa7fc751d7c1d115bc8890b0cbd63ea8f31a8ab676fa14db141737  sow-ui/src/ui/loading_screen/mod.rs
-b48f8860bcf153be7f44cfeb3d82a6afd0156bad6b2bd79f1f603bb596091e88  sow-ui/src/ui/main_menu/browser.rs
+f50016188c128b1dfe15418e3fdbf68ac97204050016f14cb7a65a0e9095a036  sow-ui/src/ui/main_menu/browser.rs
 8cfe54f80471917f9cabfcc1c965655b0c9af0487c3fb927765de04c1fc8bb39  sow-ui/src/ui/main_menu/custom_game.rs
 bbf61b52358055d9287c32b1e15ef455b5408f34490fb26ef0253d67dff93a58  sow-ui/src/ui/main_menu/join_browser.rs
 982d3cb6104bebbc0ff4bd3484cbfd559e1b74e255e20e001c8f3d80882050a9  sow-ui/src/ui/main_menu/layout.rs
 efdefd57ad9838b71288944acd8cf1d1ef36df7d82c815c9e1c4fe55c622e2ac  sow-ui/src/ui/main_menu/layout_tests.rs
-ab9ff317c148714816b3a837b4fe44e3289a4dccad5c2dd7677f0c0186ed616b  sow-ui/src/ui/main_menu/mod.rs
+71461eb65bbf1f6bab433c9d37e3ce5bec5110dd9f11c15ae805abb9bcacdc37  sow-ui/src/ui/main_menu/mod.rs
 62c787500bac89b08f26d6f4981b462630459f5e656edf4e00d48046f57b7189  sow-ui/src/ui/main_menu/modals.rs
 ac37453e576cb690cb410e839881f8c3c1a58093a57b01c36e7dadf44db2d1dd  sow-ui/src/ui/main_menu/profile.rs
 0a413f8595b95c94aec2cbcfba5e9aab76d128505d5c872277987e82ca990f14  sow-ui/src/ui/main_menu/queue_overlay.rs
@@ -84,6 +84,6 @@ f02cb58a6fec933adb61fac2efda6ff1ab28436feae628150ae028c5d36e621e  sow-ui/src/wid
 ce1c73bff7b8aca50c6097cea15e80e9867fe27a4c354d9bd483d6d0c7ff5703  sow-ui/src/widgets/avatar_picker/mod.rs
 eac00788f9621a6a14087bf5a7bc79ee5670336f6207bd7ab5dd53edc5a76ee9  sow-ui/src/widgets/dialog.rs
 a33a6f51683413bcdc17a74d904194b22e699449cf7278cec584b6623ae62c07  sow-ui/src/widgets/leader_backdrop.rs
-8ff3d808104b982a1b982ba4e8234ee13182ab9417fb6994a900f0c693ebf944  sow-ui/src/widgets/lobby_card.rs
+b29184a6bfa0fa7935e534e66fd375aa6f05dcda1de3639993e22ef22dbaf5d6  sow-ui/src/widgets/lobby_card.rs
 4cacba8919c4ce349f7f525e015710ca5a029575ea548f0f9a3ab559dda74e2b  sow-ui/src/widgets/mod.rs
 57a3971e446cd1d33fea547cb4e4d51a497dcd24f1e87d6de9b211e9a750a21b  sow-ui/src/widgets/play_button.rs

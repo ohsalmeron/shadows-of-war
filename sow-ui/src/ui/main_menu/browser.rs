@@ -12,16 +12,56 @@ fn primary_matchmaking_lobby(
         .min_by_key(|lobby| (!lobby.is_counting_down, lobby.id))
 }
 
-fn visible_matchmaking_lobby(state: &mut MainMenuState) -> Option<sow_core::protocol::LobbyInfo> {
+fn lobby_with_local_countdown(
+    state: &mut MainMenuState,
+    lobby: &sow_core::protocol::LobbyInfo,
+    now: f64,
+) -> sow_core::protocol::LobbyInfo {
+    let (server_secs, anchored_at) = match state.matchmaking_countdown_anchor {
+        Some((id, previous_secs, anchored_at))
+            if id == lobby.id && (previous_secs - lobby.timer_secs).abs() < 0.05 =>
+        {
+            (previous_secs, anchored_at)
+        }
+        _ => {
+            state.matchmaking_countdown_anchor = Some((lobby.id, lobby.timer_secs, now));
+            (lobby.timer_secs, now)
+        }
+    };
+
+    let mut display = lobby.clone();
+    display.timer_secs = (server_secs as f64 - (now - anchored_at).max(0.0)).max(0.0) as f32;
+    display.is_counting_down = true;
+    display
+}
+
+fn visible_matchmaking_lobby_at(
+    state: &mut MainMenuState,
+    now: f64,
+) -> Option<sow_core::protocol::LobbyInfo> {
     if !state.is_connected {
+        state.matchmaking_countdown_anchor = None;
         return None;
     }
 
-    if let Some(lobby) = primary_matchmaking_lobby(&state.lobbies).cloned() {
+    let next = primary_matchmaking_lobby(&state.lobbies).cloned();
+
+    if let Some(lobby) = next {
         state.last_matchmaking_lobby = Some(lobby.clone());
-        Some(lobby)
+        if lobby.is_counting_down {
+            Some(lobby_with_local_countdown(state, &lobby, now))
+        } else {
+            state.matchmaking_countdown_anchor = None;
+            Some(lobby)
+        }
     } else {
-        state.last_matchmaking_lobby.clone()
+        state.last_matchmaking_lobby.clone().map(|lobby| {
+            if lobby.is_counting_down {
+                lobby_with_local_countdown(state, &lobby, now)
+            } else {
+                lobby
+            }
+        })
     }
 }
 
@@ -71,7 +111,7 @@ fn draw_lobby_list(
     } else {
         ui.available_width()
     };
-    let primary = visible_matchmaking_lobby(state);
+    let primary = visible_matchmaking_lobby_at(state, ui.input(|input| input.time));
 
     ui.push_id("quick_match_slot", |ui| {
         if let Some(lobby) = primary.as_ref() {
@@ -136,7 +176,7 @@ pub fn draw_left_column(
 
 #[cfg(test)]
 mod tests {
-    use super::{MainMenuState, primary_matchmaking_lobby, visible_matchmaking_lobby};
+    use super::{MainMenuState, primary_matchmaking_lobby, visible_matchmaking_lobby_at};
     use sow_core::protocol::{LobbyInfo, LobbyKind};
 
     fn lobby(id: u64, kind: LobbyKind, is_counting_down: bool) -> LobbyInfo {
@@ -180,19 +220,47 @@ mod tests {
         state.lobbies = vec![lobby(1, LobbyKind::Matchmaking, true)];
 
         assert_eq!(
-            visible_matchmaking_lobby(&mut state).map(|lobby| lobby.id),
+            visible_matchmaking_lobby_at(&mut state, 0.0).map(|lobby| lobby.id),
             Some(1)
         );
 
         state.lobbies.clear();
         assert_eq!(
-            visible_matchmaking_lobby(&mut state).map(|lobby| lobby.id),
+            visible_matchmaking_lobby_at(&mut state, 0.0).map(|lobby| lobby.id),
             Some(1)
         );
 
         state.lobbies = vec![lobby(2, LobbyKind::Matchmaking, true)];
         assert_eq!(
-            visible_matchmaking_lobby(&mut state).map(|lobby| lobby.id),
+            visible_matchmaking_lobby_at(&mut state, 0.0).map(|lobby| lobby.id),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn quick_match_countdown_uses_elapsed_time_and_switches_directly() {
+        let mut state = MainMenuState::default();
+        state.is_connected = true;
+        let mut old = lobby(1, LobbyKind::Matchmaking, true);
+        old.timer_secs = 3.0;
+        state.lobbies = vec![old];
+
+        let first = visible_matchmaking_lobby_at(&mut state, 10.0).expect("first frame");
+        assert_eq!(first.id, 1);
+        assert_eq!(first.timer_secs, 3.0);
+
+        let one_second_later = visible_matchmaking_lobby_at(&mut state, 11.0).expect("countdown");
+        assert_eq!(one_second_later.timer_secs, 2.0);
+
+        let zero = visible_matchmaking_lobby_at(&mut state, 13.0).expect("zero frame");
+        assert_eq!(zero.id, 1);
+        assert_eq!(zero.timer_secs, 0.0);
+
+        let mut next = lobby(2, LobbyKind::Matchmaking, true);
+        next.timer_secs = 5.0;
+        state.lobbies = vec![next];
+        assert_eq!(
+            visible_matchmaking_lobby_at(&mut state, 13.0).map(|lobby| lobby.id),
             Some(2)
         );
     }

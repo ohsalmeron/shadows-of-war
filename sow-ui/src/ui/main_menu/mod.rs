@@ -59,6 +59,9 @@ pub struct MainMenuState {
     /// client may receive an empty snapshot while the server rotates lobbies;
     /// keep that transition invisible until the replacement arrives.
     pub last_matchmaking_lobby: Option<LobbyInfo>,
+    /// Local countdown anchor for the home card: (lobby id, server seconds,
+    /// local time at which that server value was received/observed).
+    pub matchmaking_countdown_anchor: Option<(u64, f32, f64)>,
     pub player_name: String,
     /// Portal SDK locked the display name (CrazyGames username, etc.).
     pub name_locked: bool,
@@ -139,6 +142,7 @@ impl Default for MainMenuState {
                 .unwrap_or_else(|_| "wss://ws.shadowsofwar.io/ws/".to_string()),
             lobbies: Vec::new(),
             last_matchmaking_lobby: None,
+            matchmaking_countdown_anchor: None,
             player_name: format!("ANON{:03}", ms % 1000),
             clan_tag: "".to_string(),
             selected_leader: leader,

@@ -70,6 +70,10 @@ impl<'a> Widget for LobbyCard<'a> {
 
         let is_matchmaking = self.lobby.kind == sow_core::protocol::LobbyKind::Matchmaking;
 
+        if is_matchmaking {
+            ui.ctx().request_repaint();
+        }
+
         let mut stroke_color = if self.lobby.is_counting_down {
             if is_hovered {
                 sow_ui_kit::theme::palette::neon_cyan_hover()
@@ -134,7 +138,8 @@ impl<'a> Widget for LobbyCard<'a> {
         );
 
         let timer_text = if self.lobby.is_counting_down {
-            format!("Starts in {:.0}s", self.lobby.timer_secs.max(0.0))
+            let remaining_secs = self.lobby.timer_secs.max(0.0).ceil() as u32;
+            format!("Starts in {remaining_secs}s")
         } else if is_matchmaking {
             "SEARCHING".to_string()
         } else {
