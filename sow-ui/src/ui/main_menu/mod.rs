@@ -296,7 +296,7 @@ pub fn draw_terms_privacy_footer(
     if narrow {
         // Mobile has only one footer row. Wrapping here increases the reserved
         // bottom-panel height and steals the space needed by the fixed home UI.
-        ui.horizontal(|ui| {
+        ui.horizontal_centered(|ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
             draw_terms_link(ui, action);
             ui.label(
@@ -429,7 +429,10 @@ fn draw_home_content(
     action: &mut Option<UiAction>,
 ) {
     ui.add_space(8.0);
-    let body_height = ui.available_height();
+    // Keep a real breathing room between the fixed home surface and the
+    // bottom panel, especially when the viewport switches to portrait.
+    let footer_gap = if metrics.is_phone() { 12.0 } else { 8.0 };
+    let body_height = (ui.available_height() - footer_gap).max(0.0);
     // Public Games belongs to the browser screen. The home screen is the
     // decision surface: matchmaking, private join, custom game, and store.
     // Keep that surface centered and bounded instead of creating a second
@@ -465,6 +468,7 @@ fn draw_command_panel(
     let phone = layout::main_menu_metrics(ui.ctx()).is_phone();
     let dense = body_height < 760.0;
     let control_h = if dense { 40.0 } else { 44.0 };
+    let vertical_gap = 0.0;
     egui::Frame::NONE
         .fill(egui::Color32::from_rgba_unmultiplied(9, 11, 15, 190))
         .stroke(egui::Stroke::new(
@@ -474,12 +478,7 @@ fn draw_command_panel(
         .corner_radius(egui::CornerRadius::same(8))
         .inner_margin(egui::Margin::symmetric(16, if dense { 10 } else { 14 }))
         .show(ui, |ui| {
-            ui.label(
-                egui::RichText::new("QUICK MATCH")
-                    .size(11.0)
-                    .strong()
-                    .color(sow_ui_kit::theme::palette::text_muted()),
-            );
+            ui.spacing_mut().item_spacing.y = vertical_gap;
             ui.vertical_centered(|ui| {
                 // The home screen is deliberately non-scrollable. Keep the
                 // 16:9 card inside the real body budget, with an additional
@@ -493,7 +492,7 @@ fn draw_command_panel(
                 ui.set_width(map_width);
                 browser::draw_left_column(ui, state, true, 0.0, action, asset_loader, lang);
             });
-            ui.add_space(if dense { 2.0 } else { 4.0 });
+            ui.add_space(vertical_gap);
 
             let browser = crate::widgets::ThemeButton::new("LOBBY BROWSER  →")
                 .style(crate::widgets::ThemeButtonStyle::Tertiary)
@@ -502,9 +501,9 @@ fn draw_command_panel(
             if ui.add(browser).clicked() {
                 *action = Some(UiAction::OpenJoinBrowser);
             }
-            ui.add_space(if dense { 4.0 } else { 6.0 });
+            ui.add_space(vertical_gap);
             join_browser::draw_private_join_row(ui, state, strings, action);
-            ui.add_space(if dense { 4.0 } else { 6.0 });
+            ui.add_space(vertical_gap);
 
             let create = crate::widgets::ThemeButton::new("CREATE CUSTOM GAME  +")
                 .style(crate::widgets::ThemeButtonStyle::Tertiary)
@@ -514,7 +513,7 @@ fn draw_command_panel(
                 state.open_route(MainMenuRoute::Create);
                 state.custom_game_is_sp = false;
             }
-            ui.add_space(if dense { 4.0 } else { 6.0 });
+            ui.add_space(vertical_gap);
             draw_store_home_button(ui, control_h, action);
         });
 }
