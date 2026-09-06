@@ -334,31 +334,29 @@ impl GameState {
             return;
         }
         let linear_idx = y * self.map.width + x;
-        if old_owner != 0 {
-            if let Some(p) = self.player_mut(old_owner) {
-                p.sum_x = p.sum_x.saturating_sub(x as u64);
-                p.sum_y = p.sum_y.saturating_sub(y as u64);
-                p.tile_count = p.tile_count.saturating_sub(1);
-                p.border_remove(linear_idx);
-            }
+        if old_owner != 0
+            && let Some(p) = self.player_mut(old_owner)
+        {
+            p.sum_x = p.sum_x.saturating_sub(x as u64);
+            p.sum_y = p.sum_y.saturating_sub(y as u64);
+            p.tile_count = p.tile_count.saturating_sub(1);
+            p.border_remove(linear_idx);
         }
-        if new_owner != 0 {
-            if let Some(p) = self.player_mut(new_owner) {
-                p.sum_x += x as u64;
-                p.sum_y += y as u64;
-                p.tile_count += 1;
-                if old_owner != 0 && old_owner != new_owner {
-                    *p.tile_conquests.entry(old_owner).or_insert(0) += 1;
-                }
+        if new_owner != 0
+            && let Some(p) = self.player_mut(new_owner)
+        {
+            p.sum_x += x as u64;
+            p.sum_y += y as u64;
+            p.tile_count += 1;
+            if old_owner != 0 && old_owner != new_owner {
+                *p.tile_conquests.entry(old_owner).or_insert(0) += 1;
             }
         }
         self.map.set_owner_id(x, y, new_owner);
         if new_owner != 0 {
             let is_border = self.map.is_border_tile(x, y, new_owner);
-            if is_border {
-                if let Some(p) = self.player_mut(new_owner) {
-                    p.border_insert(linear_idx);
-                }
+            if is_border && let Some(p) = self.player_mut(new_owner) {
+                p.border_insert(linear_idx);
             }
         }
 
@@ -378,10 +376,8 @@ impl GameState {
                 }
             } else if n_owner == new_owner && new_owner != 0 {
                 let ib = self.map.is_border_tile(nx, ny, new_owner);
-                if !ib {
-                    if let Some(p) = self.player_mut(new_owner) {
-                        p.border_remove(n_idx);
-                    }
+                if !ib && let Some(p) = self.player_mut(new_owner) {
+                    p.border_remove(n_idx);
                 }
             }
         }
@@ -395,7 +391,7 @@ impl GameState {
             // conquest stays exclusive to attacks that declare a target.
             let capturer_is_passive_tribe = {
                 let capturer = self.player(new_owner);
-                capturer.map_or(false, |p| {
+                capturer.is_some_and(|p| {
                     p.player_type == crate::player::PlayerType::Bot
                         && self.config.bot_difficulty == crate::game_config::BotDifficulty::Vanilla
                 })

@@ -5,9 +5,9 @@
 //! `_sleep` returns EPERM, see lib/ff_kern_synch.c). The bridge enforces
 //! this by routing all stack calls through the `ff_run` loop callback.
 
-#![allow(non_camel_case_types, non_snake_case, dead_code)]
+#![allow(non_camel_case_types, non_snake_case)]
 
-use libc::{c_char, c_int, c_void, sockaddr_in, socklen_t, ssize_t, size_t, timespec};
+use libc::{c_char, c_int, c_void, size_t, sockaddr_in, socklen_t, ssize_t, timespec};
 
 /// DPDK_CONFIG_NUM = 16, so dpdk_argv holds 16 args + 1 NULL sentinel.
 pub const DPDK_ARGV_MAX: usize = 17;
@@ -25,11 +25,11 @@ pub struct ff_zc_mbuf {
 /// F-Stack's own `struct kevent` (ff_event.h:85) — NOT the Linux one.
 #[repr(C)]
 pub struct kevent {
-    pub ident: usize,    // uintptr_t
+    pub ident: usize, // uintptr_t
     pub filter: i16,
     pub flags: u16,
     pub fflags: u32,
-    pub data: i64,       // __int64_t
+    pub data: i64, // __int64_t
     pub udata: *mut c_void,
     pub ext: [u64; 4],
 }
@@ -40,12 +40,8 @@ pub type loop_func_t = unsafe extern "C" fn(*mut c_void) -> c_int;
 /// F-Stack packet dispatcher callback. It runs on the RX path before the
 /// packet enters the FreeBSD stack. Returning another queue transfers the
 /// mbuf through F-Stack's shared dispatch ring to that queue's process.
-pub type dispatch_func_t = unsafe extern "C" fn(
-    data: *mut c_void,
-    len: *mut u16,
-    queue_id: u16,
-    nb_queues: u16,
-) -> c_int;
+pub type dispatch_func_t =
+    unsafe extern "C" fn(data: *mut c_void, len: *mut u16, queue_id: u16, nb_queues: u16) -> c_int;
 
 pub const FF_DISPATCH_ERROR: c_int = -1;
 pub const FF_DISPATCH_RESPONSE: c_int = -2;
@@ -90,7 +86,11 @@ extern "C" {
     pub fn ff_socket(domain: c_int, ty: c_int, protocol: c_int) -> c_int;
     pub fn ff_ioctl(fd: c_int, request: libc::c_ulong, ...) -> c_int;
     pub fn ff_setsockopt(
-        s: c_int, level: c_int, optname: c_int, optval: *const c_void, optlen: socklen_t,
+        s: c_int,
+        level: c_int,
+        optname: c_int,
+        optval: *const c_void,
+        optlen: socklen_t,
     ) -> c_int;
     pub fn ff_bind(s: c_int, addr: *const sockaddr_in, addrlen: socklen_t) -> c_int;
     pub fn ff_listen(s: c_int, backlog: c_int) -> c_int;
@@ -100,7 +100,10 @@ extern "C" {
 
     // ---- introspection ----
     pub fn ff_rss_self_queue_info(
-        proc_id: *mut u16, queueid: *mut u16, nb_queues: *mut u16, reta_size: *mut u16,
+        proc_id: *mut u16,
+        queueid: *mut u16,
+        nb_queues: *mut u16,
+        reta_size: *mut u16,
     ) -> c_int;
 
     // ---- plain read/write (non-zero-copy fallback) ----
@@ -114,7 +117,11 @@ extern "C" {
 
     // ---- ZERO-COPY receive (ff_api.h:433-460; needs libfstack built with FF_ZC_RECV=1) ----
     pub fn ff_zc_recv(fd: c_int, zm: *mut ff_zc_mbuf, nbytes: size_t) -> ssize_t;
-    pub fn ff_zc_mbuf_segment(zm: *mut ff_zc_mbuf, seg_data: *mut *mut c_void, seg_len: *mut c_int) -> c_int;
+    pub fn ff_zc_mbuf_segment(
+        zm: *mut ff_zc_mbuf,
+        seg_data: *mut *mut c_void,
+        seg_len: *mut c_int,
+    ) -> c_int;
     pub fn ff_zc_recv_free(zm: *mut ff_zc_mbuf);
 
     // ---- traffic counters (ff_api.h:199; struct ff_traffic_args, ff_msg.h:103) ----

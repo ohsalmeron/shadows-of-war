@@ -121,16 +121,15 @@ pub fn update_sea_lanes(engine: &mut crate::engine::SowEngine) {
                         .path_scratch
                         .astar
                         .find_path(&engine.state.map, &[water_a], water_b)
+                    && path.len() <= 1000
                 {
-                    if path.len() <= 1000 {
-                        lanes.push(SeaLane {
-                            id: lane_id,
-                            port_a_id: id_a,
-                            port_b_id: id_b,
-                            path,
-                        });
-                        lane_id += 1;
-                    }
+                    lanes.push(SeaLane {
+                        id: lane_id,
+                        port_a_id: id_a,
+                        port_b_id: id_b,
+                        path,
+                    });
+                    lane_id += 1;
                 }
             }
 

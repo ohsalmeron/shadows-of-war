@@ -36,7 +36,6 @@ impl MainMenuMetrics {
             ViewportClass::Phone => 1,
         }
     }
-
 }
 
 pub(crate) fn main_menu_metrics(ctx: &Context) -> MainMenuMetrics {
@@ -103,7 +102,7 @@ pub(crate) fn menu_layout_chrome(
 
 #[cfg(test)]
 mod tests {
-    use super::{viewport_class, ViewportClass};
+    use super::{ViewportClass, viewport_class};
 
     #[test]
     fn menu_viewport_classes_keep_square_windows_compact() {

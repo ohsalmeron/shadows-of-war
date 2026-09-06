@@ -45,12 +45,10 @@ impl SowApp {
                 assists: p.assists,
             });
 
-            if team_mode {
-                if let Some(team) = p.team {
-                    let entry = team_tiles.entry(team).or_insert((0, 0));
-                    entry.0 += p.tile_count;
-                    entry.1 += 1;
-                }
+            if team_mode && let Some(team) = p.team {
+                let entry = team_tiles.entry(team).or_insert((0, 0));
+                entry.0 += p.tile_count;
+                entry.1 += 1;
             }
         }
         rankings.sort_unstable_by_key(|r| std::cmp::Reverse(r.tiles));
@@ -127,11 +125,7 @@ impl SowApp {
         self.ui.leaderboard_was_open = is_open;
     }
 
-    fn render_leaderboard_body(
-        &mut self,
-        ui: &mut egui::Ui,
-        opts: &LeaderboardBodyOpts,
-    ) {
+    fn render_leaderboard_body(&mut self, ui: &mut egui::Ui, opts: &LeaderboardBodyOpts) {
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing.y = if opts.metrics.is_mobile { 10.0 } else { 8.0 };
 
@@ -233,7 +227,8 @@ impl SowApp {
                 (ui.available_height() - TABLE_HEADER_H - sticky_reserve - mobile_back_reserve)
                     .max(120.0);
 
-            let visible_rows: Vec<(usize, LeaderboardRanking)> = opts.filtered
+            let visible_rows: Vec<(usize, LeaderboardRanking)> = opts
+                .filtered
                 .iter()
                 .take(opts.scroll_row_count)
                 .map(|(idx, r)| (*idx, r.clone()))
@@ -282,26 +277,26 @@ impl SowApp {
                 }
             }
 
-            if opts.show_sticky_self {
-                if let Some(my_id) = opts.my_id {
-                    ui.separator();
-                    if let Some((rank_idx, ranking)) = opts.filtered.iter().find(|(_, r)| r.id == my_id)
-                    {
-                        let sticky_ctx = RowPaintCtx {
-                            app: self,
-                            total_land_tiles: opts.total_land_tiles,
-                            my_id: Some(my_id),
-                        };
-                        paint_leaderboard_player_row(
-                            ui,
-                            &sticky_ctx,
-                            opts.metrics,
-                            *rank_idx,
-                            ranking,
-                            true,
-                            false,
-                        );
-                    }
+            if opts.show_sticky_self
+                && let Some(my_id) = opts.my_id
+            {
+                ui.separator();
+                if let Some((rank_idx, ranking)) = opts.filtered.iter().find(|(_, r)| r.id == my_id)
+                {
+                    let sticky_ctx = RowPaintCtx {
+                        app: self,
+                        total_land_tiles: opts.total_land_tiles,
+                        my_id: Some(my_id),
+                    };
+                    paint_leaderboard_player_row(
+                        ui,
+                        &sticky_ctx,
+                        opts.metrics,
+                        *rank_idx,
+                        ranking,
+                        true,
+                        false,
+                    );
                 }
             }
 

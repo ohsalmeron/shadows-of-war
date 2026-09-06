@@ -494,24 +494,22 @@ pub(in crate::ui::hud) fn draw_transfer_panel(
         });
 
     // Click outside the ask panel closes it
-    if ui.ctx().input(|i| i.pointer.any_pressed()) {
-        if let Some(pos) = ui
+    if ui.ctx().input(|i| i.pointer.any_pressed())
+        && let Some(pos) = ui
             .ctx()
             .input(|i| i.pointer.press_origin().or(i.pointer.interact_pos()))
+    {
+        let mut click_absorbed = false;
+        if let Some(rect) = ui
+            .ctx()
+            .data(|d| d.get_temp::<egui::Rect>(egui::Id::new("transfer_panel_rect")))
+            && rect.contains(pos)
         {
-            let mut click_absorbed = false;
-            if let Some(rect) = ui
-                .ctx()
-                .data(|d| d.get_temp::<egui::Rect>(egui::Id::new("transfer_panel_rect")))
-            {
-                if rect.contains(pos) {
-                    click_absorbed = true;
-                }
-            }
-            if !click_absorbed && is_active {
-                state.transfer_confirm_pending = false;
-                state.show_ask_panel = None;
-            }
+            click_absorbed = true;
+        }
+        if !click_absorbed && is_active {
+            state.transfer_confirm_pending = false;
+            state.show_ask_panel = None;
         }
     }
 

@@ -124,11 +124,11 @@ fn paint_slider(ui: &mut egui::Ui, state: &HudState, w: f32) -> Option<f32> {
                 changed = Some(ratio);
             }
         }
-    } else if response.clicked() {
-        if let Some(pos) = response.interact_pointer_pos() {
-            ratio = ratio_from_track_y(track, pos.y);
-            changed = Some(ratio);
-        }
+    } else if response.clicked()
+        && let Some(pos) = response.interact_pointer_pos()
+    {
+        ratio = ratio_from_track_y(track, pos.y);
+        changed = Some(ratio);
     }
 
     let dragging = response.dragged() || response.is_pointer_button_down_on();

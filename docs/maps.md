@@ -60,8 +60,8 @@ release root, or Android. Its manifest is
 - OpenFront checkout commit: `f51f165b947a92cc683ade3a72c3800300e86e61`.
 - Image dimensions: **4110×1948 = 8,006,280 source pixels**.
 - Image SHA-256: `f12ddca2fcdd795f13900ba5061da86408f9fa5a4b56e15f162e356c7bf6be19`.
-- Regional sources: `assets/maps/<name>/image.png` and `info.json` under that
-  same OpenFront `map-generator` directory.
+- Regional sources: `../games/openfrontio/map-generator/assets/maps/<name>/image.png`
+  and `info.json` under that pinned OpenFront `map-generator` directory.
 
 The separate `../games/MapGenerator` checkout is research material. Its file
 with the same `giantworldmap` name has different bytes; do not silently switch
@@ -103,24 +103,36 @@ complete terrain preview fitted into 16:9 without cropping. OpenFront imports
 and exporters also write the same 16:9 shape. The main-menu lobby card uses
 the same 16:9 aspect ratio and the existing single thumbnail URL.
 
+`assets/maps/SOURCES.toml` records the playable recipe for every map: origin
+hash and revision, target dimensions, pipeline settings, and hashes for
+`map.bin`, `map.bin.br`, and `thumbnail.webp`. East Anglia is explicitly marked
+as an existing-bin snapshot because its original authoring image is absent;
+that map is not reproducible until its source is recovered. Pangaea's playable
+bin was regenerated from the pinned source while its existing thumbnail hash
+was preserved; East Anglia preserved both its existing bin and thumbnail.
+
+All authoring routes now call `sow-map::image_pipeline::generate_from_rgba`.
+The former parallel `sow-map/src/generator.rs` path was removed, so no second
+terrain generator can silently produce different map bins.
+
 `./sow l` is local visual preview; `./sow p` is the official Web/backend/maps
 release path. Android publishing remains separate. Do not invent additional
 `./sow` subcommands or manually copy thumbnails into production.
 
 ## Measured grid sizes and enforcement gaps
 
-Headers in the current local map library were read, not regenerated:
+Headers in the current local map library after the canonical regeneration:
 
 | Asset | Dimensions | Cells / source pixels | Role |
 |---|---:|---:|---|
 | Pangaea | 1000×1000 | 1,000,000 | Existing playable grid |
-| World | 1412×704 | 994,048 | Existing playable grid |
+| World | 1408×704 | 991,232 | Existing playable grid |
 | Europe | 1312×756 | 991,872 | Existing playable grid |
 | East Anglia | 896×504 | 451,584 | Existing playable grid |
 | giantworldmap PNG | 4110×1948 | 8,006,280 | Authoring reference image |
 
-All 15 local grids are at or below 1,000,000 cells. Pangaea has 414,182 land
-cells; MENA has 761,055 land cells in a 993,960-cell grid. Similar total sizes
+All 15 local grids are at or below 1,000,000 cells. Pangaea has 420,205 land
+cells; MENA has 763,406 land cells in a 992,640-cell grid. Similar total sizes
 do not guarantee similar simulation workloads. Pangaea's acceptable behavior
 on slower phones is owner-reported; this documentation update ran no device
 benchmark and did not reproduce the reported giant-map crash.
@@ -133,9 +145,9 @@ Current code is not a uniform hard gate:
 - `import-openfront` uses a proportional total-cell cap, without the same
   per-axis limit. This helps explain why existing grids can have a side above
   1,000 while staying within the total budget.
-- The editor rejects a grid over the total budget. The low-level
-  `generator::generate_map` only logs a warning when over budget, and explicit
-  `target_dims` in `image_pipeline` do not apply its automatic size clamp.
+- The editor rejects a grid over the total budget. `image_pipeline::generate_from_rgba`
+  applies the mobile-safe clamp when `target_dims` is absent; explicit
+  `target_dims` are caller-owned and must already satisfy the map budget.
 - `image_pipeline` processes the full-resolution source before downsampling.
   Thus a large authoring source can cost build-machine memory even when the
   exported grid is small. Do not move that authoring work onto the phone.

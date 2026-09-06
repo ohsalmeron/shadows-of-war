@@ -58,17 +58,17 @@ impl SowApp {
                 // Offset up by 60 screen pixels to keep the notice from being covered by a finger/mouse
                 let offset_mouse_y = self.input.last_mouse_y as f32 - 60.0;
                 let world_y = (offset_mouse_y - self.input.camera_y) / self.input.camera_zoom;
-                if let Some(troops) = attack.troops {
-                    if troops > 0.0 {
-                        self.ui.floating_notices.push(crate::app::FloatingNotice {
-                            text: format!("⚔️ +{}", sow_ui_kit::utils::format_number(troops)),
-                            world_x,
-                            world_y,
-                            start_time: web_time::Instant::now(),
-                            duration: web_time::Duration::from_millis(1500),
-                            color: egui::Color32::from_rgb(6, 182, 212), // cyan
-                        });
-                    }
+                if let Some(troops) = attack.troops
+                    && troops > 0.0
+                {
+                    self.ui.floating_notices.push(crate::app::FloatingNotice {
+                        text: format!("⚔️ +{}", sow_ui_kit::utils::format_number(troops)),
+                        world_x,
+                        world_y,
+                        start_time: web_time::Instant::now(),
+                        duration: web_time::Duration::from_millis(1500),
+                        color: egui::Color32::from_rgb(6, 182, 212), // cyan
+                    });
                 }
             }
             _ => {}

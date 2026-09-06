@@ -163,12 +163,12 @@ impl SowEngine {
             return;
         }
 
-        if target_owner != 0 {
-            if let Some(target) = self.state.player(target_owner) {
-                if player.team.is_some() && player.team == target.team {
-                    return;
-                }
-            }
+        if target_owner != 0
+            && let Some(target) = self.state.player(target_owner)
+            && player.team.is_some()
+            && player.team == target.team
+        {
+            return;
         }
 
         let pool_cap = player.troops;

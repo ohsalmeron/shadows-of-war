@@ -16,11 +16,11 @@
 //!   (or: printf '<bincode Ready>' | websocat -b ws://<data-pip>:80)
 
 use fstack_bridge::bridge::{self, Ev};
-use fstack_bridge::ffi::{ev_set, kevent, EV_ADD, EVFILT_READ};
+use fstack_bridge::ffi::{ev_set, kevent, EVFILT_READ, EV_ADD};
 use futures_util::{SinkExt, StreamExt};
 use libc::{
-    c_int, c_void, sockaddr_in, socklen_t, AF_INET, INADDR_ANY, SOCK_STREAM, SOL_SOCKET,
-    SO_REUSEADDR, FIONBIO,
+    c_int, c_void, sockaddr_in, socklen_t, AF_INET, FIONBIO, INADDR_ANY, SOCK_STREAM, SOL_SOCKET,
+    SO_REUSEADDR,
 };
 use sow_core::game_config::GameConfig;
 use sow_core::protocol::{ClientMessage, ServerMessage, ServerStartMessage};
@@ -91,7 +91,15 @@ fn main() {
         }
 
         let mut kev: kevent = mem::zeroed();
-        ev_set(&mut kev, lfd as usize, EVFILT_READ, EV_ADD, 0, 512, ptr::null_mut());
+        ev_set(
+            &mut kev,
+            lfd as usize,
+            EVFILT_READ,
+            EV_ADD,
+            0,
+            512,
+            ptr::null_mut(),
+        );
         fstack_bridge::ff_kevent(bridge::KQ, &kev, 1, ptr::null_mut(), 0, ptr::null());
 
         // Tokio workers run the WS logic; they never touch ff_* (rings only).
@@ -160,7 +168,10 @@ async fn ws_task(fd: c_int, generation: u64, rx: mpsc::Receiver<bridge::ZcRxGuar
                 // b is owned (poll_read copies out of the DPDK mbuf and drops the
                 // ZcRxGuard inside the call) — safe to deserialize from it.
                 match bincode::deserialize::<ClientMessage>(&b) {
-                    Ok(ClientMessage::Ready { lobby_id, player_id }) => {
+                    Ok(ClientMessage::Ready {
+                        lobby_id,
+                        player_id,
+                    }) => {
                         eprintln!("[bincode] Ready lobby={} player={}", lobby_id, player_id);
                         let start = ServerMessage::Start(Box::new(ServerStartMessage {
                             config: GameConfig::default(),

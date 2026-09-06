@@ -110,8 +110,6 @@ pub(super) fn collect_rendered_buildings(
     } else {
         for b in &snap.buildings {
             let (bx, by) = tile_to_world(b.tile_idx, map_w);
-            let _tile_x = (b.tile_idx % map_w) as f32;
-            let _tile_y = (b.tile_idx / map_w) as f32;
             rendered_buildings.push(RenderedBuilding {
                 bx,
                 by,

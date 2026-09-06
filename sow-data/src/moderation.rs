@@ -87,7 +87,12 @@ pub async fn submit_report(
         return Err("unknown report reason".into());
     }
     if input.reason == "other"
-        && input.details.as_deref().map(str::trim).map(str::is_empty).unwrap_or(true)
+        && input
+            .details
+            .as_deref()
+            .map(str::trim)
+            .map(str::is_empty)
+            .unwrap_or(true)
     {
         return Err("details are required for reason 'other'".into());
     }
@@ -206,7 +211,10 @@ async fn send_moderation_email(report: &StoredReport) -> bool {
     use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 
     let Some(config) = mail_config() else {
-        log::warn!("[moderation] report {} stored but no moderation mailbox configured", report.id);
+        log::warn!(
+            "[moderation] report {} stored but no moderation mailbox configured",
+            report.id
+        );
         return false;
     };
     let body = format!(
@@ -233,7 +241,12 @@ async fn send_moderation_email(report: &StoredReport) -> bool {
         details = report.details.as_deref().unwrap_or("-"),
     );
     let message = match Message::builder()
-        .from(config.from.parse().unwrap_or_else(|_| "noreply@localhost".parse().unwrap()))
+        .from(
+            config
+                .from
+                .parse()
+                .unwrap_or_else(|_| "noreply@localhost".parse().unwrap()),
+        )
         .to(match config.to.parse() {
             Ok(mailbox) => mailbox,
             Err(error) => {
@@ -249,7 +262,10 @@ async fn send_moderation_email(report: &StoredReport) -> bool {
     {
         Ok(message) => message,
         Err(error) => {
-            log::error!("[moderation] report {} email build failed: {error}", report.id);
+            log::error!(
+                "[moderation] report {} email build failed: {error}",
+                report.id
+            );
             return false;
         }
     };
@@ -265,13 +281,19 @@ async fn send_moderation_email(report: &StoredReport) -> bool {
             .timeout(Some(std::time::Duration::from_secs(10)))
             .build(),
         Err(error) => {
-            log::error!("[moderation] report {} SMTP setup failed: {error}", report.id);
+            log::error!(
+                "[moderation] report {} SMTP setup failed: {error}",
+                report.id
+            );
             return false;
         }
     };
     match transport.send(message).await {
         Ok(_) => {
-            log::info!("[moderation] report {} emailed to moderation mailbox", report.id);
+            log::info!(
+                "[moderation] report {} emailed to moderation mailbox",
+                report.id
+            );
             true
         }
         Err(error) => {

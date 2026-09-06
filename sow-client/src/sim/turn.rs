@@ -10,7 +10,7 @@ impl SowApp {
             e.apply_intents(&turn.intents);
             e.tick();
             let snap = e.build_snapshot();
-            let events: Vec<_> = e.state.events.drain(..).collect();
+            let events: Vec<_> = std::mem::take(&mut e.state.events);
             (snap, events)
         };
 
@@ -71,12 +71,6 @@ impl SowApp {
                 .as_ref()
                 .map(|mr| mr.owners.as_slice())
                 .unwrap_or(&[]);
-            let terrain = self
-                .gfx
-                .map_renderer
-                .as_ref()
-                .map(|mr| mr.terrain.as_slice())
-                .unwrap_or(&[]);
             self.sim
                 .fog_explored
                 .blocks
@@ -87,12 +81,10 @@ impl SowApp {
                 .resize((self.sim.map_w * self.sim.map_h + 63) as usize / 64, 0);
             let dev = sow_ui_kit::theme::dev_config::DevConfig::get();
             crate::sim::visibility::compute_visibility(
-                self.sim.map_w,
-                self.sim.map_h,
+                (self.sim.map_w, self.sim.map_h),
                 my_id,
                 owners,
                 snap_ref,
-                terrain,
                 &mut self.sim.fog_explored,
                 &mut self.sim.fog_visible,
                 dev.fog_of_war,

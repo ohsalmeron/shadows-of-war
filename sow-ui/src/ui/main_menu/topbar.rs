@@ -30,12 +30,17 @@ pub fn draw(
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = gap;
                 draw_avatar(ui, state, asset_loader);
-                draw_identity(ui, state, strings, if phone { 112.0 } else { 190.0 }, phone, action);
+                draw_identity(
+                    ui,
+                    state,
+                    strings,
+                    if phone { 112.0 } else { 190.0 },
+                    phone,
+                    action,
+                );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let (settings_rect, settings_response) = ui.allocate_exact_size(
-                        egui::vec2(AVATAR_SIZE, 42.0),
-                        egui::Sense::click(),
-                    );
+                    let (settings_rect, settings_response) =
+                        ui.allocate_exact_size(egui::vec2(AVATAR_SIZE, 42.0), egui::Sense::click());
                     paint_settings_icon(ui, settings_rect, settings_response.hovered());
                     if settings_response.clicked() {
                         *action = Some(crate::UiAction::ToggleSettings);
@@ -120,7 +125,9 @@ fn draw_identity(
     if state.player_name.chars().count() > 16 {
         state.player_name = state.player_name.chars().take(16).collect();
     }
-    let field_width = identity_width.min(if phone { 132.0 } else { 180.0 }).max(48.0);
+    let field_width = identity_width
+        .min(if phone { 132.0 } else { 180.0 })
+        .max(48.0);
     ui.allocate_ui_with_layout(
         egui::vec2(identity_width, TOPBAR_HEIGHT),
         egui::Layout::top_down(egui::Align::Min),
@@ -162,21 +169,19 @@ fn draw_identity(
                         },
                     ),
                 );
-                if output.gained_focus() {
-                    if let Some(mut edit_state) =
+                if output.gained_focus()
+                    && let Some(mut edit_state) =
                         egui::text_edit::TextEditState::load(ui.ctx(), output.id)
-                    {
-                        let range = egui::text_selection::CCursorRange::two(
-                            egui::text::CCursor::new(0),
-                            egui::text::CCursor::new(state.player_name.chars().count()),
-                        );
-                        edit_state.cursor.set_char_range(Some(range));
-                        edit_state.store(ui.ctx(), output.id);
-                    }
+                {
+                    let range = egui::text_selection::CCursorRange::two(
+                        egui::text::CCursor::new(0),
+                        egui::text::CCursor::new(state.player_name.chars().count()),
+                    );
+                    edit_state.cursor.set_char_range(Some(range));
+                    edit_state.store(ui.ctx(), output.id);
                 }
                 if output.lost_focus()
-                    || (output.has_focus()
-                        && ui.input(|input| input.key_pressed(egui::Key::Enter)))
+                    || (output.has_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter)))
                 {
                     *action = Some(crate::UiAction::SaveDisplayName(state.player_name.clone()));
                 }
@@ -216,11 +221,8 @@ fn draw_progression(ui: &mut Ui, state: &MainMenuState) -> egui::Response {
     if response.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
-    ui.painter().rect_filled(
-        rect,
-        8.0,
-        Color32::from_rgba_unmultiplied(20, 23, 31, 238),
-    );
+    ui.painter()
+        .rect_filled(rect, 8.0, Color32::from_rgba_unmultiplied(20, 23, 31, 238));
     ui.painter().rect_stroke(
         rect,
         8.0,
@@ -284,7 +286,10 @@ fn draw_progression(ui: &mut Ui, state: &MainMenuState) -> egui::Response {
     );
     let fill = Rect::from_min_size(
         track.min,
-        egui::vec2(track.width() * ((state.account_xp % 100) as f32 / 100.0), track.height()),
+        egui::vec2(
+            track.width() * ((state.account_xp % 100) as f32 / 100.0),
+            track.height(),
+        ),
     );
     ui.painter()
         .rect_filled(fill, 2.0, crate::kit::theme::palette::neon_cyan());
@@ -321,8 +326,18 @@ fn paint_settings_icon(ui: &mut Ui, rect: Rect, hovered: bool) {
     for (dx, dy) in [(0.0, -11.0), (0.0, 11.0), (-11.0, 0.0), (11.0, 0.0)] {
         let center = rect.center() + egui::vec2(dx, dy);
         ui.painter().line_segment(
-            [center - egui::vec2(if dx == 0.0 { 2.0 } else { 0.0 }, if dy == 0.0 { 2.0 } else { 0.0 }),
-             center + egui::vec2(if dx == 0.0 { 2.0 } else { 0.0 }, if dy == 0.0 { 2.0 } else { 0.0 })],
+            [
+                center
+                    - egui::vec2(
+                        if dx == 0.0 { 2.0 } else { 0.0 },
+                        if dy == 0.0 { 2.0 } else { 0.0 },
+                    ),
+                center
+                    + egui::vec2(
+                        if dx == 0.0 { 2.0 } else { 0.0 },
+                        if dy == 0.0 { 2.0 } else { 0.0 },
+                    ),
+            ],
             stroke,
         );
     }

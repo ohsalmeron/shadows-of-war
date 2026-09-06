@@ -240,10 +240,7 @@ fn draw_action_button(
     };
     let start = crate::widgets::ThemeButton::new(btn_label)
         .style(crate::widgets::ThemeButtonStyle::Secondary)
-        .min_size(Vec2::new(
-            ui.available_width(),
-            52.0,
-        ))
+        .min_size(Vec2::new(ui.available_width(), 52.0))
         .text_size(20.0);
     if ui.add(start).clicked() {
         action_btn_clicked(state, action, is_sp);

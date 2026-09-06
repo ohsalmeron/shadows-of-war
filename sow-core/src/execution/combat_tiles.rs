@@ -207,15 +207,15 @@ impl SowEngine {
                     } else {
                         // PvP: Combat resolution
                         let mut def_loss = 0.0;
-                        if let Some(target_player) = self.state.player(execution.target_owner) {
-                            if target_player.tile_count > 0 {
-                                // Defender loses proportional to their troop density.
-                                // Clamp to 0: if troops went negative from multi-attack drain,
-                                // a negative def_loss would ADD troops to the defender on
-                                // subtract, compounding per tick and diverging across clients.
-                                def_loss =
-                                    target_player.troops.max(0.0) / target_player.tile_count as f64;
-                            }
+                        if let Some(target_player) = self.state.player(execution.target_owner)
+                            && target_player.tile_count > 0
+                        {
+                            // Defender loses proportional to their troop density.
+                            // Clamp to 0: if troops went negative from multi-attack drain,
+                            // a negative def_loss would ADD troops to the defender on
+                            // subtract, compounding per tick and diverging across clients.
+                            def_loss =
+                                target_player.troops.max(0.0) / target_player.tile_count as f64;
                         }
 
                         // Defense posts increase attacker losses slightly
@@ -333,10 +333,11 @@ impl SowEngine {
                     });
                 } else {
                     let refund = execution.troops.max(0.0);
-                    if refund > 0.0 && refund.is_finite() {
-                        if let Some(player) = self.state.player_mut(execution.owner_id) {
-                            player.troops = (player.troops + refund).min(player.max_troops);
-                        }
+                    if refund > 0.0
+                        && refund.is_finite()
+                        && let Some(player) = self.state.player_mut(execution.owner_id)
+                    {
+                        player.troops = (player.troops + refund).min(player.max_troops);
                     }
                     to_remove.push(i);
                     break;
@@ -347,10 +348,11 @@ impl SowEngine {
             let execution_ref = &self.attacks[i];
             if execution_ref.target_owner != 0 {
                 let mut is_eliminated = false;
-                if let Some(target_player) = self.state.player(execution_ref.target_owner) {
-                    if target_player.tile_count == 0 && target_player.alive {
-                        is_eliminated = true;
-                    }
+                if let Some(target_player) = self.state.player(execution_ref.target_owner)
+                    && target_player.tile_count == 0
+                    && target_player.alive
+                {
+                    is_eliminated = true;
                 }
 
                 if is_eliminated {

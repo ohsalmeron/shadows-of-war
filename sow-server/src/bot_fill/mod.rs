@@ -45,12 +45,12 @@
 
 pub mod names;
 
-use crate::lobby::{LobbyPhase, LOBBY_COUNTDOWN_SECS, PlayerConnection, ServerLobby};
+use crate::lobby::{LOBBY_COUNTDOWN_SECS, LobbyPhase, PlayerConnection, ServerLobby};
 use rand::Rng;
-use std::env;
-use std::sync::OnceLock;
 use sow_core::player::Leader;
 use sow_core::protocol::{LobbyKind, Team};
+use std::env;
+use std::sync::OnceLock;
 use tokio::sync::mpsc;
 
 // ── Persistent bot-account pool ───────────────────────────────────────────
@@ -157,8 +157,8 @@ impl BotPool {
 ///     sequence. That is what kills any perceptible rate.
 ///  3. Leave room for external players: target is a TOTAL (external players
 ///     + bots). External players present → fewer bots needed → trim the pending queue. Already-met
-///     ghosts stay; the lobby keeps the ghosts that were going to show up
-///     soonest.
+///       ghosts stay; the lobby keeps the ghosts that were going to show up
+///       soonest.
 ///  4. Each tick: every pending ghost whose `join_at_elapsed` has been
 ///     reached enters NOW. Several can land on the same tick (a burst); none
 ///     can land for many ticks (a silence). Both are correct and intended —
@@ -218,7 +218,11 @@ pub fn inject_internal_bots(games: &mut [ServerLobby]) {
             pending.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
             log::info!(
                 "[BOT_FILL] Lobby {}: target {} of {} ({:.0}%), {} ghosts each on their own clock",
-                g.id, target, max, pct * 100.0, pending.len()
+                g.id,
+                target,
+                max,
+                pct * 100.0,
+                pending.len()
             );
             g.bot_fill_target = Some(target);
             g.pending_bots = pending;
@@ -240,18 +244,18 @@ pub fn inject_internal_bots(games: &mut [ServerLobby]) {
         // pops exactly the due ones in O(log n) + O(due). Nothing is drawn
         // here — the moments were all decided at lobby birth.
         let elapsed = (LOBBY_COUNTDOWN_SECS - g.countdown_secs).max(0.0);
-        let split = g
-            .pending_bots
-            .partition_point(|(_, _, t)| *t <= elapsed);
+        let split = g.pending_bots.partition_point(|(_, _, t)| *t <= elapsed);
         if split == 0 {
             continue;
         }
         let due: Vec<(String, String, f32)> = g.pending_bots.drain(..split).collect();
-        let _ = bots; // already counted above; silence unused-after-move
 
         let mut rng = rand::thread_rng();
         let mut pushed = false;
-        for (account_id, display_name, _t) in due {
+        for (account_id, display_name) in due
+            .into_iter()
+            .map(|(account_id, display_name, _)| (account_id, display_name))
+        {
             let leader = Leader::ALL[rng.gen_range(0..Leader::ALL.len())];
             let civilization = leader.civilization();
             let player_id = g

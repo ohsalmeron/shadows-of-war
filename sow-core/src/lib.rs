@@ -37,11 +37,7 @@ pub use sow_data::commerce;
 #[macro_export]
 macro_rules! repo_asset_bytes {
     ($path:expr) => {
-        include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../assets/",
-            $path
-        ))
+        include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/", $path))
     };
 }
 pub use sow_data::{Civilization, Leader, NamedColor, PREMIUM_COLORS, leader_for_civilization};

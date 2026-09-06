@@ -81,8 +81,7 @@ impl SowApp {
                 // starts fresh post-deploy). Gating names on explored here made
                 // every other player's nameplate vanish during deploy. Skip the
                 // fog gate while spawning; names render for everyone who spawned.
-                let is_spawning =
-                    matches!(snap.phase, sow_core::game::GamePhase::Spawning { .. });
+                let is_spawning = matches!(snap.phase, sow_core::game::GamePhase::Spawning { .. });
                 if dev.fog_of_war && player.id != my_id && !is_spawning {
                     let col = player.centroid_x.floor() as i32;
                     let row = player.centroid_y.floor() as i32;
@@ -242,9 +241,7 @@ impl SowApp {
             }
             for p in &snap.players {
                 let id = p.id as usize;
-                let rgb = p
-                    .team
-                    .map_or(p.color, sow_core::player::team_territory_rgb);
+                let rgb = p.team.map_or(p.color, sow_core::player::team_territory_rgb);
                 if id < self.ui.cached_player_colors.len() {
                     self.ui.cached_player_colors[id] = egui::Color32::from_rgb(
                         (rgb[0] * 255.0) as u8,
@@ -278,12 +275,7 @@ impl SowApp {
                 sf,
             };
 
-            fleets::render(
-                &self.sim,
-                &self.input,
-                &self.time,
-                &ctx_struct,
-            );
+            fleets::render(&self.sim, &self.input, &self.time, &ctx_struct);
             railways::render(
                 &mut self.ui,
                 &self.sim,
@@ -300,11 +292,7 @@ impl SowApp {
                 &mut self.gfx,
                 &ctx_struct,
             );
-            effects::render(
-                &mut self.ui,
-                &self.input,
-                &ctx_struct,
-            );
+            effects::render(&mut self.ui, &self.input, &ctx_struct);
             projectiles::render(
                 &mut self.ui,
                 &self.sim,

@@ -20,7 +20,8 @@ impl SowApp {
         }
         let is_playing_or_loading = self.ui.app.phase == sow_ui_kit::ClientPhase::Playing
             || (self.ui.app.phase == sow_ui_kit::ClientPhase::Splash
-                && self.ui.app.splash_state.job == sow_ui::ui::loading_screen::SplashJob::EnterGame);
+                && self.ui.app.splash_state.job
+                    == sow_ui::ui::loading_screen::SplashJob::EnterGame);
 
         if is_playing_or_loading {
             if self.net.client.is_some() {
@@ -82,11 +83,11 @@ impl SowApp {
                                 // ponytail: reuse FloatingNotice to show transferred resources visually
                                 let mut wx = 0.5;
                                 let mut wy = 0.5;
-                                if let Some(me) = snap.players.iter().find(|p| p.id == my_id) {
-                                    if me.centroid_x > 0.001 || me.centroid_y > 0.001 {
-                                        wx = me.centroid_x + 0.5;
-                                        wy = me.centroid_y + 0.5;
-                                    }
+                                if let Some(me) = snap.players.iter().find(|p| p.id == my_id)
+                                    && (me.centroid_x > 0.001 || me.centroid_y > 0.001)
+                                {
+                                    wx = me.centroid_x + 0.5;
+                                    wy = me.centroid_y + 0.5;
                                 }
                                 let now_instant = web_time::Instant::now();
                                 if tx.gold > 0.0 {
@@ -155,8 +156,7 @@ impl SowApp {
                                     .find(|p| p.id == rej.rejector_id)
                                     .map(|p| p.name.as_str())
                                     .unwrap_or("Ally");
-                                let msg =
-                                    format!("{} declined resource request", rejector_name);
+                                let msg = format!("{} declined resource request", rejector_name);
                                 self.ui
                                     .app
                                     .hud_state
@@ -258,11 +258,11 @@ impl SowApp {
                             // ponytail: reuse FloatingNotice to show transferred resources visually
                             let mut wx = 0.5;
                             let mut wy = 0.5;
-                            if let Some(me) = snap.players.iter().find(|p| p.id == my_id) {
-                                if me.centroid_x > 0.001 || me.centroid_y > 0.001 {
-                                    wx = me.centroid_x + 0.5;
-                                    wy = me.centroid_y + 0.5;
-                                }
+                            if let Some(me) = snap.players.iter().find(|p| p.id == my_id)
+                                && (me.centroid_x > 0.001 || me.centroid_y > 0.001)
+                            {
+                                wx = me.centroid_x + 0.5;
+                                wy = me.centroid_y + 0.5;
                             }
                             let now_instant = web_time::Instant::now();
                             if tx.gold > 0.0 {
@@ -331,8 +331,7 @@ impl SowApp {
                                 .find(|p| p.id == rej.rejector_id)
                                 .map(|p| p.name.as_str())
                                 .unwrap_or("Ally");
-                            let msg =
-                                format!("{} declined resource request", rejector_name);
+                            let msg = format!("{} declined resource request", rejector_name);
                             self.ui
                                 .app
                                 .hud_state
@@ -345,74 +344,67 @@ impl SowApp {
         }
         if self.ui.app.phase == sow_ui_kit::ClientPhase::Playing
             && !self.input.has_snapped_camera_to_spawn
+            && let Some(pid) = self.sim.my_player_id
+            && let Some(snap) = &self.sim.current_snapshot
+            && let Some(player) = snap.players.iter().find(|p| p.id == pid)
         {
-            if let Some(pid) = self.sim.my_player_id {
-                if let Some(snap) = &self.sim.current_snapshot {
-                    if let Some(player) = snap.players.iter().find(|p| p.id == pid) {
-                        let is_playing = matches!(snap.phase, sow_core::game::GamePhase::Playing);
-                        if player.tile_count > 0 && player.alive && is_playing {
-                            // If user is panning/zooming during the animation, abort the animation
-                            if self.input.dragging
-                                || self.input.last_pinch_state.is_some()
-                                || !self.input.active_touches.is_empty()
-                            {
-                                self.input.has_snapped_camera_to_spawn = true;
-                            } else {
-                                let cx = player.centroid_x;
-                                let cy = player.centroid_y;
-                                let target_world_cx = cx + 0.5;
-                                let target_world_cy = cy + 0.5;
-                                let target_zoom = 20.0;
+            let is_playing = matches!(snap.phase, sow_core::game::GamePhase::Playing);
+            if player.tile_count > 0 && player.alive && is_playing {
+                // If user is panning/zooming during the animation, abort the animation
+                if self.input.dragging
+                    || self.input.last_pinch_state.is_some()
+                    || !self.input.active_touches.is_empty()
+                {
+                    self.input.has_snapped_camera_to_spawn = true;
+                } else {
+                    let cx = player.centroid_x;
+                    let cy = player.centroid_y;
+                    let target_world_cx = cx + 0.5;
+                    let target_world_cy = cy + 0.5;
+                    let target_zoom = 20.0;
 
-                                let current_world_cx = (self.input.screen_w * 0.5
-                                    - self.input.camera_x)
-                                    / self.input.camera_zoom;
-                                let current_world_cy = (self.input.screen_h * 0.5
-                                    - self.input.camera_y)
-                                    / self.input.camera_zoom;
+                    let current_world_cx =
+                        (self.input.screen_w * 0.5 - self.input.camera_x) / self.input.camera_zoom;
+                    let current_world_cy =
+                        (self.input.screen_h * 0.5 - self.input.camera_y) / self.input.camera_zoom;
 
-                                let speed = 0.01;
-                                let next_world_cx =
-                                    current_world_cx + (target_world_cx - current_world_cx) * speed;
-                                let next_world_cy =
-                                    current_world_cy + (target_world_cy - current_world_cy) * speed;
-                                let next_zoom = self.input.camera_zoom
-                                    + (target_zoom - self.input.camera_zoom) * speed;
+                    let speed = 0.01;
+                    let next_world_cx =
+                        current_world_cx + (target_world_cx - current_world_cx) * speed;
+                    let next_world_cy =
+                        current_world_cy + (target_world_cy - current_world_cy) * speed;
+                    let next_zoom =
+                        self.input.camera_zoom + (target_zoom - self.input.camera_zoom) * speed;
 
-                                self.input.camera_zoom = next_zoom;
-                                self.input.target_zoom = next_zoom;
-                                self.input.camera_x =
-                                    self.input.screen_w * 0.5 - next_world_cx * next_zoom;
-                                self.input.camera_y =
-                                    self.input.screen_h * 0.5 - next_world_cy * next_zoom;
-                                self.clamp_camera_to_map();
+                    self.input.camera_zoom = next_zoom;
+                    self.input.target_zoom = next_zoom;
+                    self.input.camera_x = self.input.screen_w * 0.5 - next_world_cx * next_zoom;
+                    self.input.camera_y = self.input.screen_h * 0.5 - next_world_cy * next_zoom;
+                    self.clamp_camera_to_map();
 
-                                if (target_zoom - next_zoom).abs() < 0.2
-                                    && (target_world_cx - next_world_cx).abs() < 0.1
-                                    && (target_world_cy - next_world_cy).abs() < 0.1
-                                {
-                                    self.input.camera_zoom = target_zoom;
-                                    self.input.target_zoom = target_zoom;
-                                    self.input.camera_x =
-                                        self.input.screen_w * 0.5 - target_world_cx * target_zoom;
-                                    self.input.camera_y =
-                                        self.input.screen_h * 0.5 - target_world_cy * target_zoom;
-                                    self.clamp_camera_to_map();
-                                    self.input.has_snapped_camera_to_spawn = true;
-                                    log::info!(
-                                        "Game started! Camera smoothly arrived at player spawn at ({}, {}), zoom={}",
-                                        target_world_cx,
-                                        target_world_cy,
-                                        self.input.camera_zoom
-                                    );
-                                }
+                    if (target_zoom - next_zoom).abs() < 0.2
+                        && (target_world_cx - next_world_cx).abs() < 0.1
+                        && (target_world_cy - next_world_cy).abs() < 0.1
+                    {
+                        self.input.camera_zoom = target_zoom;
+                        self.input.target_zoom = target_zoom;
+                        self.input.camera_x =
+                            self.input.screen_w * 0.5 - target_world_cx * target_zoom;
+                        self.input.camera_y =
+                            self.input.screen_h * 0.5 - target_world_cy * target_zoom;
+                        self.clamp_camera_to_map();
+                        self.input.has_snapped_camera_to_spawn = true;
+                        log::info!(
+                            "Game started! Camera smoothly arrived at player spawn at ({}, {}), zoom={}",
+                            target_world_cx,
+                            target_world_cy,
+                            self.input.camera_zoom
+                        );
+                    }
 
-                                // Request redraw while animating
-                                if let Some(win) = self.gfx.window.as_ref() {
-                                    win.request_redraw();
-                                }
-                            }
-                        }
+                    // Request redraw while animating
+                    if let Some(win) = self.gfx.window.as_ref() {
+                        win.request_redraw();
                     }
                 }
             }
@@ -426,15 +418,15 @@ impl SowApp {
             .is_none_or(|t| now.duration_since(t).as_secs() >= 5)
         {
             self.time.last_debug_print = Some(now);
-            if let Some(snap) = &self.sim.current_snapshot {
-                if !snap.debug_mem_info.is_empty() {
-                    log::info!(
-                        "[MEM_PROFILER] Turn Queue: {} | Dirty Tiles: {} | {}",
-                        self.sim.turn_queue.len(),
-                        snap.dirty_tiles.len(),
-                        snap.debug_mem_info
-                    );
-                }
+            if let Some(snap) = &self.sim.current_snapshot
+                && !snap.debug_mem_info.is_empty()
+            {
+                log::info!(
+                    "[MEM_PROFILER] Turn Queue: {} | Dirty Tiles: {} | {}",
+                    self.sim.turn_queue.len(),
+                    snap.dirty_tiles.len(),
+                    snap.debug_mem_info
+                );
             }
         }
     }

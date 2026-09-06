@@ -23,35 +23,31 @@ impl SowApp {
                 }
 
                 // 2. Detect new alliance requests targeting us
-                if let Some(my_info_new) = snap.players.iter().find(|p| p.id == my_id) {
-                    if let Some(my_info_old) = existing.players.iter().find(|p| p.id == my_id) {
-                        for req in &my_info_new.alliance_requests {
-                            if !my_info_old.alliance_requests.contains(req) {
-                                self.ui.trigger_viewport_alert(
-                                    crate::app::ViewportAlertKind::AllianceRequest,
-                                );
-                            }
+                if let Some(my_info_new) = snap.players.iter().find(|p| p.id == my_id)
+                    && let Some(my_info_old) = existing.players.iter().find(|p| p.id == my_id)
+                {
+                    for req in &my_info_new.alliance_requests {
+                        if !my_info_old.alliance_requests.contains(req) {
+                            self.ui.trigger_viewport_alert(
+                                crate::app::ViewportAlertKind::AllianceRequest,
+                            );
                         }
                     }
                 }
 
                 // 3. Detect betrayals (ally breaks alliance and is marked traitor)
-                if let Some(my_info_new) = snap.players.iter().find(|p| p.id == my_id) {
-                    if let Some(my_info_old) = existing.players.iter().find(|p| p.id == my_id) {
-                        for ally_id in &my_info_old.alliances {
-                            if !my_info_new.alliances.contains(ally_id) {
-                                if let Some(other_player) =
-                                    snap.players.iter().find(|p| p.id == *ally_id)
-                                {
-                                    if other_player.traitor
-                                        || other_player.active_emoji.as_deref() == Some("🗡️")
-                                    {
-                                        self.ui.trigger_viewport_alert(
-                                            crate::app::ViewportAlertKind::Betrayal,
-                                        );
-                                    }
-                                }
-                            }
+                if let Some(my_info_new) = snap.players.iter().find(|p| p.id == my_id)
+                    && let Some(my_info_old) = existing.players.iter().find(|p| p.id == my_id)
+                {
+                    for ally_id in &my_info_old.alliances {
+                        if !my_info_new.alliances.contains(ally_id)
+                            && let Some(other_player) =
+                                snap.players.iter().find(|p| p.id == *ally_id)
+                            && (other_player.traitor
+                                || other_player.active_emoji.as_deref() == Some("🗡️"))
+                        {
+                            self.ui
+                                .trigger_viewport_alert(crate::app::ViewportAlertKind::Betrayal);
                         }
                     }
                 }

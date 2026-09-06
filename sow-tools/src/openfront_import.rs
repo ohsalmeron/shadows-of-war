@@ -49,8 +49,7 @@ pub fn run_import(args: ImportArgs) -> Result<(), Box<dyn std::error::Error>> {
 
     let thumb_path = out_dir.join("thumbnail.webp");
     if let Ok(img) = image::open(input.join("image.png")) {
-        sow_map::write_wide_thumbnail(&img, &thumb_path)
-            .map_err(|e| format!("thumbnail: {e}"))?;
+        sow_map::write_wide_thumbnail(&img, &thumb_path).map_err(|e| format!("thumbnail: {e}"))?;
     } else {
         write_placeholder_thumbnail(&map_file, &thumb_path)?;
     }
@@ -96,7 +95,9 @@ fn read_info_json_frequency(dir: &Path) -> u32 {
 fn read_info_json_name(dir: &Path) -> Option<String> {
     let blob = fs::read_to_string(dir.join("info.json")).ok()?;
     let info: Value = serde_json::from_str(&blob).ok()?;
-    info.get("name").and_then(|v| v.as_str()).map(str::to_string)
+    info.get("name")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
 }
 
 fn import_from_png(dir: &Path, display_name: &str) -> Result<MapFile, Box<dyn std::error::Error>> {
@@ -105,28 +106,19 @@ fn import_from_png(dir: &Path, display_name: &str) -> Result<MapFile, Box<dyn st
     let (src_w, src_h) = (original.width(), original.height());
     // OpenFront source PNGs are huge (up to ~5M tiles). Clamp to the project's
     // MAX_MAP_PIXELS, preserving aspect, before generating the map.
-    let (target_w, target_h) = clamp_map_dimensions_proportional(
-        src_w,
-        src_h,
-        sow_core::maps::MAX_MAP_PIXELS,
-    );
+    let (target_w, target_h) =
+        clamp_map_dimensions_proportional(src_w, src_h, sow_core::maps::MAX_MAP_PIXELS);
     let img = if target_w != src_w || target_h != src_h {
-        original.resize(target_w, target_h, image::imageops::FilterType::Triangle)
+        // Source colors are categorical terrain labels; interpolation would invent land/water colors.
+        original.resize(target_w, target_h, image::imageops::FilterType::Nearest)
     } else {
         original
     };
     let rgba = img.to_rgba8();
     let width = rgba.width();
     let height = rgba.height();
-    let pixels: Vec<[u8; 4]> = rgba.pixels().map(|p| [p[0], p[1], p[2], p[3]]).collect();
-
-    let result = sow_map::generator::generate_map(sow_map::generator::GeneratorArgs {
-        width,
-        height,
-        pixels,
-        remove_small: true,
-    })
-    .map_err(|e| format!("generator: {e}"))?;
+    let result = sow_map::generate_from_rgba(&rgba, Some((width, height)))
+        .map_err(|e| format!("image pipeline: {e}"))?;
 
     let mut spawns = load_info_json_spawns(dir)?;
     // Spawn coordinates come from the native-resolution info.json — scale them

@@ -169,9 +169,20 @@ fn paint_prepared_runs(
     color: Color32,
     outlined: bool,
 ) {
+    let shadow_color = Color32::from_black_alpha(color.a());
+    paint_prepared_runs_with_shadow(painter, rect, prepared, color, outlined, shadow_color);
+}
+
+fn paint_prepared_runs_with_shadow(
+    painter: &egui::Painter,
+    rect: Rect,
+    prepared: &PreparedName,
+    color: Color32,
+    outlined: bool,
+    shadow_color: Color32,
+) {
     let mut x = rect.left();
     let cy = rect.center().y;
-    let shadow_color = Color32::from_black_alpha(color.a());
 
     for run in &prepared.runs {
         match run {
@@ -314,8 +325,9 @@ pub fn outlined_emoji_text(
     color: Color32,
     shadow: Color32,
 ) {
-    paint_emoji_text_at(painter, pos, anchor, text, font_id, color, true);
-    let _ = shadow;
+    let prepared = prepare_name(painter, text, &font_id);
+    let rect = anchor.anchor_size(pos, prepared.size);
+    paint_prepared_runs_with_shadow(painter, rect, &prepared, color, true, shadow);
 }
 
 pub fn measure_emoji_text(painter: &egui::Painter, text: &str, font_id: &FontId) -> Vec2 {

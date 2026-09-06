@@ -64,10 +64,10 @@ impl SowEngine {
                     }
                 }
                 if let Some(ally_id) = betray_then_attack {
-                    if let Some(p_me) = self.state.player_mut(bot_id) {
-                        if p_me.iq_points >= alliance_cost {
-                            p_me.iq_points -= alliance_cost;
-                        }
+                    if let Some(p_me) = self.state.player_mut(bot_id)
+                        && p_me.iq_points >= alliance_cost
+                    {
+                        p_me.iq_points -= alliance_cost;
                     }
                     decisions.push(BotDecision {
                         bot_id,
@@ -116,12 +116,11 @@ impl SowEngine {
                             if is_ally || is_teammate {
                                 return false;
                             }
-                            if !slot.profile.attacks_players {
-                                if let Some(t) = self.state.player(id) {
-                                    if t.player_type != crate::player::PlayerType::Bot {
-                                        return false; // passive tribe: skip players
-                                    }
-                                }
+                            if !slot.profile.attacks_players
+                                && let Some(t) = self.state.player(id)
+                                && t.player_type != crate::player::PlayerType::Bot
+                            {
+                                return false; // passive tribe: skip players
                             }
                             true
                         } else {
@@ -144,17 +143,15 @@ impl SowEngine {
                 if is_mfo {
                     let mut max_attacker_troops = -1.0;
                     for att in &self.attacks {
-                        if att.target_owner == bot_id && targets.contains(&att.owner_id) {
-                            if let Some(p_att) = self.state.player(att.owner_id) {
-                                if let Some(p_me) = self.state.player(bot_id) {
-                                    if p_me.troops > p_att.troops
-                                        && p_att.troops > max_attacker_troops
-                                    {
-                                        max_attacker_troops = p_att.troops;
-                                        revenge_choice = Some(att.owner_id);
-                                    }
-                                }
-                            }
+                        if att.target_owner == bot_id
+                            && targets.contains(&att.owner_id)
+                            && let Some(p_att) = self.state.player(att.owner_id)
+                            && let Some(p_me) = self.state.player(bot_id)
+                            && p_me.troops > p_att.troops
+                            && p_att.troops > max_attacker_troops
+                        {
+                            max_attacker_troops = p_att.troops;
+                            revenge_choice = Some(att.owner_id);
                         }
                     }
                 }
@@ -193,8 +190,7 @@ impl SowEngine {
                                 // Same odds discipline as land initiation: no
                                 // boat suicide into a dwarfing target.
                                 let p_troops = p.troops.max(0.0);
-                                let p_is_tribe =
-                                    p.player_type == crate::player::PlayerType::Bot;
+                                let p_is_tribe = p.player_type == crate::player::PlayerType::Bot;
                                 let odds_ok = if p_is_tribe {
                                     boat_send >= p_troops * 2.0
                                 } else {
@@ -224,7 +220,7 @@ impl SowEngine {
                                 if let Some(t_tile) = target_p.border_tiles.ones().nth(pick_idx) {
                                     let border_tiles =
                                         &self.state.player(bot_id).unwrap().border_tiles;
-                                    if let Ok(_route) = crate::warp_fleet::resolve_fleet_route(
+                                    if crate::warp_fleet::resolve_fleet_route(
                                         &self.state.map,
                                         &self.water,
                                         &mut self.path_scratch,
@@ -232,7 +228,9 @@ impl SowEngine {
                                         (target_p_id, t_tile),
                                         border_tiles,
                                         Some(&target_p.border_tiles),
-                                    ) {
+                                    )
+                                    .is_ok()
+                                    {
                                         route_resolved = true;
                                         target_tile_opt = Some(t_tile);
                                     }
@@ -295,11 +293,11 @@ impl SowEngine {
                         let mut best_target = targets[0];
                         let mut min_troops = f64::MAX;
                         for &t_id in &targets {
-                            if let Some(p_t) = self.state.player(t_id) {
-                                if p_t.troops < min_troops {
-                                    min_troops = p_t.troops;
-                                    best_target = t_id;
-                                }
+                            if let Some(p_t) = self.state.player(t_id)
+                                && p_t.troops < min_troops
+                            {
+                                min_troops = p_t.troops;
+                                best_target = t_id;
                             }
                         }
                         best_target
@@ -309,8 +307,7 @@ impl SowEngine {
                     && !targets.is_empty()
                     && troops >= max_troops * trigger_ratio
                 {
-                    let target_owner;
-                    if bot_iq >= 130 {
+                    let target_owner = if bot_iq >= 130 {
                         let mut best_target = targets[0];
                         for &t_id in &targets {
                             if let (Some(p_t), Some(p_b)) =
@@ -326,24 +323,23 @@ impl SowEngine {
                                 }
                             }
                         }
-                        target_owner = best_target;
+                        best_target
                     } else if bot_iq >= 100 {
                         let mut weakest = targets[0];
                         for &t_id in &targets {
                             if let (Some(p_t), Some(p_w)) =
                                 (self.state.player(t_id), self.state.player(weakest))
+                                && p_t.troops < p_w.troops
                             {
-                                if p_t.troops < p_w.troops {
-                                    weakest = t_id;
-                                }
+                                weakest = t_id;
                             }
                         }
-                        target_owner = weakest;
+                        weakest
                     } else {
                         let p_mut = self.state.player_mut(bot_id).unwrap();
                         let roll = p_mut.bot_rng.next_int(0, targets.len() as i32) as usize;
-                        target_owner = targets[roll];
-                    }
+                        targets[roll]
+                    };
 
                     let is_target_human = self
                         .state
@@ -426,8 +422,7 @@ impl SowEngine {
                     // even parity waves grind territory. FFA discipline stays
                     // for PLAYER targets only, and team games are exempt
                     // (OF: troopSendCap/isAttackTooWeak are FFA-only).
-                    let affordable =
-                        troops * (1.0 - slot.profile.reserve_ratio);
+                    let affordable = troops * (1.0 - slot.profile.reserve_ratio);
                     let committed = if target_is_tribe {
                         Some((target_troops * 4.0).min(affordable))
                     } else if is_team_game
@@ -499,10 +494,8 @@ impl SowEngine {
                         // its points on contested frontiers and permanently
                         // freezes mid-game (bankruptcy = zero actions, troops
                         // piling at cap while free land sits next door).
-                        if !is_neutral {
-                            if let Some(p_me) = self.state.player_mut(bot_id) {
-                                p_me.iq_points = (p_me.iq_points - attack_cost).max(0.0);
-                            }
+                        if !is_neutral && let Some(p_me) = self.state.player_mut(bot_id) {
+                            p_me.iq_points = (p_me.iq_points - attack_cost).max(0.0);
                         }
                         decisions.push(BotDecision {
                             bot_id,
@@ -552,7 +545,7 @@ impl SowEngine {
                 .seed
                 .wrapping_add(bot_id as u64)
                 .wrapping_mul(0x9E3779B97F4A7C15)
-                .wrapping_add(self.state.tick as u64),
+                .wrapping_add(self.state.tick),
         );
         for sample in 0..8 {
             let tx = rng.next_int(0, width as i32).max(0) as u32;
@@ -560,7 +553,10 @@ impl SowEngine {
             let owner = self.state.map.owner_id(tx, ty);
             let is_land = self.state.map.terrain[self.state.map.ref_id(tx, ty)].is_land();
             if std::env::var("SOW_AI_DEBUG").is_ok() {
-                eprintln!("SMP id={bot_id} tick={} s={sample} t=({tx},{ty}) owner={owner} land={is_land}", self.state.tick);
+                eprintln!(
+                    "SMP id={bot_id} tick={} s={sample} t=({tx},{ty}) owner={owner} land={is_land}",
+                    self.state.tick
+                );
             }
             if owner != 0 {
                 continue;
@@ -715,10 +711,10 @@ impl SowEngine {
                     && b2.owner_id != bot_id
                 {
                     let mut is_ally = false;
-                    if let Some(p1) = self.state.player(bot_id) {
-                        if p1.alliances.contains(&b2.owner_id) {
-                            is_ally = true;
-                        }
+                    if let Some(p1) = self.state.player(bot_id)
+                        && p1.alliances.contains(&b2.owner_id)
+                    {
+                        is_ally = true;
                     }
                     if !is_ally {
                         let (sx, sy) = (

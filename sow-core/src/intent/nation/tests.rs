@@ -641,13 +641,13 @@ mod bot_iq_alliance_tests {
 
     #[test]
     fn test_ai_tier_resolves_from_type_not_id() {
-        use crate::intent::nation::profile::{ai_tier, AiTier};
+        use crate::intent::nation::profile::{AiTier, ai_tier};
         use crate::player::PlayerType;
 
         // Ghost = Human + is_ai_controlled, regardless of id.
         assert_eq!(ai_tier(PlayerType::Human, true), Some(AiTier::Ghost));
         assert_eq!(ai_tier(PlayerType::Human, false), None); // real human: no AI
-                                                             // Nation and Bot map by type, never by id.
+        // Nation and Bot map by type, never by id.
         assert_eq!(ai_tier(PlayerType::Nation, false), Some(AiTier::Nation));
         assert_eq!(ai_tier(PlayerType::Bot, false), Some(AiTier::Tribe));
         assert_eq!(ai_tier(PlayerType::Bot, true), Some(AiTier::Tribe));
@@ -683,15 +683,15 @@ mod bot_iq_alliance_tests {
             GameState::new(1, 16, 16, config.clone()),
             WaterComponents::default(),
         );
-        g.spawn_human(
-            5,
-            "ghost".into(),
-            [1.0, 0.0, 0.0],
-            None,
-            crate::player::Civilization::ALL[0],
-            crate::player::Leader::ALL[0],
-            true,
-        );
+        g.spawn_human(crate::engine::HumanSpawn {
+            player_id: 5,
+            name: "ghost".into(),
+            color: [1.0, 0.0, 0.0],
+            team: None,
+            civilization: crate::player::Civilization::ALL[0],
+            leader: crate::player::Leader::ALL[0],
+            is_ai_controlled: true,
+        });
         let ghost_iq = g.state.player(5).unwrap().iq;
         assert!(
             (160..=180).contains(&ghost_iq),
@@ -725,7 +725,7 @@ mod bot_iq_alliance_tests {
     #[test]
     fn test_vanilla_tribes_are_active_but_do_not_target_players() {
         use crate::game_config::BotDifficulty;
-        use crate::intent::nation::profile::{ai_profile_for, AiTier};
+        use crate::intent::nation::profile::{AiTier, ai_profile_for};
 
         let vanilla = ai_profile_for(AiTier::Tribe, BotDifficulty::Vanilla);
         assert!(!vanilla.attacks_players);
@@ -767,5 +767,3 @@ mod bot_iq_alliance_tests {
         assert_eq!(engine.state.player(1).unwrap().iq_points, 45.0);
     }
 }
-
-

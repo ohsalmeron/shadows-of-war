@@ -277,9 +277,9 @@ fn handle_response_drag_or_track_click(
             state.store(ui.ctx(), scroll_id);
             changed = true;
         }
-    } else if bar_response.clicked() {
-        if let Some(pos) = bar_response.interact_pointer_pos() {
-            if !handle_rect.contains(pos) {
+    } else if bar_response.clicked()
+        && let Some(pos) = bar_response.interact_pointer_pos()
+            && !handle_rect.contains(pos) {
                 let new_top = (pos.y - handle_len * 0.5)
                     .clamp(scroll_track.top(), scroll_track.top() + handle_travel);
                 state.offset.y = if handle_travel > 0.0 {
@@ -294,8 +294,6 @@ fn handle_response_drag_or_track_click(
                 state.store(ui.ctx(), scroll_id);
                 changed = true;
             }
-        }
-    }
 
     changed
 }

@@ -11,10 +11,7 @@ pub(crate) struct SideBadgeOpts<'a> {
 }
 
 /// Status badge drawn at an absolute screen position (beside avatar). Spring entrance + glow.
-pub(crate) fn draw_side_status_badge(
-    painter: &egui::Painter,
-    opts: &SideBadgeOpts,
-) {
+pub(crate) fn draw_side_status_badge(painter: &egui::Painter, opts: &SideBadgeOpts) {
     let pos = opts.pos;
     let size = opts.size;
     let player_id = opts.player_id;
@@ -47,31 +44,29 @@ pub(crate) fn draw_side_status_badge(
     }
     let rect = egui::Rect::from_center_size(pos, egui::vec2(final_size, final_size));
 
-    if is_me {
-        if let Some(glow_color) = color_glow {
-            let glow_r = final_size * 0.8;
-            let glow_a = anim * flash_alpha * 0.35;
-            painter.circle_filled(
-                rect.center(),
-                glow_r * 1.4,
-                egui::Color32::from_rgba_unmultiplied(
-                    glow_color.r(),
-                    glow_color.g(),
-                    glow_color.b(),
-                    (glow_a * 120.0) as u8,
-                ),
-            );
-            painter.circle_filled(
-                rect.center(),
-                glow_r,
-                egui::Color32::from_rgba_unmultiplied(
-                    glow_color.r(),
-                    glow_color.g(),
-                    glow_color.b(),
-                    (glow_a * 255.0) as u8,
-                ),
-            );
-        }
+    if is_me && let Some(glow_color) = color_glow {
+        let glow_r = final_size * 0.8;
+        let glow_a = anim * flash_alpha * 0.35;
+        painter.circle_filled(
+            rect.center(),
+            glow_r * 1.4,
+            egui::Color32::from_rgba_unmultiplied(
+                glow_color.r(),
+                glow_color.g(),
+                glow_color.b(),
+                (glow_a * 120.0) as u8,
+            ),
+        );
+        painter.circle_filled(
+            rect.center(),
+            glow_r,
+            egui::Color32::from_rgba_unmultiplied(
+                glow_color.r(),
+                glow_color.g(),
+                glow_color.b(),
+                (glow_a * 255.0) as u8,
+            ),
+        );
     }
 
     let tint = egui::Color32::WHITE.linear_multiply(anim * flash_alpha);

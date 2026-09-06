@@ -2,8 +2,279 @@
 # Additional map folders here are gitignored; only `world/` is tracked as the seed map.
 # Each folder carries info.toml with its weighted-rotation frequency
 # (OpenFront `multiplayer_frequency`; 0 = out of rotation).
+# The `[recipes.<map>]` tables below keep provenance and artifact hashes for the
+# generated map library even though the binary map folders remain ignored.
 
 [world]
-source = "image"
+source = "openfront_image"
 attribution = "Derived from a world-map heightmap image (OpenFront MapGenerator asset)."
-notes = "Generated via `sow-tools image-map`. This is the single canonical map source: the online map service serves it and the WASM client embeds world/map.bin.br directly from this tree."
+notes = "Generated via the Rust image pipeline from the pinned OpenFront authoring image. This is the single canonical map source: the online map service serves it and the WASM client embeds world/map.bin.br directly from this tree."
+[recipes.africa]
+origin_kind = "openfront_image"
+source_path = "../games/openfrontio/map-generator/assets/maps/africa/image.png"
+source_sha256 = "c57f74620177725e3fda55a771d877acc53ec6c1d7ff3a1059002ca4108a4cea"
+source_commit = "f51f165b947a92cc683ade3a72c3800300e86e61"
+reproducible = true
+target_width = 976
+target_height = 1020
+pipeline = "sow-map::image_pipeline::generate_from_rgba"
+pipeline_revision = "nearest-input-v1/cardinal-runtime-v1"
+water_connectivity = "cardinal-4"
+small_island_policy = "remove-under-30-source-tiles"
+small_lake_policy = "preserve-all"
+downscale_policy = "land-on-tie"
+map_bin_sha256 = "ea1c26d20f87cb23cd3bebe66a5d335fdf9997536da0153cdb9264debcc4cf62"
+map_bin_br_sha256 = "c05ad8b636a3e3d79770c1facc52aaf4c4bb626c0dadfaee3cf80611b628bd2a"
+thumbnail_sha256 = "e4501c882bcfb1ae4baadaba5afbcbeef3641d5db4b66b479f64ccf51f6ddc86"
+
+[recipes.asia]
+origin_kind = "openfront_image"
+source_path = "../games/openfrontio/map-generator/assets/maps/asia/image.png"
+source_sha256 = "02a46b7428d7206e8e362c3fc9c049d1168e86781468f70362c2c6aedc3afa30"
+source_commit = "f51f165b947a92cc683ade3a72c3800300e86e61"
+reproducible = true
+target_width = 1284
+target_height = 772
+pipeline = "sow-map::image_pipeline::generate_from_rgba"
+pipeline_revision = "nearest-input-v1/cardinal-runtime-v1"
+water_connectivity = "cardinal-4"
+small_island_policy = "remove-under-30-source-tiles"
+small_lake_policy = "preserve-all"
+downscale_policy = "land-on-tie"
+map_bin_sha256 = "aafed7dbfd86adb8e1a05879edc5d6b140a7dd512209459bc4c93c8b979f94f8"
+map_bin_br_sha256 = "ffbc4d068fb9605c1a2777132b3897f3cc736c4139e4b36681bfec4b5788442e"
+thumbnail_sha256 = "0f2aa10fb3813dc010677443d41547b65ea032ec1f36594e7f3e137c4e9d5549"
+
+[recipes.bajacalifornia]
+origin_kind = "openfront_image"
+source_path = "../games/openfrontio/map-generator/assets/maps/bajacalifornia/image.png"
+source_sha256 = "9fec6866a4e0a8c5faa80fdf068378d3679b46df3153a93f7e93bca62229d47c"
+source_commit = "f51f165b947a92cc683ade3a72c3800300e86e61"
+reproducible = true
+target_width = 920
+target_height = 1084
+pipeline = "sow-map::image_pipeline::generate_from_rgba"
+pipeline_revision = "nearest-input-v1/cardinal-runtime-v1"
+water_connectivity = "cardinal-4"
+small_island_policy = "remove-under-30-source-tiles"
+small_lake_policy = "preserve-all"
+downscale_policy = "land-on-tie"
+map_bin_sha256 = "e94a1b3f66260afdf6abd7f1b3dbd8b7cf16e69e50e1f6f1ba2dffdbf96d8a3b"
+map_bin_br_sha256 = "00cbd611fa3e22feb1f19800d66c59807bd3b01dd1ace57164a30ef133a6d4f8"
+thumbnail_sha256 = "1ea7cd42f66d990f39d6e181e2d3a91b733bf69039c56e3dbbd0703bf662b3e0"
+
+[recipes.eastanglia]
+origin_kind = "existing_bin_snapshot"
+source_path = "assets/maps/eastanglia/map.bin"
+source_sha256 = "28d8ea7d8376ccba0dfba4e8fbb3d1b4d0ca4426c24c352afa40c240f51582d4"
+source_commit = ""
+reproducible = false
+target_width = 896
+target_height = 504
+pipeline = "preserved-existing-map"
+pipeline_revision = "unreproducible-origin"
+water_connectivity = "cardinal-4"
+small_island_policy = "remove-under-30-source-tiles"
+small_lake_policy = "preserve-all"
+downscale_policy = "land-on-tie"
+map_bin_sha256 = "28d8ea7d8376ccba0dfba4e8fbb3d1b4d0ca4426c24c352afa40c240f51582d4"
+map_bin_br_sha256 = "63a58bb52549738589f4ac609957fe82bd821732d4f6885a7bcf7410042a1730"
+thumbnail_sha256 = "04531f40f333f2edad043e8bf4c9812a3795e8949d42f19d10c9644fc9109059"
+
+[recipes.eastasia]
+origin_kind = "openfront_image"
+source_path = "../games/openfrontio/map-generator/assets/maps/eastasia/image.png"
+source_sha256 = "cb9510115ac2e8f79520163c9423fd523ad067a1a86d864a0b9ab6218dca0281"
+source_commit = "f51f165b947a92cc683ade3a72c3800300e86e61"
+reproducible = true
+target_width = 972
+target_height = 1024
+pipeline = "sow-map::image_pipeline::generate_from_rgba"
+pipeline_revision = "nearest-input-v1/cardinal-runtime-v1"
+water_connectivity = "cardinal-4"
+small_island_policy = "remove-under-30-source-tiles"
+small_lake_policy = "preserve-all"
+downscale_policy = "land-on-tie"
+map_bin_sha256 = "3837733ea67e479a83619682762b9df65e02366b76c8174189af4410dad10210"
+map_bin_br_sha256 = "3349b1bf89a5adeb7a7538898ac5d103f9d281ee99ab06ef56c60cb32ee5331a"
+thumbnail_sha256 = "abc048de92b192d877504cbf346749f627a77964daec9cea0a4412fa09f43aa5"
+
+[recipes.europe]
+origin_kind = "openfront_image"
+source_path = "../games/openfrontio/map-generator/assets/maps/europe/image.png"
+source_sha256 = "d9d793c06c62d1677683cd369e89b390dd24c23e3815c9049a38d91156c0da19"
+source_commit = "f51f165b947a92cc683ade3a72c3800300e86e61"
+reproducible = true
+target_width = 1312
+target_height = 756
+pipeline = "sow-map::image_pipeline::generate_from_rgba"
+pipeline_revision = "nearest-input-v1/cardinal-runtime-v1"
+water_connectivity = "cardinal-4"
+small_island_policy = "remove-under-30-source-tiles"
+small_lake_policy = "preserve-all"
+downscale_policy = "land-on-tie"
+map_bin_sha256 = "9aa2049f88eccc3725349eba294285e2e85196db57d1fdb98aa8d3cd77cd7de1"
+map_bin_br_sha256 = "4323359202338b35c71fdb4cee6113db5b568e092e1dfe20ca2a40b34c09b954"
+thumbnail_sha256 = "1d636bd356194a61d2c41cf02c179bb7b2acd7b6ff40616cdd57625a35438ab6"
+
+[recipes.indiansubcontinent]
+origin_kind = "openfront_image"
+source_path = "../games/openfrontio/map-generator/assets/maps/indiansubcontinent/image.png"
+source_sha256 = "ecd5b7dd4ba8d54692ce3840a93e71a454a693da00f44b218dbd47d26b5f08d3"
+source_commit = "f51f165b947a92cc683ade3a72c3800300e86e61"
+reproducible = true
+target_width = 944
+target_height = 1052
+pipeline = "sow-map::image_pipeline::generate_from_rgba"
+pipeline_revision = "nearest-input-v1/cardinal-runtime-v1"
+water_connectivity = "cardinal-4"
+small_island_policy = "remove-under-30-source-tiles"
+small_lake_policy = "preserve-all"
+downscale_policy = "land-on-tie"
+map_bin_sha256 = "2dd2365e8f87064f8649310a4eb54116d519881211314e6a9ad4a618e52e9a36"
+map_bin_br_sha256 = "20561cd732aed5be397aa433c32763503540dd113a31791c03ab7c0d61f65c02"
+thumbnail_sha256 = "7e19b15e44bbdae8a46f9a6271c6435418351a66ebcebfbc8c03d55457f31f2d"
+
+[recipes.mena]
+origin_kind = "openfront_image"
+source_path = "../games/openfrontio/map-generator/assets/maps/mena/image.png"
+source_sha256 = "c3a795af4683a5c50967e2682980d6cf2326db84fea83115ca6fb7ba85421a8a"
+source_commit = "f51f165b947a92cc683ade3a72c3800300e86e61"
+reproducible = true
+target_width = 1504
+target_height = 660
+pipeline = "sow-map::image_pipeline::generate_from_rgba"
+pipeline_revision = "nearest-input-v1/cardinal-runtime-v1"
+water_connectivity = "cardinal-4"
+small_island_policy = "remove-under-30-source-tiles"
+small_lake_policy = "preserve-all"
+downscale_policy = "land-on-tie"
+map_bin_sha256 = "98b4982bb8afe05e52b0273d6055594de61f04232505b3fbf1830bad7c72d69f"
+map_bin_br_sha256 = "cdc27f804c864c1e21bc0336161702c849a1a64f2efef6ebbd894b296deaad27"
+thumbnail_sha256 = "3f7ac7b262d23a43eee59ee664a095f86a06ba2df48284e0b05c20d03780e678"
+
+[recipes.middleeast]
+origin_kind = "openfront_image"
+source_path = "../games/openfrontio/map-generator/assets/maps/middleeast/image.png"
+source_sha256 = "372210b5c4a0f9f713c04eefbe624ea41f1f418ea02bdeb4e00beb761a93077e"
+source_commit = "f51f165b947a92cc683ade3a72c3800300e86e61"
+reproducible = true
+target_width = 1032
+target_height = 964
+pipeline = "sow-map::image_pipeline::generate_from_rgba"
+pipeline_revision = "nearest-input-v1/cardinal-runtime-v1"
+water_connectivity = "cardinal-4"
+small_island_policy = "remove-under-30-source-tiles"
+small_lake_policy = "preserve-all"
+downscale_policy = "land-on-tie"
+map_bin_sha256 = "4154ff7ed1a7ca5716857d150be341749006ade1ac14d5d38896cd5b1dc18c04"
+map_bin_br_sha256 = "5c90e9eeddfa27e01cec02d52a5a8dd2af9a26420db84de2452925012ec536db"
+thumbnail_sha256 = "6c133272319f0584e5e228ae8affba87765556717fcf7875c243abad540d5f17"
+
+[recipes.northamerica]
+origin_kind = "openfront_image"
+source_path = "../games/openfrontio/map-generator/assets/maps/northamerica/image.png"
+source_sha256 = "4800b5ce30079c9da6dc3491c5344b1302b81c3e48ddcceedeb7b15c9fe85677"
+source_commit = "f51f165b947a92cc683ade3a72c3800300e86e61"
+reproducible = true
+target_width = 1384
+target_height = 716
+pipeline = "sow-map::image_pipeline::generate_from_rgba"
+pipeline_revision = "nearest-input-v1/cardinal-runtime-v1"
+water_connectivity = "cardinal-4"
+small_island_policy = "remove-under-30-source-tiles"
+small_lake_policy = "preserve-all"
+downscale_policy = "land-on-tie"
+map_bin_sha256 = "eddbbd672c288aa6e50715c60ddfd01005b2abea0e5f4a49938b1c1d229b40de"
+map_bin_br_sha256 = "21762f6a638c74bb3bc5ac5d47996117df198519698c99bacd6156774de9255e"
+thumbnail_sha256 = "f48dd7039599b8f4cf226d186199eeea227790e300b718e19db303b7be454f49"
+
+[recipes.oceania]
+origin_kind = "openfront_image"
+source_path = "../games/openfrontio/map-generator/assets/maps/oceania/image.png"
+source_sha256 = "23041db1e677e4cfe456c9a5a2a04eeae0487029e1fe78c7e4ff244af5b78d2c"
+source_commit = "f51f165b947a92cc683ade3a72c3800300e86e61"
+reproducible = true
+target_width = 1284
+target_height = 772
+pipeline = "sow-map::image_pipeline::generate_from_rgba"
+pipeline_revision = "nearest-input-v1/cardinal-runtime-v1"
+water_connectivity = "cardinal-4"
+small_island_policy = "remove-under-30-source-tiles"
+small_lake_policy = "preserve-all"
+downscale_policy = "land-on-tie"
+map_bin_sha256 = "e23d590b7eef2e9461121594ce43f16ab6214b3a87e6a4175f5121b0e78a65db"
+map_bin_br_sha256 = "cb0be979b80c40f3a98c0ad59427484c8337507c9ef72e80a02e690ecc0fe766"
+thumbnail_sha256 = "961b4e572e3b96868fb26df95456739532adb036f111ffe4a12f634b78ee5dd1"
+
+[recipes.pangaea]
+origin_kind = "openfront_image"
+source_path = "../games/openfrontio/map-generator/assets/maps/pangaea/image.png"
+source_sha256 = "4d2eb1eeeb1a15c54169bd3c78fef172de1870a7a41b47405f42548acc140771"
+source_commit = "f51f165b947a92cc683ade3a72c3800300e86e61"
+reproducible = true
+target_width = 1000
+target_height = 1000
+pipeline = "sow-map::image_pipeline::generate_from_rgba"
+pipeline_revision = "nearest-input-v1/cardinal-runtime-v1"
+water_connectivity = "cardinal-4"
+small_island_policy = "remove-under-30-source-tiles"
+small_lake_policy = "preserve-all"
+downscale_policy = "land-on-tie"
+map_bin_sha256 = "cd11fc7db87ccc1806d4c2f48052d1aef2383e071ee3526843e6be1cbe22c1f8"
+map_bin_br_sha256 = "38287156ef7f19cfd93cb85c0845a1b2984bf950a7ad7775d6e78edd74011ea6"
+thumbnail_sha256 = "4939412c8aaea1dc5eaa33627d489a32d7372e6df61d585fd84f57df131a991f"
+
+[recipes.southamerica]
+origin_kind = "openfront_image"
+source_path = "../games/openfrontio/map-generator/assets/maps/southamerica/image.png"
+source_sha256 = "b266863e72f070f4ade8142ebbf723de811adc3c46f5c583d03b331d0d143fb9"
+source_commit = "f51f165b947a92cc683ade3a72c3800300e86e61"
+reproducible = true
+target_width = 852
+target_height = 1164
+pipeline = "sow-map::image_pipeline::generate_from_rgba"
+pipeline_revision = "nearest-input-v1/cardinal-runtime-v1"
+water_connectivity = "cardinal-4"
+small_island_policy = "remove-under-30-source-tiles"
+small_lake_policy = "preserve-all"
+downscale_policy = "land-on-tie"
+map_bin_sha256 = "7ec668f8f460bfa77296f902164c6d8459f32db3a0813f7361c433d179c77844"
+map_bin_br_sha256 = "5c08e8b96963d39dac73119177ab9dc7697c365a1b76c6fbd29284861f6e0bae"
+thumbnail_sha256 = "3e9b2b4bb3f78e307e462debe6022e9b5e3c914c40e868fa4e5c9577268ea9e1"
+
+[recipes.southeastasia]
+origin_kind = "openfront_image"
+source_path = "../games/openfrontio/map-generator/assets/maps/southeastasia/image.png"
+source_sha256 = "5de174a960db58bbb060e394c91ea23fa849535e8406349d3e5bbe1edf313f6b"
+source_commit = "f51f165b947a92cc683ade3a72c3800300e86e61"
+reproducible = true
+target_width = 1288
+target_height = 768
+pipeline = "sow-map::image_pipeline::generate_from_rgba"
+pipeline_revision = "nearest-input-v1/cardinal-runtime-v1"
+water_connectivity = "cardinal-4"
+small_island_policy = "remove-under-30-source-tiles"
+small_lake_policy = "preserve-all"
+downscale_policy = "land-on-tie"
+map_bin_sha256 = "60671d35a1b12b93437e1c8bb0912f9ea7799f40a5eb97ca70a71b422d13a304"
+map_bin_br_sha256 = "6bb8ade7d48d0c00b1dc260dd70cbe928e683b56697946a444470ee8d836580c"
+thumbnail_sha256 = "74122e0cf99abbc0bbdcbef7fa69f86d9d52a670cc7fccd620e4552ebbc58f37"
+
+[recipes.world]
+origin_kind = "openfront_image"
+source_path = "../games/openfrontio/map-generator/assets/maps/world/image.png"
+source_sha256 = "f7fadf3d5b10929d5d4a3a667fa96fb4ba5de7fef153352de3fde8d9edd9ef05"
+source_commit = "f51f165b947a92cc683ade3a72c3800300e86e61"
+reproducible = true
+target_width = 1408
+target_height = 704
+pipeline = "sow-map::image_pipeline::generate_from_rgba"
+pipeline_revision = "nearest-input-v1/cardinal-runtime-v1"
+water_connectivity = "cardinal-4"
+small_island_policy = "remove-under-30-source-tiles"
+small_lake_policy = "preserve-all"
+downscale_policy = "land-on-tie"
+map_bin_sha256 = "14400e51cf81fb3a75329394dca4924370c645ae7af2e61ac28470c71ca71262"
+map_bin_br_sha256 = "613ecdf48155b0d63b07af18a39d10a669064438e58f806d3d616fc9a35c7192"
+thumbnail_sha256 = "83baf8edeab04bd38e95e7ef0c4e07da99062a041942595ae7092db3502aeee7"

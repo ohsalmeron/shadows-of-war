@@ -1,7 +1,5 @@
+use crate::kit::components::{BodyText, Button, Card, Heading, Modal, Subtitle, checkbox, slider};
 use egui::{Color32, Context, ScrollArea, Ui, pos2, vec2};
-use crate::kit::components::{
-    BodyText, Button, Card, Heading, Modal, Subtitle, checkbox, slider,
-};
 use sow_ui_kit::theme::palette;
 
 #[derive(Default)]

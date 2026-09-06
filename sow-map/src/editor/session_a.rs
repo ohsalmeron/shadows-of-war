@@ -93,7 +93,7 @@ impl MapEditorSession {
 
     pub fn handle_suspended(&mut self) {
         if let Some(sp) = self.prev_sync_point.take() {
-            let _ = self.render_ctx.context.wait_for(&sp, !0);
+            drop(self.render_ctx.context.wait_for(&sp, !0));
         }
         if let Some(mut s) = self.surface.take() {
             if let Some(mut gp) = self.gui_painter.take() {
@@ -203,9 +203,15 @@ impl MapEditorSession {
                 &mut client_app.main_menu_state.custom_game_config.map_height,
             );
             if let Some(bytes) = sow_core::maps::read_thumbnail_webp_from_repo(&normalized) {
-                let _ = client_app
+                if let Err(error) = client_app
                     .asset_loader
-                    .ingest_thumbnail(egui_ctx, &normalized, &bytes);
+                    .ingest_thumbnail(egui_ctx, &normalized, &bytes)
+                {
+                    log::warn!("Failed to decode thumbnail for {}: {}", normalized, error);
+                    client_app
+                        .asset_loader
+                        .note_thumbnail_failure(&normalized, error);
+                }
             } else {
                 client_app.asset_loader.request_thumbnail(&normalized);
             }
@@ -214,46 +220,46 @@ impl MapEditorSession {
     }
 
     pub fn check_surface(&mut self) {
-        if self.surface.is_none() {
-            if let Some(win) = self.window.as_ref() {
-                let sz = win.surface_size();
-                if let Ok(s) =
-                    self.render_ctx
-                        .create_surface(win, sz.width.max(1), sz.height.max(1))
-                {
-                    self.screen_w = sz.width as f32;
-                    self.screen_h = sz.height as f32;
-                    self.raw_input.screen_rect = Some(egui::Rect::from_min_size(
-                        egui::Pos2::ZERO,
-                        egui::Vec2::new(self.screen_w, self.screen_h),
-                    ));
+        if self.surface.is_none()
+            && let Some(win) = self.window.as_ref()
+        {
+            let sz = win.surface_size();
+            if let Ok(s) = self
+                .render_ctx
+                .create_surface(win, sz.width.max(1), sz.height.max(1))
+            {
+                self.screen_w = sz.width as f32;
+                self.screen_h = sz.height as f32;
+                self.raw_input.screen_rect = Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::Vec2::new(self.screen_w, self.screen_h),
+                ));
 
-                    if let Some(sp) = self.prev_sync_point.take() {
-                        let _ = self.render_ctx.context.wait_for(&sp, !0);
-                    }
-
-                    if let Some(mut old_mr) = self.map_renderer.take() {
-                        old_mr.destroy(&self.render_ctx);
-                    }
-                    if let Some(mut old_gp) = self.gui_painter.take() {
-                        old_gp.destroy(&self.render_ctx.context);
-                    }
-
-                    if self.editor_ui.mode == sow_ui::ui::map_editor::EditorMode::Brush {
-                        self.map_renderer = Some(MapRenderer::new(
-                            &self.render_ctx.context,
-                            self.width,
-                            self.height,
-                            s.info().format,
-                            &self.terrain,
-                        ));
-                        self.needs_first_upload = true;
-                        self.needs_owner_upload = true;
-                    }
-                    self.gui_painter = Some(GuiPainter::new(s.info(), &self.render_ctx.context));
-                    self.surface = Some(s);
-                    log::info!("Successfully recreated editor surface.");
+                if let Some(sp) = self.prev_sync_point.take() {
+                    drop(self.render_ctx.context.wait_for(&sp, !0));
                 }
+
+                if let Some(mut old_mr) = self.map_renderer.take() {
+                    old_mr.destroy(&self.render_ctx);
+                }
+                if let Some(mut old_gp) = self.gui_painter.take() {
+                    old_gp.destroy(&self.render_ctx.context);
+                }
+
+                if self.editor_ui.mode == sow_ui::ui::map_editor::EditorMode::Brush {
+                    self.map_renderer = Some(MapRenderer::new(
+                        &self.render_ctx.context,
+                        self.width,
+                        self.height,
+                        s.info().format,
+                        &self.terrain,
+                    ));
+                    self.needs_first_upload = true;
+                    self.needs_owner_upload = true;
+                }
+                self.gui_painter = Some(GuiPainter::new(s.info(), &self.render_ctx.context));
+                self.surface = Some(s);
+                log::info!("Successfully recreated editor surface.");
             }
         }
     }
@@ -263,7 +269,7 @@ impl MapEditorSession {
             WindowEvent::SurfaceResized(physical_size) => {
                 if physical_size.width > 0 && physical_size.height > 0 {
                     if let Some(sp) = self.prev_sync_point.take() {
-                        let _ = self.render_ctx.context.wait_for(&sp, !0);
+                        drop(self.render_ctx.context.wait_for(&sp, !0));
                     }
                     if let Some(ref mut s) = self.surface {
                         self.render_ctx.context.reconfigure_surface(
@@ -292,16 +298,16 @@ impl MapEditorSession {
                         self.raw_input
                             .events
                             .push(egui::Event::Text(text.to_string()));
-                    } else if let winit::keyboard::Key::Named(named) = &event.logical_key {
-                        if *named == winit::keyboard::NamedKey::Backspace {
-                            self.raw_input.events.push(egui::Event::Key {
-                                key: egui::Key::Backspace,
-                                physical_key: None,
-                                pressed: true,
-                                repeat: false,
-                                modifiers: self.raw_input.modifiers,
-                            });
-                        }
+                    } else if let winit::keyboard::Key::Named(named) = &event.logical_key
+                        && *named == winit::keyboard::NamedKey::Backspace
+                    {
+                        self.raw_input.events.push(egui::Event::Key {
+                            key: egui::Key::Backspace,
+                            physical_key: None,
+                            pressed: true,
+                            repeat: false,
+                            modifiers: self.raw_input.modifiers,
+                        });
                     }
                 }
             }

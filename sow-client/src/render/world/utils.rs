@@ -33,7 +33,7 @@ pub(crate) struct BunkerLaserPaint {
     pub scatter_slot: u32,
 }
 
-pub(crate) fn bunker_laser_vfx_opts(_ctx: &egui::Context) -> BunkerLaserVfxOpts {
+pub(crate) fn bunker_laser_vfx_opts() -> BunkerLaserVfxOpts {
     let dev = sow_ui_kit::theme::dev_config::DevConfig::get();
     BunkerLaserVfxOpts {
         target_seeking: dev.bunker_laser_target,

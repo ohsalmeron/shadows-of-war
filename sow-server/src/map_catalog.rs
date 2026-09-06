@@ -24,9 +24,9 @@ pub fn scan_maps_root(root: &Path) -> MapCatalog {
             continue;
         }
         // Try map.bin first (raw), fall back to map.bin.br (brotli-compressed, what deploy syncs).
-        let bytes = if let Ok(data) = std::fs::read(&map_dir.join("map.bin")) {
+        let bytes = if let Ok(data) = std::fs::read(map_dir.join("map.bin")) {
             data
-        } else if let Ok(br) = std::fs::read(&map_dir.join("map.bin.br")) {
+        } else if let Ok(br) = std::fs::read(map_dir.join("map.bin.br")) {
             map_file::decompress_map_payload(&br).unwrap_or(br)
         } else {
             continue;

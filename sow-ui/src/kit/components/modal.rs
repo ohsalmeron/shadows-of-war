@@ -1,8 +1,8 @@
+use super::button::Button;
+use super::typography::Heading;
 use egui::{Align2, Color32, Context, Margin, Order, Ui, Vec2, vec2};
 use sow_ui_kit::theme::palette;
 use sow_ui_kit::theme::radius;
-use super::button::Button;
-use super::typography::Heading;
 
 pub struct Modal<'a> {
     id: &'a str,
@@ -60,11 +60,8 @@ impl<'a> Modal<'a> {
             .show(ctx, |ui| {
                 let screen_rect = ctx.content_rect();
                 let resp = ui.allocate_rect(screen_rect, egui::Sense::click());
-                ui.painter().rect_filled(
-                    screen_rect,
-                    0.0,
-                    Color32::from_black_alpha(190),
-                );
+                ui.painter()
+                    .rect_filled(screen_rect, 0.0, Color32::from_black_alpha(190));
                 if resp.clicked() {
                     *open = false;
                 }
@@ -96,7 +93,12 @@ impl<'a> Modal<'a> {
                     ui.horizontal(|ui| {
                         Heading::new(self.title).size(22.0).show(ui);
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if Button::ghost("X").small().min_size(Vec2::splat(28.0)).show(ui).clicked() {
+                            if Button::ghost("X")
+                                .small()
+                                .min_size(Vec2::splat(28.0))
+                                .show(ui)
+                                .clicked()
+                            {
                                 *open = false;
                             }
                         });
@@ -115,11 +117,14 @@ impl<'a> Modal<'a> {
                         ui.separator();
                         ui.add_space(12.0);
                         ui.horizontal(|ui| {
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if Button::secondary(self.close_text).show(ui).clicked() {
-                                    *open = false;
-                                }
-                            });
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if Button::secondary(self.close_text).show(ui).clicked() {
+                                        *open = false;
+                                    }
+                                },
+                            );
                         });
                     }
                 });

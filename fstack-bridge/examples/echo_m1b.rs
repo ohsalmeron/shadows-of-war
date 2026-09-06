@@ -7,10 +7,10 @@
 //!   ./echo_m1b --conf echo-vf.ini --proc-type=primary --proc-id=0
 
 use fstack_bridge::bridge::{self, Cmd, Ev};
-use fstack_bridge::ffi::{ev_set, kevent, EV_ADD, EVFILT_READ};
+use fstack_bridge::ffi::{ev_set, kevent, EVFILT_READ, EV_ADD};
 use libc::{
-    c_int, c_void, sockaddr_in, socklen_t, AF_INET, INADDR_ANY, SOCK_STREAM, SOL_SOCKET,
-    SO_REUSEADDR, FIONBIO,
+    c_int, c_void, sockaddr_in, socklen_t, AF_INET, FIONBIO, INADDR_ANY, SOCK_STREAM, SOL_SOCKET,
+    SO_REUSEADDR,
 };
 use std::collections::HashMap;
 use std::ffi::CString;
@@ -77,7 +77,15 @@ fn main() {
         }
 
         let mut kev: kevent = mem::zeroed();
-        ev_set(&mut kev, lfd as usize, EVFILT_READ, EV_ADD, 0, 512, ptr::null_mut());
+        ev_set(
+            &mut kev,
+            lfd as usize,
+            EVFILT_READ,
+            EV_ADD,
+            0,
+            512,
+            ptr::null_mut(),
+        );
         fstack_bridge::ff_kevent(bridge::KQ, &kev, 1, ptr::null_mut(), 0, ptr::null());
 
         // Tokio workers run the logic; they never touch ff_* (rings only).
@@ -88,7 +96,10 @@ fn main() {
             .expect("tokio runtime");
         rt.spawn(bridge_worker());
 
-        eprintln!("[BOOT] listening on :{}, entering ff_run (bridge driver)", LISTEN_PORT);
+        eprintln!(
+            "[BOOT] listening on :{}, entering ff_run (bridge driver)",
+            LISTEN_PORT
+        );
         fstack_bridge::ff_run(bridge::driver_cb, ptr::null_mut());
     }
 }
@@ -114,7 +125,15 @@ async fn bridge_worker() {
                         }
                     }
                     let generation = *gens.get(&fd).unwrap_or(&0);
-                    if tx.push(Cmd::Send { fd, generation, buf, tx_pending: None }).is_err() {
+                    if tx
+                        .push(Cmd::Send {
+                            fd,
+                            generation,
+                            buf,
+                            tx_pending: None,
+                        })
+                        .is_err()
+                    {
                         eprintln!("[tokio] TX ring full — dropping send for fd={}", fd);
                     }
                     drop(guard); // recycles the DPDK mbuf on the ff_run thread

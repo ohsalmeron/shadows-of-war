@@ -178,10 +178,10 @@ fn find_snap_point(
                 None
             };
 
-            if let Some(h_first_val) = h_first {
-                if best.is_none_or(|(_, _, _, _, bd)| d2 < bd) {
-                    best = Some((q.0, q.1, h_first_val, seg_idx, d2));
-                }
+            if let Some(h_first_val) = h_first
+                && best.is_none_or(|(_, _, _, _, bd)| d2 < bd)
+            {
+                best = Some((q.0, q.1, h_first_val, seg_idx, d2));
             }
         }
     }
@@ -527,14 +527,14 @@ pub(crate) fn render(
             let idx_a = in_bounds(a_tx, a_ty);
             let idx_b = in_bounds(b_tx, b_ty);
 
-            let explored_a = idx_a.map_or(false, |idx| sim.fog_explored.contains(idx));
-            let explored_b = idx_b.map_or(false, |idx| sim.fog_explored.contains(idx));
+            let explored_a = idx_a.is_some_and(|idx| sim.fog_explored.contains(idx));
+            let explored_b = idx_b.is_some_and(|idx| sim.fog_explored.contains(idx));
             if !explored_a || !explored_b {
                 continue;
             }
 
-            let vis_a = idx_a.map_or(false, |idx| sim.fog_visible.contains(idx));
-            let vis_b = idx_b.map_or(false, |idx| sim.fog_visible.contains(idx));
+            let vis_a = idx_a.is_some_and(|idx| sim.fog_visible.contains(idx));
+            let vis_b = idx_b.is_some_and(|idx| sim.fog_visible.contains(idx));
             if vis_a && vis_b { 1.0 } else { 0.35 }
         } else {
             1.0

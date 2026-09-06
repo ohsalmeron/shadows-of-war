@@ -34,12 +34,12 @@ impl SowApp {
         }
 
         let leader = self
-                .ui
-                .app
-                .main_menu_state
-                .selected_leader
-                .name()
-                .to_string();
+            .ui
+            .app
+            .main_menu_state
+            .selected_leader
+            .name()
+            .to_string();
         let msg = if game_over {
             self.progress_result_submitted = true;
             sow_core::protocol::ClientMessage::SubmitMatchReport {
@@ -66,16 +66,16 @@ impl SowApp {
                 leader,
             }
         };
-        if let Ok(json) = bincode::serialize(&msg) {
-            if let Some(c) = self.net.client.as_ref() {
-                c.send(json);
-                log::info!(
-                    "Submitted online stats: K/D/A {}/{}/{}",
-                    me.kills,
-                    me.deaths,
-                    me.assists
-                );
-            }
+        if let Ok(json) = bincode::serialize(&msg)
+            && let Some(c) = self.net.client.as_ref()
+        {
+            c.send(json);
+            log::info!(
+                "Submitted online stats: K/D/A {}/{}/{}",
+                me.kills,
+                me.deaths,
+                me.assists
+            );
         }
     }
 

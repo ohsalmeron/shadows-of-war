@@ -1,4 +1,3 @@
-use crate::UiAction;
 use egui::{Align2, vec2};
 use sow_i18n::Language;
 
@@ -10,7 +9,6 @@ pub(in crate::ui::hud) struct BottomPanelOpts<'a> {
     pub cancel_intents: &'a mut Vec<sow_core::protocol::GameplayIntent>,
     pub lang: Language,
     pub asset_loader: &'a mut AssetLoader,
-    pub action: &'a mut Option<UiAction>,
     pub portrait_dock: bool,
     pub compact: bool,
     pub panel_w: f32,
@@ -30,7 +28,6 @@ pub(in crate::ui::hud) fn draw_bottom_panel(
     let cancel_intents = opts.cancel_intents;
     let lang = opts.lang;
     let asset_loader = opts.asset_loader;
-    let action = opts.action;
     let portrait_dock = opts.portrait_dock;
     let compact = opts.compact;
     let panel_w = opts.panel_w;
@@ -108,7 +105,6 @@ pub(in crate::ui::hud) fn draw_bottom_panel(
                                             controls::HudSidebarOpts {
                                                 content_w,
                                                 compact,
-                                                action,
                                                 lang,
                                                 cancel_intents,
                                                 main: controls::HudSidebarMain::Controls,
@@ -123,7 +119,6 @@ pub(in crate::ui::hud) fn draw_bottom_panel(
                                             controls::HudSidebarOpts {
                                                 content_w,
                                                 compact,
-                                                action,
                                                 lang,
                                                 cancel_intents,
                                                 main: controls::HudSidebarMain::BattleLog,
@@ -138,7 +133,6 @@ pub(in crate::ui::hud) fn draw_bottom_panel(
                                             controls::HudSidebarOpts {
                                                 content_w,
                                                 compact,
-                                                action,
                                                 lang,
                                                 cancel_intents,
                                                 main: controls::HudSidebarMain::EventLog,
@@ -154,7 +148,6 @@ pub(in crate::ui::hud) fn draw_bottom_panel(
                                     controls::HudSidebarOpts {
                                         content_w,
                                         compact,
-                                        action,
                                         lang,
                                         cancel_intents,
                                         main: controls::HudSidebarMain::Controls,

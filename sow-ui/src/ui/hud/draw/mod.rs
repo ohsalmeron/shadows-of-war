@@ -106,7 +106,6 @@ pub fn draw(
             cancel_intents,
             lang,
             asset_loader,
-            action: &mut action,
             portrait_dock,
             compact: compact && portrait_dock,
             panel_w,

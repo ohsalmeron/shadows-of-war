@@ -5,6 +5,7 @@ use std::path::PathBuf;
 mod emoji_atlas;
 mod exporter;
 mod image_map;
+mod map_audit;
 mod openfront_import;
 use exporter::ExportMapCtx;
 use sow_map::osm_overpass as overpass;
@@ -41,6 +42,9 @@ enum Commands {
     /// Generate a map from a source world-map PNG (land/water by pixel color).
     #[command(name = "image-map")]
     ImageMap(ImageMapArgs),
+    /// Audit map bins and water topology without writing files.
+    #[command(name = "map-audit")]
+    MapAudit(MapAuditArgs),
     /// Pack pixel emoji atlas + generated manifest (pixel set + moji CDN fallback).
     #[command(name = "pack-emoji-atlas")]
     PackEmojiAtlas(PackEmojiAtlasArgs),
@@ -117,6 +121,21 @@ struct ImageMapArgs {
 }
 
 #[derive(Parser, Debug)]
+struct MapAuditArgs {
+    /// Maps root directory.
+    #[arg(long, default_value = "assets/maps")]
+    maps_root: PathBuf,
+
+    /// Audit one map key instead of every map folder.
+    #[arg(long)]
+    map: Option<String>,
+
+    /// Emit machine-readable JSON.
+    #[arg(long, default_value_t = false)]
+    json: bool,
+}
+
+#[derive(Parser, Debug)]
 struct RefreshCatalogArgs {
     #[arg(long, default_value = "assets/maps")]
     maps_root: PathBuf,
@@ -182,6 +201,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 println!("Wrote {}", args.maps_root.join("catalog.bin").display());
             }),
         Some(Commands::ImageMap(args)) => run_image_map(args),
+        Some(Commands::MapAudit(args)) => map_audit::run(map_audit::MapAuditArgs {
+            maps_root: args.maps_root,
+            map: args.map,
+            json: args.json,
+        }),
         Some(Commands::StampGeo(args)) => stamp_geo::run(stamp_geo::StampGeoArgs {
             maps_root: args.maps_root,
             map: args.map,
@@ -292,14 +316,8 @@ async fn run_generate(
     );
 
     println!("Stamping inland water (optional, tile-by-tile)...");
-    if let Err(e) = overpass::stamp_water_tiled(
-        &mut terrain_grid,
-        bbox,
-        scale,
-        map_width,
-        map_height,
-    )
-    .await
+    if let Err(e) =
+        overpass::stamp_water_tiled(&mut terrain_grid, bbox, scale, map_width, map_height).await
     {
         eprintln!("Warning: inland water pass failed: {e}");
     }
@@ -318,8 +336,7 @@ async fn run_generate(
 
     println!("Extracting place spawns...");
     let places_data = overpass::fetch_places(min_lon, min_lat, max_lon, max_lat).await?;
-    let mut spawns =
-        poi_extractor::extract_bots(&places_data, bbox, scale, map_width, map_height);
+    let mut spawns = poi_extractor::extract_bots(&places_data, bbox, scale, map_width, map_height);
     if spawns.is_empty() {
         eprintln!("Warning: no OSM place nodes; using land-grid fallback spawns");
         spawns = poi_extractor::fallback_spawns_on_land(&terrain_grid, map_width, map_height, 16);

@@ -113,12 +113,12 @@ pub async fn fetch_coastlines_tiled(
             tiles.len()
         );
 
-        if let Some(ref dir) = cache_dir {
-            if let Some(cached) = load_coastline_cache(dir, tile_index) {
-                log::info!("    loaded {} segments from cache", cached.segments.len());
-                segments.extend(cached.segments);
-                continue;
-            }
+        if let Some(ref dir) = cache_dir
+            && let Some(cached) = load_coastline_cache(dir, tile_index)
+        {
+            log::info!("    loaded {} segments from cache", cached.segments.len());
+            segments.extend(cached.segments);
+            continue;
         }
 
         let query = coastline_query(*tile_min_lat, *tile_min_lon, *tile_max_lat, *tile_max_lon);
@@ -131,12 +131,12 @@ pub async fn fetch_coastlines_tiled(
             }
         };
 
-        if let Some(remark) = json.get("remark").and_then(|r| r.as_str()) {
-            if remark.contains("timed out") || remark.contains("runtime error") {
-                log::warn!("    coastline query failed: {remark}");
-                failed += 1;
-                continue;
-            }
+        if let Some(remark) = json.get("remark").and_then(|r| r.as_str())
+            && (remark.contains("timed out") || remark.contains("runtime error"))
+        {
+            log::warn!("    coastline query failed: {remark}");
+            failed += 1;
+            continue;
         }
 
         let extracted =
@@ -202,11 +202,11 @@ pub async fn stamp_water_tiled(
             }
         };
 
-        if let Some(remark) = json.get("remark").and_then(|r| r.as_str()) {
-            if remark.contains("timed out") || remark.contains("runtime error") {
-                eprintln!("    water query skipped: {remark}");
-                continue;
-            }
+        if let Some(remark) = json.get("remark").and_then(|r| r.as_str())
+            && (remark.contains("timed out") || remark.contains("runtime error"))
+        {
+            eprintln!("    water query skipped: {remark}");
+            continue;
         }
 
         let before = grid.iter().filter(|t| t.is_water()).count();
@@ -249,19 +249,19 @@ pub async fn fetch_places(
                 .form(&[("data", &query)])
                 .send()
                 .await;
-            if let Ok(resp) = res {
-                if resp.status().is_success() {
-                    let json: Value = resp.json().await?;
-                    if let Some(elements) = json.get("elements").and_then(|e| e.as_array()) {
-                        for element in elements {
-                            let key = element_key(element);
-                            if seen.insert(key) {
-                                all_elements.push(element.clone());
-                            }
+            if let Ok(resp) = res
+                && resp.status().is_success()
+            {
+                let json: Value = resp.json().await?;
+                if let Some(elements) = json.get("elements").and_then(|e| e.as_array()) {
+                    for element in elements {
+                        let key = element_key(element);
+                        if seen.insert(key) {
+                            all_elements.push(element.clone());
                         }
                     }
-                    break;
                 }
+                break;
             }
         }
     }

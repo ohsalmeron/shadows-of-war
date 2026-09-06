@@ -26,19 +26,11 @@ pub(super) fn bot_structure_target_count(
         }
         BuildingKind::Factory => {
             let val = ((city_equivalent as f64) * 0.65 * factor).floor() as u32;
-            if factor > 0.4 {
-                val.max(1)
-            } else {
-                val
-            }
+            if factor > 0.4 { val.max(1) } else { val }
         }
         BuildingKind::Port => {
             let val = ((city_equivalent as f64) * 0.30 * factor).floor() as u32;
-            if factor > 0.4 {
-                val.max(1)
-            } else {
-                val
-            }
+            if factor > 0.4 { val.max(1) } else { val }
         }
     }
 }

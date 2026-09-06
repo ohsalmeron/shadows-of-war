@@ -196,15 +196,15 @@ pub fn read_thumbnail_webp_from_repo(key: &str) -> Option<Vec<u8>> {
 #[inline]
 pub fn load_map_br_payload(key: &str, cached: Option<Vec<u8>>) -> Option<Vec<u8>> {
     #[cfg(feature = "std")]
-    if let Some(bytes) = read_map_br_from_repo(key) {
-        if load_map_from_payload(&bytes).is_ok() {
-            return Some(bytes);
-        }
+    if let Some(bytes) = read_map_br_from_repo(key)
+        && load_map_from_payload(&bytes).is_ok()
+    {
+        return Some(bytes);
     }
-    if let Some(bytes) = cached {
-        if load_map_from_payload(&bytes).is_ok() {
-            return Some(bytes);
-        }
+    if let Some(bytes) = cached
+        && load_map_from_payload(&bytes).is_ok()
+    {
+        return Some(bytes);
     }
     bundled_map_br(key)
         .filter(|b| load_map_from_payload(b).is_ok())

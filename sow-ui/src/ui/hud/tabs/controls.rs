@@ -1,4 +1,3 @@
-use crate::UiAction;
 use egui::{Color32, vec2};
 use sow_i18n::Language;
 
@@ -340,7 +339,6 @@ pub(in crate::ui::hud) enum HudSidebarMain {
 pub(in crate::ui::hud) struct HudSidebarOpts<'a> {
     pub content_w: f32,
     pub compact: bool,
-    pub action: &'a mut Option<UiAction>,
     pub lang: Language,
     pub cancel_intents: &'a mut Vec<sow_core::protocol::GameplayIntent>,
     pub main: HudSidebarMain,
@@ -354,7 +352,6 @@ pub(in crate::ui::hud) fn draw_hud_sidebar_row(
 ) {
     let content_w = opts.content_w;
     let compact = opts.compact;
-    let _action = opts.action;
     let lang = opts.lang;
     let cancel_intents = opts.cancel_intents;
     let main = opts.main;

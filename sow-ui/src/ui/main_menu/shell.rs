@@ -164,14 +164,7 @@ fn draw_content(
                 super::draw_browser(ui, state, asset_loader, lang, action);
             }
             MainMenuRoute::Create => {
-                super::custom_game::draw(
-                    ui,
-                    state,
-                    asset_loader,
-                    action,
-                    lang,
-                    reduced_motion,
-                );
+                super::custom_game::draw(ui, state, asset_loader, action, lang, reduced_motion);
             }
             MainMenuRoute::Queue => {
                 let (_, action_min_h, _, _) = super::layout::menu_layout_chrome(
@@ -218,7 +211,14 @@ fn draw_rail(ui: &mut Ui, state: &mut MainMenuState) {
             (MainMenuSection::Store, NavIcon::Store, "STORE"),
             (MainMenuSection::Profile, NavIcon::Profile, "PROFILE"),
         ] {
-            draw_nav_item(ui, state, section, icon, label, Vec2::new(ui.available_width(), NAV_ITEM_H));
+            draw_nav_item(
+                ui,
+                state,
+                section,
+                icon,
+                label,
+                Vec2::new(ui.available_width(), NAV_ITEM_H),
+            );
             ui.add_space(4.0);
         }
     });
@@ -262,16 +262,35 @@ fn draw_nav_item(
     } else {
         Stroke::new(1.0_f32, Color32::TRANSPARENT)
     };
-    ui.painter().rect(rect, CornerRadius::same(8), fill, stroke, egui::StrokeKind::Inside);
+    ui.painter().rect(
+        rect,
+        CornerRadius::same(8),
+        fill,
+        stroke,
+        egui::StrokeKind::Inside,
+    );
 
     let icon_rect = Rect::from_center_size(rect.center() - Vec2::new(0.0, 10.0), Vec2::splat(24.0));
-    paint_nav_icon(ui, icon_rect, icon, if selected { palette::neon_gold() } else { palette::text_muted() });
+    paint_nav_icon(
+        ui,
+        icon_rect,
+        icon,
+        if selected {
+            palette::neon_gold()
+        } else {
+            palette::text_muted()
+        },
+    );
     ui.painter().text(
         rect.center() + Vec2::new(0.0, 16.0),
         Align2::CENTER_CENTER,
         label,
         FontId::proportional(9.0),
-        if selected { Color32::WHITE } else { palette::text_muted() },
+        if selected {
+            Color32::WHITE
+        } else {
+            palette::text_muted()
+        },
     );
 
     if response.hovered() {
@@ -288,35 +307,50 @@ fn paint_nav_icon(ui: &Ui, rect: Rect, icon: NavIcon, color: Color32) {
     let c = rect.center();
     match icon {
         NavIcon::Battle => {
-            painter.line_segment([rect.left_top() + Vec2::new(4.0, 4.0), rect.right_bottom() - Vec2::new(4.0, 4.0)], stroke);
-            painter.line_segment([rect.right_top() + Vec2::new(-4.0, 4.0), rect.left_bottom() + Vec2::new(4.0, -4.0)], stroke);
+            painter.line_segment(
+                [
+                    rect.left_top() + Vec2::new(4.0, 4.0),
+                    rect.right_bottom() - Vec2::new(4.0, 4.0),
+                ],
+                stroke,
+            );
+            painter.line_segment(
+                [
+                    rect.right_top() + Vec2::new(-4.0, 4.0),
+                    rect.left_bottom() + Vec2::new(4.0, -4.0),
+                ],
+                stroke,
+            );
             painter.circle_filled(c, 2.5, color);
         }
         NavIcon::Heroes => {
             let shield = Rect::from_center_size(c, Vec2::new(16.0, 19.0));
-            painter.rect(shield, CornerRadius::same(4), Color32::TRANSPARENT, stroke, egui::StrokeKind::Inside);
+            painter.rect(
+                shield,
+                CornerRadius::same(4),
+                Color32::TRANSPARENT,
+                stroke,
+                egui::StrokeKind::Inside,
+            );
             painter.line_segment([c - Vec2::new(0.0, 5.0), c + Vec2::new(0.0, 6.0)], stroke);
             painter.line_segment([c - Vec2::new(5.0, 0.0), c + Vec2::new(5.0, 0.0)], stroke);
         }
         NavIcon::Store => {
             let bag = Rect::from_center_size(c + Vec2::new(0.0, 2.0), Vec2::new(16.0, 14.0));
-            painter.rect(bag, CornerRadius::same(3), Color32::TRANSPARENT, stroke, egui::StrokeKind::Inside);
+            painter.rect(
+                bag,
+                CornerRadius::same(3),
+                Color32::TRANSPARENT,
+                stroke,
+                egui::StrokeKind::Inside,
+            );
             painter.circle_stroke(c + Vec2::new(0.0, -4.0), 4.0, stroke);
         }
         NavIcon::Profile => {
             painter.circle_stroke(c - Vec2::new(0.0, 4.0), 4.0, stroke);
-            painter.line_segment(
-                [c + Vec2::new(-8.0, 8.0), c + Vec2::new(-4.0, 4.0)],
-                stroke,
-            );
-            painter.line_segment(
-                [c + Vec2::new(4.0, 4.0), c + Vec2::new(8.0, 8.0)],
-                stroke,
-            );
-            painter.line_segment(
-                [c + Vec2::new(-8.0, 8.0), c + Vec2::new(8.0, 8.0)],
-                stroke,
-            );
+            painter.line_segment([c + Vec2::new(-8.0, 8.0), c + Vec2::new(-4.0, 4.0)], stroke);
+            painter.line_segment([c + Vec2::new(4.0, 4.0), c + Vec2::new(8.0, 8.0)], stroke);
+            painter.line_segment([c + Vec2::new(-8.0, 8.0), c + Vec2::new(8.0, 8.0)], stroke);
         }
     }
 }
@@ -331,7 +365,8 @@ fn draw_queue_badge(ui: &mut Ui, state: &MainMenuState) {
         egui::pos2(ui.max_rect().right() - 118.0, ui.max_rect().bottom() - 24.0),
         Vec2::new(108.0, 20.0),
     );
-    ui.painter().rect_filled(rect, 6.0, Color32::from_black_alpha(180));
+    ui.painter()
+        .rect_filled(rect, 6.0, Color32::from_black_alpha(180));
     ui.painter().text(
         rect.center(),
         Align2::CENTER_CENTER,
@@ -403,7 +438,7 @@ fn draw_hero_card(
     let width = ui.available_width();
     let image_h = (width * 9.0 / 16.0).clamp(78.0, if phone { 132.0 } else { 170.0 });
     let frame = Frame::NONE
-            .fill(if selected {
+        .fill(if selected {
             Color32::from_rgba_unmultiplied(17, 33, 42, 232)
         } else {
             Color32::from_rgba_unmultiplied(8, 12, 18, 210)
@@ -419,7 +454,9 @@ fn draw_hero_card(
         .corner_radius(CornerRadius::same(8))
         .inner_margin(Margin::same(if phone { 7 } else { 9 }));
     let response = frame.show(ui, |ui| {
-        let image_rect = ui.allocate_space(Vec2::new(ui.available_width(), image_h)).1;
+        let image_rect = ui
+            .allocate_space(Vec2::new(ui.available_width(), image_h))
+            .1;
         let rgb = leader.filler_rgb();
         let fill = Color32::from_rgb(
             (rgb[0] * 255.0).round() as u8,
@@ -434,7 +471,11 @@ fn draw_hero_card(
             draw_aspect_fit(ui, image_rect, texture, 6);
         }
         ui.add_space(6.0);
-        ui.label(egui::RichText::new(leader.name().to_uppercase()).strong().size(13.0));
+        ui.label(
+            egui::RichText::new(leader.name().to_uppercase())
+                .strong()
+                .size(13.0),
+        );
         ui.label(
             egui::RichText::new(crate::widgets::avatar_picker::leader_civilization(leader).name())
                 .size(9.0)
@@ -481,12 +522,7 @@ fn draw_overlays(
 
     if let Some(target_id) = state.join_password_for_lobby {
         super::join_browser::draw_password_modal(
-            root_ui,
-            state,
-            target_id,
-            action,
-            strings,
-            compact,
+            root_ui, state, target_id, action, strings, compact,
         );
     }
 

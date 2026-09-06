@@ -56,7 +56,9 @@ impl SowApp {
                                 log::info!("Sent Reconnect to Relay server on reconnect/playing!");
                                 self.make_reconnect_message(lid, pid)
                             } else {
-                                log::info!("Sent Ready/ReconnectWithTicket to Relay server before loader release!");
+                                log::info!(
+                                    "Sent Ready/ReconnectWithTicket to Relay server before loader release!"
+                                );
                                 self.make_reconnect_message(lid, pid)
                             };
                             if let Ok(data) = bincode::serialize(&msg) {
@@ -165,23 +167,26 @@ impl SowApp {
                 self.net.relay_connect_start = Some(now);
                 self.net.relay_retry_count = 0;
             }
-            if let Some(start) = self.net.relay_connect_start {
-                if now.duration_since(start) >= Duration::from_secs(15) {
-                    log::error!("Relay connection/reconnection timed out after 15 seconds total");
-                    self.net.relay_connect_start = None;
-                    self.net.relay_retry_count = 0;
-                    self.ui.app.main_menu_state.notice =
-                        Some(sow_ui::LobbyNotice::ConnectionLost);
-                    self.ui.app.main_menu_state.notice_at = None;
-                    self.begin_exit_to_main_menu(true);
-                }
+            if let Some(start) = self.net.relay_connect_start
+                && now.duration_since(start) >= Duration::from_secs(15)
+            {
+                log::error!("Relay connection/reconnection timed out after 15 seconds total");
+                self.net.relay_connect_start = None;
+                self.net.relay_retry_count = 0;
+                self.ui.app.main_menu_state.notice = Some(sow_ui::LobbyNotice::ConnectionLost);
+                self.ui.app.main_menu_state.notice_at = None;
+                self.begin_exit_to_main_menu(true);
             }
         } else {
             self.net.relay_connect_start = None;
         }
 
-        let (mut ws_disconnected, switch_to_relay, exit_to_menu_after_net, pending_rematch) =
-            self.process_ws_messages(now);
+        let messages::ProcessWsResult {
+            mut ws_disconnected,
+            switch_to_relay,
+            exit_to_menu_after_net,
+            pending_rematch,
+        } = self.process_ws_messages();
 
         if let Some(rematch_id) = pending_rematch {
             crate::store_portals::gameplay_stop();
@@ -228,9 +233,7 @@ impl SowApp {
 
             // Clear stale connections
             while self.net.connect_rx.try_recv().is_ok() {
-                log::info!(
-                    "Purged stale connection from channel during handoff to relay"
-                );
+                log::info!("Purged stale connection from channel during handoff to relay");
             }
 
             self.net.relay_connect_start = Some(now);
@@ -272,8 +275,7 @@ impl SowApp {
                     log::warn!(
                         "[CLIENT NET] Connection lost during match — returning to main menu"
                     );
-                    self.ui.app.main_menu_state.notice =
-                        Some(sow_ui::LobbyNotice::ConnectionLost);
+                    self.ui.app.main_menu_state.notice = Some(sow_ui::LobbyNotice::ConnectionLost);
                     self.ui.app.main_menu_state.notice_at = None;
                     self.begin_exit_to_main_menu(true);
                 }

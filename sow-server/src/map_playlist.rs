@@ -17,7 +17,7 @@
 //! deterministic cycle: predictable rotation is a regression.
 
 use rand::Rng;
-use sow_core::map_file::{MapCatalogEntry, MAX_PLAYER_CAP};
+use sow_core::map_file::{MAX_PLAYER_CAP, MapCatalogEntry};
 use std::sync::{Mutex, OnceLock};
 
 /// No map repeats within the last N drawn picks (OpenFront `nonConsecutiveNum`).

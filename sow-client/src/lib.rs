@@ -27,8 +27,8 @@ pub(crate) fn get_build_version() -> String {
 }
 
 mod analytics;
-mod asset_config;
 mod anonymous_identity;
+mod asset_config;
 mod config;
 pub mod diag;
 

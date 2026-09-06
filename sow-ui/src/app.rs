@@ -93,7 +93,9 @@ impl ClientApp {
     pub fn draw(
         &mut self,
         ui: &mut egui::Ui,
-        cancel_intents: &mut Vec<sow_core::protocol::GameplayIntent>,
+        #[cfg(not(target_arch = "wasm32"))] cancel_intents: &mut Vec<
+            sow_core::protocol::GameplayIntent,
+        >,
     ) -> Option<UiAction> {
         sow_ui_kit::theme::publish_reduced_motion(ui.ctx(), self.settings_state.reduced_motion);
 
@@ -107,15 +109,15 @@ impl ClientApp {
                 }
                 #[cfg(not(target_arch = "wasm32"))]
                 {
-                self.asset_loader.ensure_avatars_loaded(ui.ctx());
-                self.asset_loader.ensure_ui_assets_loaded(ui.ctx());
-                main_menu::draw(
-                    ui,
-                    &mut self.main_menu_state,
-                    &mut self.asset_loader,
-                    self.settings_state.language,
-                    self.settings_state.reduced_motion,
-                )
+                    self.asset_loader.ensure_avatars_loaded(ui.ctx());
+                    self.asset_loader.ensure_ui_assets_loaded(ui.ctx());
+                    main_menu::draw(
+                        ui,
+                        &mut self.main_menu_state,
+                        &mut self.asset_loader,
+                        self.settings_state.language,
+                        self.settings_state.reduced_motion,
+                    )
                 }
             }
             ClientPhase::Splash => {
@@ -123,7 +125,8 @@ impl ClientApp {
                 {
                     // Splash art and progress are rendered by loader.js. Keep a frame counter
                     // for the GPU hand-off state machine without invoking egui splash assets.
-                    self.splash_state.frames_drawn = self.splash_state.frames_drawn.saturating_add(1);
+                    self.splash_state.frames_drawn =
+                        self.splash_state.frames_drawn.saturating_add(1);
                     if self.splash_state.done {
                         if let Some(target_phase) = self.splash_state.target_phase.take() {
                             self.phase = target_phase;
@@ -133,22 +136,21 @@ impl ClientApp {
                 }
                 #[cfg(not(target_arch = "wasm32"))]
                 {
-                self.asset_loader.ensure_ui_assets_loaded(ui.ctx());
-                if let Some(new_phase) = loading_screen::draw(
-                    ui,
-                    &mut self.splash_state,
-                    &self.asset_loader,
-                    self.settings_state.language,
-                ) {
-                    self.phase = new_phase;
-                }
-                None
+                    self.asset_loader.ensure_ui_assets_loaded(ui.ctx());
+                    if let Some(new_phase) = loading_screen::draw(
+                        ui,
+                        &mut self.splash_state,
+                        &self.asset_loader,
+                        self.settings_state.language,
+                    ) {
+                        self.phase = new_phase;
+                    }
+                    None
                 }
             }
             ClientPhase::Playing => {
                 #[cfg(target_arch = "wasm32")]
                 {
-                    let _ = cancel_intents;
                     None
                 }
                 #[cfg(not(target_arch = "wasm32"))]
@@ -164,17 +166,17 @@ impl ClientApp {
             }
         };
 
-        if let Some(ref toggle) = action {
-            if matches!(
+        if let Some(ref toggle) = action
+            && matches!(
                 toggle,
                 UiAction::ToggleSettings
                     | UiAction::ToggleCredits
                     | UiAction::TogglePrivacy
                     | UiAction::ToggleTerms
-            ) {
-                self.apply_modal_toggle(toggle);
-                action = None;
-            }
+            )
+        {
+            self.apply_modal_toggle(toggle);
+            action = None;
         }
 
         let credits_action = crate::ui::credits::draw(
@@ -185,11 +187,11 @@ impl ClientApp {
         );
         if let Some(ref toggle) = credits_action {
             self.apply_modal_toggle(toggle);
-        } else if let Some(ref toggle) = action {
-            if matches!(toggle, UiAction::ToggleCredits) {
-                self.apply_modal_toggle(toggle);
-                action = None;
-            }
+        } else if let Some(ref toggle) = action
+            && matches!(toggle, UiAction::ToggleCredits)
+        {
+            self.apply_modal_toggle(toggle);
+            action = None;
         }
 
         let privacy_action = crate::ui::legal_doc::draw(
@@ -202,11 +204,11 @@ impl ClientApp {
         );
         if let Some(ref toggle) = privacy_action {
             self.apply_modal_toggle(toggle);
-        } else if let Some(ref toggle) = action {
-            if matches!(toggle, UiAction::TogglePrivacy) {
-                self.apply_modal_toggle(toggle);
-                action = None;
-            }
+        } else if let Some(ref toggle) = action
+            && matches!(toggle, UiAction::TogglePrivacy)
+        {
+            self.apply_modal_toggle(toggle);
+            action = None;
         }
 
         let terms_action = crate::ui::legal_doc::draw(
@@ -219,22 +221,22 @@ impl ClientApp {
         );
         if let Some(ref toggle) = terms_action {
             self.apply_modal_toggle(toggle);
-        } else if let Some(ref toggle) = action {
-            if matches!(toggle, UiAction::ToggleTerms) {
-                self.apply_modal_toggle(toggle);
-                action = None;
-            }
+        } else if let Some(ref toggle) = action
+            && matches!(toggle, UiAction::ToggleTerms)
+        {
+            self.apply_modal_toggle(toggle);
+            action = None;
         }
 
         let settings_action =
             crate::ui::settings::draw(ui, &mut self.settings_state, self.is_settings_open);
         if let Some(ref toggle) = settings_action {
             self.apply_modal_toggle(toggle);
-        } else if let Some(ref toggle) = action {
-            if matches!(toggle, UiAction::ToggleSettings | UiAction::ToggleShowcase) {
-                self.apply_modal_toggle(toggle);
-                action = None;
-            }
+        } else if let Some(ref toggle) = action
+            && matches!(toggle, UiAction::ToggleSettings | UiAction::ToggleShowcase)
+        {
+            self.apply_modal_toggle(toggle);
+            action = None;
         }
 
         crate::ui::showcase::draw_showcase(

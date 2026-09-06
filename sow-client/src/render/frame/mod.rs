@@ -20,10 +20,10 @@ impl SowApp {
             .as_ref()
             .map(|w| crate::viewport::Viewport::measure(w.as_ref()));
 
-        if let Some(ref vp) = wanted {
-            if vp.wants_reconfigure(self) {
-                self.apply_surface_resize(vp.physical, false);
-            }
+        if let Some(ref vp) = wanted
+            && vp.wants_reconfigure(self)
+        {
+            self.apply_surface_resize(vp.physical, false);
         }
 
         let draw_world = self.should_draw_world();
@@ -56,14 +56,14 @@ impl SowApp {
 
         if self.gfx.pending_session_cleanup {
             self.gfx.pending_session_cleanup = false;
-            if self.ui.app.phase == ClientPhase::MainMenu {
-                if let Some(render_ctx) = self.gfx.render_ctx.take() {
-                    if let Some(sp) = self.gfx.prev_sync_point.take() {
-                        let _ = render_ctx.context.wait_for(&sp, !0);
-                    }
-                    self.gfx.render_ctx = Some(render_ctx);
-                    self.cleanup_game_session_stub();
+            if self.ui.app.phase == ClientPhase::MainMenu
+                && let Some(render_ctx) = self.gfx.render_ctx.take()
+            {
+                if let Some(sp) = self.gfx.prev_sync_point.take() {
+                    let _ = render_ctx.context.wait_for(&sp, !0);
                 }
+                self.gfx.render_ctx = Some(render_ctx);
+                self.cleanup_game_session_stub();
             }
         }
 
@@ -192,7 +192,7 @@ impl SowApp {
                         .unwrap_or(&[]);
 
                     thread_local! {
-                        static LAST_FOG_OF_WAR_TOGGLE: std::cell::Cell<Option<bool>> = std::cell::Cell::new(None);
+                        static LAST_FOG_OF_WAR_TOGGLE: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
                     }
                     let mut force_fog_upload = self.sim.force_fog_upload;
                     self.sim.force_fog_upload = false;
@@ -214,7 +214,6 @@ impl SowApp {
                         &render_ctx.context,
                         dirty,
                         conquest_duration,
-                        &self.sim.fog_explored,
                         &self.sim.fog_visible,
                         force_fog_upload,
                     );
@@ -235,9 +234,8 @@ impl SowApp {
                             if (p.id as usize) < 256 {
                                 // Team players render with the planar team color;
                                 // everyone else keeps their personal color.
-                                let rgb = p
-                                    .team
-                                    .map_or(p.color, sow_core::player::team_territory_rgb);
+                                let rgb =
+                                    p.team.map_or(p.color, sow_core::player::team_territory_rgb);
                                 player_colors[p.id as usize] = [rgb[0], rgb[1], rgb[2], 1.0];
                                 if Some(p.id) == self.sim.my_player_id {
                                     player_skin_styles[p.id as usize][0] =
@@ -404,10 +402,10 @@ impl SowApp {
                     if currently_under_attack {
                         self.ui
                             .trigger_viewport_alert(crate::app::ViewportAlertKind::UnderAttack);
-                    } else if let Some(ref current) = self.ui.viewport_alert {
-                        if current.kind == crate::app::ViewportAlertKind::UnderAttack {
-                            self.ui.viewport_alert = None;
-                        }
+                    } else if let Some(ref current) = self.ui.viewport_alert
+                        && current.kind == crate::app::ViewportAlertKind::UnderAttack
+                    {
+                        self.ui.viewport_alert = None;
                     }
 
                     let (alert_color, alert_intensity) = if let Some(ref alert) =
@@ -531,18 +529,15 @@ impl SowApp {
                                 screen_h: self.input.screen_h,
                                 alpha,
                                 linear_alpha,
-                                selected_warships: &self.input.selected_warships,
                             };
-                            crate::render::world::movers::update_and_pack(
-                                &mut self.ui.mover_scene,
+                            self.ui.mover_scene.on_snapshot(
                                 snap,
                                 self.sim.map_w,
-                                mover_r,
-                                pack,
                                 dev.fog_of_war,
                                 self.sim.my_player_id.unwrap_or(0),
                                 &self.sim.fog_visible,
                             );
+                            self.ui.mover_scene.pack_gpu(&pack, mover_r);
                             let mover_globals = crate::render::gpu::MoverGlobals {
                                 camera_pos: [self.input.camera_x, self.input.camera_y],
                                 zoom: self.input.camera_zoom,

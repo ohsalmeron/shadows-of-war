@@ -154,7 +154,12 @@ pub fn load_portal_progress() -> Option<crate::player_progress::PlayerProgress> 
             .or_else(|| {
                 window()
                     .and_then(|window| window.local_storage().ok().flatten())
-                    .and_then(|storage| storage.get_item(crate::player_progress::STORAGE_KEY).ok().flatten())
+                    .and_then(|storage| {
+                        storage
+                            .get_item(crate::player_progress::STORAGE_KEY)
+                            .ok()
+                            .flatten()
+                    })
             })?;
         serde_json::from_str(&json).ok()
     }
@@ -228,8 +233,15 @@ pub fn load_identity(fallback_name: &str) -> PlatformIdentity {
             if let Ok(Some(token)) = storage.get_item("wou_session_token") {
                 if let Ok(Some(user_raw)) = storage.get_item("wou_user_data") {
                     if let Ok(user_val) = serde_json::from_str::<serde_json::Value>(&user_raw) {
-                        let id = user_val.get("id").and_then(|v| v.as_str()).map(ToString::to_string);
-                        let name = user_val.get("display_name").and_then(|v| v.as_str()).unwrap_or(fallback_name).to_string();
+                        let id = user_val
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .map(ToString::to_string);
+                        let name = user_val
+                            .get("display_name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or(fallback_name)
+                            .to_string();
                         return PlatformIdentity {
                             provider: "wou",
                             display_name: name,

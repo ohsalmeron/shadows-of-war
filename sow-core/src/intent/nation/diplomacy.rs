@@ -1,6 +1,6 @@
 use crate::diplomacy::{
-    alliance_propose_roll_cap, is_valid_alliance_target, should_reject_traitor_request,
-    ALLIANCE_RENEWAL_WINDOW_TICKS,
+    ALLIANCE_RENEWAL_WINDOW_TICKS, alliance_propose_roll_cap, is_valid_alliance_target,
+    should_reject_traitor_request,
 };
 use crate::engine::SowEngine;
 use crate::player::PlayerType;
@@ -229,51 +229,51 @@ impl SowEngine {
                 );
                 rng.next_int(600, 1200) as u64 // every 30-60 seconds
             };
-            if self.state.tick > req_interval && self.state.tick.is_multiple_of(req_interval) {
-                if let Some(p_me) = self.state.player(bot_id) {
-                    let is_weak = p_me.troops < p_me.max_troops * 0.25 || p_me.gold < 30_000.0;
-                    if is_weak && !p_me.alliances.is_empty() {
-                        // Find target to ask: Prioritize human allies first
-                        let mut target_id = None;
+            if self.state.tick > req_interval
+                && self.state.tick.is_multiple_of(req_interval)
+                && let Some(p_me) = self.state.player(bot_id)
+            {
+                let is_weak = p_me.troops < p_me.max_troops * 0.25 || p_me.gold < 30_000.0;
+                if is_weak && !p_me.alliances.is_empty() {
+                    // Find target to ask: Prioritize human allies first
+                    let mut target_id = None;
+                    for &ally_id in &p_me.alliances {
+                        if let Some(p_ally) = self.state.player(ally_id)
+                            && p_ally.alive
+                            && p_ally.player_type == crate::player::PlayerType::Human
+                        {
+                            target_id = Some(ally_id);
+                            break;
+                        }
+                    }
+                    // Fallback to bot allies
+                    if target_id.is_none() {
                         for &ally_id in &p_me.alliances {
-                            if let Some(p_ally) = self.state.player(ally_id) {
-                                if p_ally.alive
-                                    && p_ally.player_type == crate::player::PlayerType::Human
-                                {
-                                    target_id = Some(ally_id);
-                                    break;
-                                }
+                            if let Some(p_ally) = self.state.player(ally_id)
+                                && p_ally.alive
+                            {
+                                target_id = Some(ally_id);
+                                break;
                             }
                         }
-                        // Fallback to bot allies
-                        if target_id.is_none() {
-                            for &ally_id in &p_me.alliances {
-                                if let Some(p_ally) = self.state.player(ally_id) {
-                                    if p_ally.alive {
-                                        target_id = Some(ally_id);
-                                        break;
-                                    }
-                                }
-                            }
-                        }
+                    }
 
-                        if let Some(target) = target_id {
-                            if let Some(p_target) = self.state.player(target) {
-                                // Ask for 10% of what they have
-                                let ask_gold = (p_target.gold * 0.10).floor().max(0.0);
-                                let ask_troops = (p_target.troops * 0.10).floor().max(0.0);
-                                if ask_gold > 0.0 || ask_troops > 0.0 {
-                                    decisions.push(BotDecision {
-                                        bot_id,
-                                        kind: BotDecisionKind::Build,
-                                        intent: GameplayIntent::RequestResources {
-                                            target_player: target,
-                                            gold: ask_gold,
-                                            troops: ask_troops,
-                                        },
-                                    });
-                                }
-                            }
+                    if let Some(target) = target_id
+                        && let Some(p_target) = self.state.player(target)
+                    {
+                        // Ask for 10% of what they have
+                        let ask_gold = (p_target.gold * 0.10).floor().max(0.0);
+                        let ask_troops = (p_target.troops * 0.10).floor().max(0.0);
+                        if ask_gold > 0.0 || ask_troops > 0.0 {
+                            decisions.push(BotDecision {
+                                bot_id,
+                                kind: BotDecisionKind::Build,
+                                intent: GameplayIntent::RequestResources {
+                                    target_player: target,
+                                    gold: ask_gold,
+                                    troops: ask_troops,
+                                },
+                            });
                         }
                     }
                 }
@@ -308,14 +308,13 @@ impl SowEngine {
                                 p_me.gold > 100_000.0 || p_me.troops > p_me.max_troops * 0.4;
                             if has_surplus {
                                 for &ally_id in &p_me.alliances {
-                                    if let Some(p_ally) = self.state.player(ally_id) {
-                                        if p_ally.alive
-                                            && (p_ally.troops < p_ally.max_troops * 0.3
-                                                || p_ally.troops <= 500.0)
-                                        {
-                                            ally_to_help = Some(ally_id);
-                                            break;
-                                        }
+                                    if let Some(p_ally) = self.state.player(ally_id)
+                                        && p_ally.alive
+                                        && (p_ally.troops < p_ally.max_troops * 0.3
+                                            || p_ally.troops <= 500.0)
+                                    {
+                                        ally_to_help = Some(ally_id);
+                                        break;
                                     }
                                 }
                             }

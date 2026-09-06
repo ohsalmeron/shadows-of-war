@@ -53,14 +53,12 @@ pub fn spawns_from_info(
     map: &GeneratedMap,
 ) -> Vec<POISpawn> {
     if let Some(path) = info_path {
-        if let Ok(text) = std::fs::read_to_string(path) {
-            if let Ok(json) = serde_json::from_str::<Value>(&text) {
-                if let Some(spawns) = parse_nation_spawns(&json, src_w, src_h, map) {
-                    if !spawns.is_empty() {
-                        return spawns;
-                    }
-                }
-            }
+        if let Ok(text) = std::fs::read_to_string(path)
+            && let Ok(json) = serde_json::from_str::<Value>(&text)
+            && let Some(spawns) = parse_nation_spawns(&json, src_w, src_h, map)
+            && !spawns.is_empty()
+        {
+            return spawns;
         }
         eprintln!("Warning: could not read nations from info.json; using land-grid spawns");
     }

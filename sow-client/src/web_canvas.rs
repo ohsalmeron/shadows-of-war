@@ -4,7 +4,6 @@
 //! (mobile browser chrome, dynamic toolbars). `winit` emits `SurfaceResized` after
 //! `request_surface_size`; [`crate::input`] reconfigures the GPU surface from that event.
 
-
 #[cfg(target_arch = "wasm32")]
 fn parse_css_px(s: &str) -> f32 {
     let s = s.trim();

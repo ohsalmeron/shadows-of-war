@@ -46,6 +46,7 @@ pub struct GraphicsState {
 /// One-shot timings for a multiplayer match handoff and loader. These events are
 /// intentionally client-local: they do not alter the wire protocol or gate Ready.
 /// The timestamps let us separate relay connection time from local engine/GPU work.
+#[derive(Default)]
 pub struct LoadTelemetry {
     pub started_at: Option<web_time::Instant>,
     pub relay_connected_at: Option<web_time::Instant>,
@@ -53,19 +54,6 @@ pub struct LoadTelemetry {
     pub gpu_upload_complete_at: Option<web_time::Instant>,
     pub snapshot_available_at: Option<web_time::Instant>,
     pub ready_sent_at: Option<web_time::Instant>,
-}
-
-impl Default for LoadTelemetry {
-    fn default() -> Self {
-        Self {
-            started_at: None,
-            relay_connected_at: None,
-            engine_init_complete_at: None,
-            gpu_upload_complete_at: None,
-            snapshot_available_at: None,
-            ready_sent_at: None,
-        }
-    }
 }
 
 impl LoadTelemetry {

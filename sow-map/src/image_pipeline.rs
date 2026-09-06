@@ -8,7 +8,7 @@ use sow_core::maps;
 use std::collections::VecDeque;
 
 const MIN_ISLAND_SIZE: usize = 30;
-const MIN_LAKE_SIZE: usize = 0;
+const MIN_LAKE_SIZE: usize = 16;
 
 const LAND_BIT: u8 = 0b1000_0000;
 const SHORE_BIT: u8 = 0b0100_0000;
@@ -71,7 +71,6 @@ pub fn generate_from_rgba(
     classify_rgba_into(img, &mut full);
 
     remove_small_islands(&mut full);
-    remove_small_lakes(&mut full);
 
     let (dst_w, dst_h) = match target_dims {
         Some((w, h)) => {
@@ -88,6 +87,7 @@ pub fn generate_from_rgba(
     );
 
     let mut small = downscale(&full, dst_w as usize, dst_h as usize);
+    remove_small_lakes(&mut small);
     mark_ocean(&mut small);
     let shoreline_waters = process_shore(&mut small);
     process_dist_to_land(&mut small, &shoreline_waters);
@@ -188,29 +188,6 @@ fn remove_small_islands(t: &mut Terrain) {
     log::info!("Removed {removed} islands smaller than {MIN_ISLAND_SIZE} tiles");
 }
 
-fn remove_small_lakes(t: &mut Terrain) {
-    let mut visited = vec![false; t.is_land.len()];
-    let mut bodies: Vec<Vec<usize>> = Vec::new();
-    for start in 0..t.is_land.len() {
-        if visited[start] || t.is_land[start] {
-            continue;
-        }
-        bodies.push(flood_region(t, start, false, &mut visited));
-    }
-    bodies.sort_by_key(|b| std::cmp::Reverse(b.len()));
-    let mut removed = 0usize;
-    for body in bodies.iter().skip(1) {
-        if body.len() < MIN_LAKE_SIZE {
-            removed += 1;
-            for &i in body {
-                t.is_land[i] = true;
-                t.magnitude[i] = 0.0;
-            }
-        }
-    }
-    log::info!("Removed {removed} lakes smaller than {MIN_LAKE_SIZE} tiles");
-}
-
 fn downscale(src: &Terrain, dst_w: usize, dst_h: usize) -> Terrain {
     let mut dst = Terrain::new(dst_w, dst_h);
     let fx = src.width as f64 / dst_w as f64;
@@ -239,19 +216,33 @@ fn downscale(src: &Terrain, dst_w: usize, dst_h: usize) -> Terrain {
                 }
             }
             let di = ty * dst_w + tx;
-            if land_count * 2 >= total {
+            if land_count == total {
                 dst.is_land[di] = true;
-                dst.magnitude[di] = if land_count > 0 {
-                    mag_sum / land_count as f32
-                } else {
-                    0.0
-                };
-            } else {
-                dst.is_land[di] = false;
+                dst.magnitude[di] = mag_sum / land_count as f32;
             }
         }
     }
     dst
+}
+
+fn remove_small_lakes(t: &mut Terrain) {
+    let mut visited = vec![false; t.is_land.len()];
+    let mut removed = 0usize;
+    for start in 0..t.is_land.len() {
+        if visited[start] || t.is_land[start] {
+            continue;
+        }
+        let region = flood_region(t, start, false, &mut visited);
+        if region.len() >= MIN_LAKE_SIZE {
+            continue;
+        }
+        removed += 1;
+        for &i in &region {
+            t.is_land[i] = true;
+            t.magnitude[i] = 0.0;
+        }
+    }
+    log::info!("Removed {removed} inland water bodies smaller than {MIN_LAKE_SIZE} tiles");
 }
 
 fn mark_ocean(t: &mut Terrain) {
@@ -382,6 +373,29 @@ mod tests {
             .count();
         assert!(ocean > 0, "expected ocean tiles");
         assert!(shore > 0, "expected shoreline tiles");
+    }
+
+    #[test]
+    fn downscale_water_wins_mixed_block() {
+        let mut source = Terrain::new(2, 2);
+        source.is_land.fill(true);
+        source.is_land[0] = false;
+
+        let result = downscale(&source, 1, 1);
+
+        assert!(!result.is_land[0], "water must win a mixed source block");
+    }
+
+    #[test]
+    fn generation_is_deterministic() {
+        let img = encoded_coast(40, 40);
+        let first = generate_from_rgba(&img, Some((20, 20))).expect("first pipeline run");
+        let second = generate_from_rgba(&img, Some((20, 20))).expect("second pipeline run");
+
+        assert_eq!(first.width, second.width);
+        assert_eq!(first.height, second.height);
+        assert_eq!(first.num_land_tiles, second.num_land_tiles);
+        assert_eq!(first.map_data, second.map_data);
     }
 
     #[test]

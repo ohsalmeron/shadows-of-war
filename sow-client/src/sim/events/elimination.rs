@@ -33,12 +33,13 @@ impl SowApp {
             tile_found = true;
         }
 
-        if let Some(target) = snap.players.iter().find(|p| p.id == player_id) {
-            if !tile_found && (target.centroid_x > 0.001 || target.centroid_y > 0.001) {
-                wx = target.centroid_x + 0.5;
-                wy = target.centroid_y + 0.5;
-                tile_found = true;
-            }
+        if let Some(target) = snap.players.iter().find(|p| p.id == player_id)
+            && !tile_found
+            && (target.centroid_x > 0.001 || target.centroid_y > 0.001)
+        {
+            wx = target.centroid_x + 0.5;
+            wy = target.centroid_y + 0.5;
+            tile_found = true;
         }
 
         if !tile_found {
@@ -69,14 +70,15 @@ impl SowApp {
             self.spatial_sound_params(wx, wy),
         );
 
-        if conqueror_id == my_id && my_id != 0 {
-            if let Some(victim) = snap.players.iter().find(|p| p.id == player_id) {
-                use sow_core::player::PlayerType;
-                match victim.player_type {
-                    PlayerType::Human => turn_defeats.players += 1,
-                    PlayerType::Nation => turn_defeats.empires += 1,
-                    PlayerType::Bot => turn_defeats.tribes += 1,
-                }
+        if conqueror_id == my_id
+            && my_id != 0
+            && let Some(victim) = snap.players.iter().find(|p| p.id == player_id)
+        {
+            use sow_core::player::PlayerType;
+            match victim.player_type {
+                PlayerType::Human => turn_defeats.players += 1,
+                PlayerType::Nation => turn_defeats.empires += 1,
+                PlayerType::Bot => turn_defeats.tribes += 1,
             }
         }
 

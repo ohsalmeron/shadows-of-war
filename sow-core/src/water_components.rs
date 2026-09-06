@@ -6,7 +6,24 @@
 
 use std::collections::VecDeque;
 
-use crate::map::GameMap;
+use crate::map::{CARDINAL_NEIGHBOR_DELTAS, GameMap};
+
+#[inline]
+fn for_each_cardinal_neighbor(
+    width: u32,
+    height: u32,
+    x: u32,
+    y: u32,
+    mut visit: impl FnMut(u32, u32),
+) {
+    for &(dx, dy) in &CARDINAL_NEIGHBOR_DELTAS {
+        let nx = x as i32 + dx;
+        let ny = y as i32 + dy;
+        if nx >= 0 && nx < width as i32 && ny >= 0 && ny < height as i32 {
+            visit(nx as u32, ny as u32);
+        }
+    }
+}
 
 /// Component labels indexed by linear tile index (`y * width + x`).
 ///
@@ -51,7 +68,7 @@ impl WaterComponents {
             while let Some(t) = queue.pop_front() {
                 let x = t % w;
                 let y = t / w;
-                map.for_each_neighbor(x, y, |nx, ny| {
+                for_each_cardinal_neighbor(w, map.height, x, y, |nx, ny| {
                     let ni = (ny * w + nx) as usize;
                     if !map.terrain[ni].is_land() && components[ni] == 0 {
                         components[ni] = id;
@@ -75,7 +92,7 @@ impl WaterComponents {
             let x = (idx as u32) % w;
             let y = (idx as u32) / w;
             let mut best: u32 = 0;
-            map.for_each_neighbor(x, y, |nx, ny| {
+            for_each_cardinal_neighbor(w, map.height, x, y, |nx, ny| {
                 let ni = (ny * w + nx) as usize;
                 if !map.terrain[ni].is_land() {
                     let c = components[ni];
@@ -227,27 +244,13 @@ impl WaterComponentsBuilder {
         let components = &mut self.components;
         let queue = &mut self.queue;
         let component_id = self.count;
-        const NEIGHBORS: [(i32, i32); 8] = [
-            (1, 0),
-            (-1, 0),
-            (0, -1),
-            (0, 1),
-            (1, -1),
-            (-1, -1),
-            (1, 1),
-            (-1, 1),
-        ];
-        for &(dx, dy) in &NEIGHBORS {
-            let nx = x as i32 + dx;
-            let ny = y as i32 + dy;
-            if nx >= 0 && nx < width as i32 && ny >= 0 && ny < height as i32 {
-                let ni = (ny as u32 * width + nx as u32) as usize;
-                if !terrain[ni].is_land() && components[ni] == 0 {
-                    components[ni] = component_id;
-                    queue.push_back(ni as u32);
-                }
+        for_each_cardinal_neighbor(width, height, x, y, |nx, ny| {
+            let ni = (ny * width + nx) as usize;
+            if !terrain[ni].is_land() && components[ni] == 0 {
+                components[ni] = component_id;
+                queue.push_back(ni as u32);
             }
-        }
+        });
     }
 
     fn inherit_shore(&mut self, idx: usize) {
@@ -262,29 +265,15 @@ impl WaterComponentsBuilder {
         let height = self.height;
         let terrain = &self.terrain;
         let components = &self.components;
-        const NEIGHBORS: [(i32, i32); 8] = [
-            (1, 0),
-            (-1, 0),
-            (0, -1),
-            (0, 1),
-            (1, -1),
-            (-1, -1),
-            (1, 1),
-            (-1, 1),
-        ];
-        for &(dx, dy) in &NEIGHBORS {
-            let nx = x as i32 + dx;
-            let ny = y as i32 + dy;
-            if nx >= 0 && nx < width as i32 && ny >= 0 && ny < height as i32 {
-                let ni = (ny as u32 * width + nx as u32) as usize;
-                if !terrain[ni].is_land() {
-                    let component = components[ni];
-                    if component > 0 && (best == 0 || component < best) {
-                        best = component;
-                    }
+        for_each_cardinal_neighbor(width, height, x, y, |nx, ny| {
+            let ni = (ny * width + nx) as usize;
+            if !terrain[ni].is_land() {
+                let component = components[ni];
+                if component > 0 && (best == 0 || component < best) {
+                    best = component;
                 }
             }
-        }
+        });
         self.components[idx] = best;
     }
 }
@@ -319,5 +308,17 @@ mod incremental_tests {
             assert_eq!(actual.components, expected.components, "budget={budget}");
             assert_eq!(actual.count, expected.count, "budget={budget}");
         }
+    }
+
+    #[test]
+    fn diagonal_water_tiles_are_separate_bodies() {
+        let mut map = GameMap::new(3, 3);
+        map.terrain[0] = MapTile::from_byte(0);
+        map.terrain[4] = MapTile::from_byte(0);
+
+        let components = WaterComponents::compute(&map, |_| {});
+
+        assert_eq!(components.count, 2);
+        assert_ne!(components.component_of(0), components.component_of(4));
     }
 }

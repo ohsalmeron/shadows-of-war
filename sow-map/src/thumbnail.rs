@@ -176,8 +176,8 @@ fn render_openfront_source(source: &DynamicImage) -> Result<RgbaImage, String> {
     // a second map palette or changing map.bin.
     let mut water_distance = vec![u8::MAX; count];
     let mut queue = VecDeque::new();
-    for idx in 0..count {
-        if land[idx] {
+    for (idx, &is_land) in land.iter().enumerate() {
+        if is_land {
             queue.push_back(idx);
         }
     }
@@ -207,9 +207,15 @@ fn render_openfront_source(source: &DynamicImage) -> Result<RgbaImage, String> {
             let idx = (y * width + x) as usize;
             let color = if land[idx] {
                 let mut shoreline = false;
-                visit_neighbors(x as usize, y as usize, width as usize, height as usize, |nx, ny| {
-                    shoreline |= !land[ny * width as usize + nx];
-                });
+                visit_neighbors(
+                    x as usize,
+                    y as usize,
+                    width as usize,
+                    height as usize,
+                    |nx, ny| {
+                        shoreline |= !land[ny * width as usize + nx];
+                    },
+                );
                 if shoreline {
                     [204, 203, 158, 255]
                 } else {
@@ -235,11 +241,8 @@ fn render_openfront_source(source: &DynamicImage) -> Result<RgbaImage, String> {
 }
 
 fn sample_source_frame(source: &RgbaImage, frame: SourceFrame) -> RgbaImage {
-    let mut out = RgbaImage::from_pixel(
-        frame.width,
-        frame.height,
-        image::Rgba([61, 123, 171, 255]),
-    );
+    let mut out =
+        RgbaImage::from_pixel(frame.width, frame.height, image::Rgba([61, 123, 171, 255]));
     let source_width = source.width() as i64;
     let source_height = source.height() as i64;
     for y in 0..frame.height {
@@ -255,7 +258,13 @@ fn sample_source_frame(source: &RgbaImage, frame: SourceFrame) -> RgbaImage {
     out
 }
 
-fn visit_neighbors(x: usize, y: usize, width: usize, height: usize, mut visit: impl FnMut(usize, usize)) {
+fn visit_neighbors(
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    mut visit: impl FnMut(usize, usize),
+) {
     if x > 0 {
         visit(x - 1, y);
     }
@@ -356,12 +365,10 @@ mod tests {
     #[test]
     fn wide_thumbnail_is_512_by_288_without_crop() {
         let img = DynamicImage::new_rgba8(2800, 1448);
-        let path = std::env::temp_dir().join(format!(
-            "sow-thumbnail-test-{}.webp",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("sow-thumbnail-test-{}.webp", std::process::id()));
         write_wide_thumbnail(&img, &path).unwrap();
-        let decoded = image::open(path).unwrap();
+        let decoded = image::open(&path).unwrap();
         assert_eq!(decoded.dimensions(), (THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT));
         let _ = std::fs::remove_file(path);
     }

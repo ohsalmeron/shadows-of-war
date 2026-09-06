@@ -6,29 +6,23 @@ use std::path::{Path, PathBuf};
 
 const CELL_PX: u32 = 64;
 const GUTTER_PX: u32 = 2;
-const TILE_PX: u32 = CELL_PX + GUTTER_PX * 2; // 68px per tile (2px transparent border)
 const MOJI_BASE: &str = "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72";
 
 /// Canonical list of all gameplay, HUD, leader, tribe, and reaction emojis.
 pub const CANONICAL_GAMEPLAY_EMOJIS: &[&str] = &[
     // Core Buildings & Infrastructure
-    "🏛", "🏭", "⚓", "🛡",
-    // Units, Movers, Combat & Weapons
-    "🚢", "⛵", "⚔", "💣", "🚀", "☢", "💥", "🪖", "🏹", "🪓",
-    // Resources & Economy
-    "🪙", "🌾", "⚙", "🌽", "🍞", "🧂",
-    // Diplomacy, Rankings & Match Status
-    "👑", "⭐", "🤝", "🕊", "💔", "🏳", "🔌", "🔒", "📨", "📩", "📋", "✅", "❌", "ℹ", "⚠️", "🎖", "🏆", "🏕", "🏠",
-    // Map Editor & Tools
+    "🏛", "🏭", "⚓", "🛡", // Units, Movers, Combat & Weapons
+    "🚢", "⛵", "⚔", "💣", "🚀", "☢", "💥", "🪖", "🏹", "🪓", // Resources & Economy
+    "🪙", "🌾", "⚙", "🌽", "🍞", "🧂", // Diplomacy, Rankings & Match Status
+    "👑", "⭐", "🤝", "🕊", "💔", "🏳", "🔌", "🔒", "📨", "📩", "📋", "✅", "❌", "ℹ", "⚠️", "🎖",
+    "🏆", "🏕", "🏠", // Map Editor & Tools
     "⛰", "❄", "🏝", "🖌", "🗑", "📁", "🌍", "⚡", "🛠", "🔧", "📦", "🔄",
     // Tribe Animals (sow-data)
-    "🐯", "🐆", "🦊", "🦝", "🐻", "🐨", "🐼", "🐗", "🦄", "🦅", "🦉", "🐊", "🦖", "🐉",
-    "🦈", "🦂", "🐃", "🐏", "🐘", "🦏", "🦍", "🐎", "🦌", "🦇", "🦢", "🦩", "🐍", "🐢",
-    "🐙", "🐬", "🐝", "🦋", "🕷", "🦦", "🦫", "🐫", "🦘", "🦡", "🦁",
-    // In-game Reactions & Chat
-    "😀", "😏", "😂", "🤣", "😋", "😉", "😜", "😍", "🥰", "🥳", "🥺", "😇", "🤩", "👍",
-    "❤️", "🤔", "🧐", "🙄", "🤯", "🤡", "💩", "🤫", "😠", "🤬", "😤", "🥵", "🥶", "🤢",
-    "🤮", "💀", "💪", "👀",
+    "🐯", "🐆", "🦊", "🦝", "🐻", "🐨", "🐼", "🐗", "🦄", "🦅", "🦉", "🐊", "🦖", "🐉", "🦈", "🦂",
+    "🐃", "🐏", "🐘", "🦏", "🦍", "🐎", "🦌", "🦇", "🦢", "🦩", "🐍", "🐢", "🐙", "🐬", "🐝", "🦋",
+    "🕷", "🦦", "🦫", "🐫", "🦘", "🦡", "🦁", // In-game Reactions & Chat
+    "😀", "😏", "😂", "🤣", "😋", "😉", "😜", "😍", "🥰", "🥳", "🥺", "😇", "🤩", "👍", "❤️", "🤔",
+    "🧐", "🙄", "🤯", "🤡", "💩", "🤫", "😠", "🤬", "😤", "🥵", "🥶", "🤢", "🤮", "💀", "💪", "👀",
 ];
 
 pub struct PackEmojiAtlasArgs {
@@ -90,7 +84,12 @@ pub fn pack(args: PackEmojiAtlasArgs) -> Result<(), Box<dyn std::error::Error + 
     let packed = pack_grid(&entries, CELL_PX, GUTTER_PX)?;
     let atlas = &packed.atlas;
     write_webp(atlas, &args.out_atlas)?;
-    write_manifest_rs(&packed.rects, atlas.width(), atlas.height(), &args.out_manifest)?;
+    write_manifest_rs(
+        &packed.rects,
+        atlas.width(),
+        atlas.height(),
+        &args.out_manifest,
+    )?;
     println!(
         "✅ Packed {} unique glyphs with {}px gutter → {} ({}x{})",
         entries.len(),
@@ -103,7 +102,11 @@ pub fn pack(args: PackEmojiAtlasArgs) -> Result<(), Box<dyn std::error::Error + 
 }
 
 fn normalize_emoji(s: &str) -> String {
-    s.chars().filter(|&c| c != '\u{fe0f}').collect::<String>().trim().to_string()
+    s.chars()
+        .filter(|&c| c != '\u{fe0f}')
+        .collect::<String>()
+        .trim()
+        .to_string()
 }
 
 fn scan_source_for_emojis(
@@ -155,7 +158,9 @@ fn scan_source_for_emojis(
                         } else if !current_emoji.is_empty() {
                             let trimmed = current_emoji.trim();
                             if !trimmed.is_empty()
-                                && !trimmed.chars().all(|ch| ch == '─' || ch == '═' || ch == '━')
+                                && !trimmed
+                                    .chars()
+                                    .all(|ch| ch == '─' || ch == '═' || ch == '━')
                             {
                                 out.push(current_emoji.clone());
                             }
@@ -165,7 +170,9 @@ fn scan_source_for_emojis(
                     if !current_emoji.is_empty() {
                         let trimmed = current_emoji.trim();
                         if !trimmed.is_empty()
-                            && !trimmed.chars().all(|ch| ch == '─' || ch == '═' || ch == '━')
+                            && !trimmed
+                                .chars()
+                                .all(|ch| ch == '─' || ch == '═' || ch == '━')
                         {
                             out.push(current_emoji);
                         }
@@ -192,12 +199,11 @@ fn fetch_moji(
     // 1. Try finding in local disk cache first
     for name in &filenames {
         let cache_path = cache_dir.join(format!("{}.png", name));
-        if cache_path.exists() {
-            if let Ok(bytes) = fs::read(&cache_path) {
-                if let Ok(img) = image::load_from_memory(&bytes) {
-                    return Ok(downscale_cell(&img.to_rgba8()));
-                }
-            }
+        if cache_path.exists()
+            && let Ok(bytes) = fs::read(&cache_path)
+            && let Ok(img) = image::load_from_memory(&bytes)
+        {
+            return Ok(downscale_cell(&img.to_rgba8()));
         }
     }
 
@@ -206,12 +212,11 @@ fn fetch_moji(
     if legacy_cache.is_dir() {
         for name in &filenames {
             let cache_path = legacy_cache.join(format!("{}.png", name));
-            if cache_path.exists() {
-                if let Ok(bytes) = fs::read(&cache_path) {
-                    if let Ok(img) = image::load_from_memory(&bytes) {
-                        return Ok(downscale_cell(&img.to_rgba8()));
-                    }
-                }
+            if cache_path.exists()
+                && let Ok(bytes) = fs::read(&cache_path)
+                && let Ok(img) = image::load_from_memory(&bytes)
+            {
+                return Ok(downscale_cell(&img.to_rgba8()));
             }
         }
     }
@@ -219,15 +224,17 @@ fn fetch_moji(
     // 2. Fetch from CDN and persist to disk cache
     for name in &filenames {
         let url = format!("{MOJI_BASE}/{name}.png");
-        if let Ok(resp) = client.get(&url).send() {
-            if resp.status().is_success() {
-                let bytes = resp.bytes()?;
-                let cache_path = cache_dir.join(format!("{}.png", name));
-                let _ = fs::write(&cache_path, &bytes);
-
-                let img = image::load_from_memory(&bytes)?.to_rgba8();
-                return Ok(downscale_cell(&img));
+        if let Ok(resp) = client.get(&url).send()
+            && resp.status().is_success()
+        {
+            let bytes = resp.bytes()?;
+            let cache_path = cache_dir.join(format!("{}.png", name));
+            if let Err(error) = fs::write(&cache_path, &bytes) {
+                log::warn!("emoji cache write failed for {}: {}", name, error);
             }
+
+            let img = image::load_from_memory(&bytes)?.to_rgba8();
+            return Ok(downscale_cell(&img));
         }
     }
     Err("moji CDN miss".into())
@@ -344,7 +351,9 @@ fn write_manifest_rs(
     out.push_str("pub struct AtlasRect {\n    pub x: u32,\n    pub y: u32,\n    pub w: u32,\n    pub h: u32,\n}\n\n");
     out.push_str("pub fn lookup(emoji: &str) -> Option<AtlasRect> {\n");
     out.push_str("    if emoji.contains('\\u{fe0f}') {\n");
-    out.push_str("        let clean: String = emoji.chars().filter(|&c| c != '\\u{fe0f}').collect();\n");
+    out.push_str(
+        "        let clean: String = emoji.chars().filter(|&c| c != '\\u{fe0f}').collect();\n",
+    );
     out.push_str("        return match_canonical(&clean);\n");
     out.push_str("    }\n");
     out.push_str("    match_canonical(emoji)\n");

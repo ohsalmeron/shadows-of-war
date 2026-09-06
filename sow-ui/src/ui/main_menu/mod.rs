@@ -2,14 +2,14 @@ pub mod browser;
 pub mod custom_game;
 pub mod join_browser;
 mod layout;
+#[cfg(test)]
+mod layout_tests;
 mod modals;
 pub mod profile;
 pub mod queue_overlay;
 pub(crate) mod shell;
 pub mod store;
 mod topbar;
-#[cfg(test)]
-mod layout_tests;
 
 use crate::UiAction;
 use sow_core::protocol::LobbyInfo;
@@ -460,9 +460,9 @@ fn draw_home_content(
     // content width. Frame padding (16) and stroke (1) add 17 per side.
     let reserved = if body_height < 760.0 { 270.0 } else { 330.0 };
     let map_height_cap = if portrait { 190.0 } else { 560.0 * 9.0 / 16.0 };
-    let map_width = (body.width() - 34.0).max(0.0).min(
-        (body_height - reserved).max(0.0).min(map_height_cap) * (16.0 / 9.0),
-    );
+    let map_width = (body.width() - 34.0)
+        .max(0.0)
+        .min((body_height - reserved).max(0.0).min(map_height_cap) * (16.0 / 9.0));
     let panel_width = map_width + 34.0;
     let panel_x = if portrait {
         body.center().x - panel_width * 0.5

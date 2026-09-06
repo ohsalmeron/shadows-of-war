@@ -50,11 +50,11 @@ impl<'a> Widget for LobbyCard<'a> {
         let mut w = max_w;
         let mut h = w / aspect_ratio;
 
-        if let Some(limit_h) = self.side {
-            if h > limit_h {
-                h = limit_h;
-                w = h * aspect_ratio;
-            }
+        if let Some(limit_h) = self.side
+            && h > limit_h
+        {
+            h = limit_h;
+            w = h * aspect_ratio;
         }
 
         let desired_size = egui::vec2(w, h);

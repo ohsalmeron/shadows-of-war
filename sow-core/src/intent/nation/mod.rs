@@ -10,7 +10,7 @@ mod diplomacy;
 mod profile;
 mod structures;
 
-use profile::{ai_profile_for, ai_tier, AiSlot, BotDecision};
+use profile::{AiSlot, BotDecision, ai_profile_for, ai_tier};
 use structures::{cheapest_gold_cost, iq_build_interval_base};
 
 impl SowEngine {
@@ -120,8 +120,8 @@ impl SowEngine {
             for p in &self.state.players {
                 let mut has = false;
                 for raw in p.border_tiles.ones() {
-                    let bx = (raw as u32) % self.state.map.width;
-                    let by = (raw as u32) / self.state.map.width;
+                    let bx = raw % self.state.map.width;
+                    let by = raw / self.state.map.width;
                     self.state.map.for_each_neighbor(bx, by, |nx, ny| {
                         if self.state.map.owner_id(nx, ny) == 0
                             && self.state.map.terrain[self.state.map.ref_id(nx, ny)].is_land()

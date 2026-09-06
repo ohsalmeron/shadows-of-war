@@ -1,9 +1,9 @@
-use crate::render::world::RenderContext;
-use super::bunker::{paint_bunker_effects, BunkerPaintOpts};
+use super::bunker::{BunkerPaintOpts, paint_bunker_effects};
 use super::cluster;
-use super::overlays::{paint_building_overlays, BuildingOverlayOpts};
+use super::overlays::{BuildingOverlayOpts, paint_building_overlays};
 use super::plates::*;
-use super::preview::{paint_building_placement_preview, PlacementPreviewOpts};
+use super::preview::{PlacementPreviewOpts, paint_building_placement_preview};
+use crate::render::world::RenderContext;
 
 use crate::config::ClientVisualConfig;
 use crate::render::world::movers::world_to_tile;
@@ -205,76 +205,75 @@ pub(crate) fn render(
                 if b.kind == sow_core::game::BuildingKind::City
                     && b.count == 1
                     && zoom_scaled >= 1.5
+                    && let (Some(b_id), Some(mods)) = (b.id, b.modules)
                 {
-                    if let (Some(b_id), Some(mods)) = (b.id, b.modules) {
-                        let district_size = base_size * 0.75;
-                        let neighbors_offsets = [
-                            (0.85_f32, 0.0_f32),
-                            (0.425_f32, 0.736_f32),
-                            (-0.425_f32, 0.736_f32),
-                            (-0.85_f32, 0.0_f32),
-                            (-0.425_f32, -0.736_f32),
-                            (0.425_f32, -0.736_f32),
-                        ];
+                    let district_size = base_size * 0.75;
+                    let neighbors_offsets = [
+                        (0.85_f32, 0.0_f32),
+                        (0.425_f32, 0.736_f32),
+                        (-0.425_f32, 0.736_f32),
+                        (-0.85_f32, 0.0_f32),
+                        (-0.425_f32, -0.736_f32),
+                        (0.425_f32, -0.736_f32),
+                    ];
 
-                        let draw_district = |emoji: &str, dir_idx: usize| {
-                            let (dx, dy) = neighbors_offsets[dir_idx % 6];
-                            let dist_cx = screen_x + dx * input.camera_zoom / sf;
-                            let dist_cy = screen_y + dy * input.camera_zoom / sf;
-                            let dist_center = egui::pos2(dist_cx, dist_cy);
-                            let dist_rect = egui::Rect::from_center_size(
-                                dist_center,
-                                egui::vec2(district_size, district_size),
-                            );
+                    let draw_district = |emoji: &str, dir_idx: usize| {
+                        let (dx, dy) = neighbors_offsets[dir_idx % 6];
+                        let dist_cx = screen_x + dx * input.camera_zoom / sf;
+                        let dist_cy = screen_y + dy * input.camera_zoom / sf;
+                        let dist_center = egui::pos2(dist_cx, dist_cy);
+                        let dist_rect = egui::Rect::from_center_size(
+                            dist_center,
+                            egui::vec2(district_size, district_size),
+                        );
 
-                            let player_color = if b.owner_id != 0 {
-                                player_colors
-                                    .get(b.owner_id as usize)
-                                    .copied()
-                                    .unwrap_or(egui::Color32::WHITE)
-                            } else {
-                                egui::Color32::WHITE
-                            };
-
-                            // Draw connector line
-                            painter.line_segment(
-                                [center, dist_center],
-                                egui::Stroke::new(
-                                    1.2_f32,
-                                    egui::Color32::from_rgba_unmultiplied(
-                                        player_color.r(),
-                                        player_color.g(),
-                                        player_color.b(),
-                                        60,
-                                    ),
-                                ),
-                            );
-
-                            if !sow_ui_kit::widgets::try_paint_emoji(
-                                &painter,
-                                emoji,
-                                dist_rect,
-                                player_color,
-                            ) {
-                                painter.text(
-                                    dist_rect.center(),
-                                    egui::Align2::CENTER_CENTER,
-                                    emoji,
-                                    egui::FontId::proportional(district_size * 0.7),
-                                    player_color,
-                                );
-                            }
+                        let player_color = if b.owner_id != 0 {
+                            player_colors
+                                .get(b.owner_id as usize)
+                                .copied()
+                                .unwrap_or(egui::Color32::WHITE)
+                        } else {
+                            egui::Color32::WHITE
                         };
 
-                        if mods.arsenal > 0 {
-                            draw_district("🚀", (b_id % 6) as usize);
+                        // Draw connector line
+                        painter.line_segment(
+                            [center, dist_center],
+                            egui::Stroke::new(
+                                1.2_f32,
+                                egui::Color32::from_rgba_unmultiplied(
+                                    player_color.r(),
+                                    player_color.g(),
+                                    player_color.b(),
+                                    60,
+                                ),
+                            ),
+                        );
+
+                        if !sow_ui_kit::widgets::try_paint_emoji(
+                            &painter,
+                            emoji,
+                            dist_rect,
+                            player_color,
+                        ) {
+                            painter.text(
+                                dist_rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                emoji,
+                                egui::FontId::proportional(district_size * 0.7),
+                                player_color,
+                            );
                         }
-                        if mods.port > 0 {
-                            draw_district("⚓", ((b_id + 2) % 6) as usize);
-                        }
-                        if mods.foundry > 0 {
-                            draw_district("🏭", ((b_id + 4) % 6) as usize);
-                        }
+                    };
+
+                    if mods.arsenal > 0 {
+                        draw_district("🚀", (b_id % 6) as usize);
+                    }
+                    if mods.port > 0 {
+                        draw_district("⚓", ((b_id + 2) % 6) as usize);
+                    }
+                    if mods.foundry > 0 {
+                        draw_district("🏭", ((b_id + 4) % 6) as usize);
                     }
                 }
 

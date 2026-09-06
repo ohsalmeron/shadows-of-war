@@ -117,11 +117,9 @@ impl<'a> Button<'a> {
 
     pub fn show(self, ui: &mut Ui) -> Response {
         let font_id = FontId::proportional(self.size.font_size());
-        let font_galley = ui.painter().layout_no_wrap(
-            self.text.to_uppercase(),
-            font_id,
-            Color32::WHITE,
-        );
+        let font_galley =
+            ui.painter()
+                .layout_no_wrap(self.text.to_uppercase(), font_id, Color32::WHITE);
 
         let padding = self.size.padding();
         let content_size = font_galley.size() + padding * 2.0;
@@ -170,12 +168,7 @@ impl<'a> Button<'a> {
                                 true,
                             )
                         } else {
-                            (
-                                palette::neon_cyan(),
-                                Stroke::NONE,
-                                Color32::BLACK,
-                                false,
-                            )
+                            (palette::neon_cyan(), Stroke::NONE, Color32::BLACK, false)
                         }
                     }
                     ButtonVariant::Secondary => {
@@ -254,13 +247,8 @@ impl<'a> Button<'a> {
             };
 
             let corner_radius = radius::sm();
-            ui.painter().rect(
-                rect,
-                corner_radius,
-                fill,
-                stroke,
-                egui::StrokeKind::Inside,
-            );
+            ui.painter()
+                .rect(rect, corner_radius, fill, stroke, egui::StrokeKind::Inside);
 
             let text_pos = egui::pos2(
                 rect.center().x - font_galley.size().x * 0.5,

@@ -163,10 +163,12 @@ impl EventSink {
         self.file = None;
         self.day = today.clone();
         let path = self.dir.join(format!("events-{today}.jsonl"));
-        self.file = Some(std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)?);
+        self.file = Some(
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)?,
+        );
         self.prune_old();
         Ok(())
     }
@@ -245,7 +247,10 @@ mod tests {
 
     #[test]
     fn rejects_unknown_name_and_bad_version_and_bad_ts() {
-        assert_eq!(sample("not_an_event").validate(NOW_MS), Err("unknown event name"));
+        assert_eq!(
+            sample("not_an_event").validate(NOW_MS),
+            Err("unknown event name")
+        );
         let mut bad = sample("boot_start");
         bad.v = 9;
         assert_eq!(bad.validate(NOW_MS), Err("unsupported schema version"));
@@ -280,7 +285,7 @@ mod tests {
     fn sink_prunes_files_past_retention() {
         let dir = tempfile::tempdir().unwrap();
         let floor = EventSink::retention_floor_date();
-        let ancient = format!("events-2000-01-01.jsonl");
+        let ancient = "events-2000-01-01.jsonl".to_string();
         std::fs::write(dir.path().join(&ancient), "{}\n").unwrap();
         std::fs::write(dir.path().join(format!("events-{floor}.jsonl")), "{}\n").unwrap();
         let mut sink = EventSink::new(dir.path()).unwrap();

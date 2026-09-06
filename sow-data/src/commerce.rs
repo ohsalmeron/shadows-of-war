@@ -17,9 +17,27 @@ const GEM_BUNDLES: [(&str, u64); 3] = [
 // Original SOW cosmetic catalog. The style id is an internal renderer hint;
 // the public id is the only value persisted in player ownership.
 const SKINS: [(&str, &str, &str, u64, u8); 3] = [
-    ("ember_vein", "Ember Vein", "gameplay/skins/ember_vein.svg", 500, 1),
-    ("storm_grid", "Storm Grid", "gameplay/skins/storm_grid.svg", 1_000, 2),
-    ("royal_lattice", "Royal Lattice", "gameplay/skins/royal_lattice.svg", 1_500, 3),
+    (
+        "ember_vein",
+        "Ember Vein",
+        "gameplay/skins/ember_vein.svg",
+        500,
+        1,
+    ),
+    (
+        "storm_grid",
+        "Storm Grid",
+        "gameplay/skins/storm_grid.svg",
+        1_000,
+        2,
+    ),
+    (
+        "royal_lattice",
+        "Royal Lattice",
+        "gameplay/skins/royal_lattice.svg",
+        1_500,
+        3,
+    ),
 ];
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -136,14 +154,8 @@ pub fn leader_from_id(value: &str) -> Option<Leader> {
         .filter(|character| character.is_ascii_alphanumeric())
         .map(|character| character.to_ascii_lowercase())
         .collect();
-    Leader::ALL
-        .into_iter()
-        .find(|leader| {
-            [
-                leader_id(*leader),
-                leader_wire_id(*leader),
-                leader.name(),
-            ]
+    Leader::ALL.into_iter().find(|leader| {
+        [leader_id(*leader), leader_wire_id(*leader), leader.name()]
             .into_iter()
             .map(|candidate| {
                 candidate
@@ -153,7 +165,7 @@ pub fn leader_from_id(value: &str) -> Option<Leader> {
                     .collect::<String>()
             })
             .any(|candidate| candidate == normalized)
-        })
+    })
 }
 
 pub fn assigned_leader_for_account(account_id: &str, period: u64) -> Leader {
@@ -222,7 +234,11 @@ pub fn resolve_leader(
     let fallback = assigned_leader_for_account(account_id, period);
     let requested = requested.and_then(leader_from_id).unwrap_or(fallback);
     let requested_available = leader_available(requested, owned, period);
-    let resolved = if requested_available { requested } else { fallback };
+    let resolved = if requested_available {
+        requested
+    } else {
+        fallback
+    };
     LeaderResolution {
         requested,
         resolved,
@@ -267,7 +283,10 @@ pub fn catalog_for_profile(
         .collect();
     StoreCatalog {
         rotation_period: period,
-        free_leaders: free.into_iter().map(|leader| leader_id(leader).to_string()).collect(),
+        free_leaders: free
+            .into_iter()
+            .map(|leader| leader_id(leader).to_string())
+            .collect(),
         leaders,
         skins,
         gem_bundles: gem_bundles(),
@@ -312,9 +331,18 @@ mod tests {
     #[test]
     fn skins_are_original_and_have_stable_prices() {
         assert_eq!(skins().len(), 3);
-        assert_eq!(skin_by_id("ember_vein").map(|skin| skin.cost_gems), Some(500));
-        assert_eq!(skin_by_id("storm_grid").map(|skin| skin.cost_gems), Some(1_000));
-        assert_eq!(skin_by_id("royal_lattice").map(|skin| skin.cost_gems), Some(1_500));
+        assert_eq!(
+            skin_by_id("ember_vein").map(|skin| skin.cost_gems),
+            Some(500)
+        );
+        assert_eq!(
+            skin_by_id("storm_grid").map(|skin| skin.cost_gems),
+            Some(1_000)
+        );
+        assert_eq!(
+            skin_by_id("royal_lattice").map(|skin| skin.cost_gems),
+            Some(1_500)
+        );
         assert_eq!(skin_style_for_id(Some("royal_lattice")), 3);
         assert_eq!(skin_style_for_id(Some("missing")), 0);
     }

@@ -54,18 +54,16 @@ fn draw_osm_picker_canvas(ui: &mut Ui, view: &OsmPickerView, state: &mut MapEdit
         }
     }
 
-    if response.drag_started_by(egui::PointerButton::Primary) {
-        if let Some(pos) = response.interact_pointer_pos() {
+    if response.drag_started_by(egui::PointerButton::Primary)
+        && let Some(pos) = response.interact_pointer_pos() {
             state.osm_drag_anchor = Some(pos);
         }
-    }
-    if response.dragged_by(egui::PointerButton::Primary) {
-        if let (Some(start), Some(current)) =
+    if response.dragged_by(egui::PointerButton::Primary)
+        && let (Some(start), Some(current)) =
             (state.osm_drag_anchor, response.interact_pointer_pos())
         {
             state.osm_selection_screen = Some(egui::Rect::from_two_pos(start, current));
         }
-    }
     if response.drag_stopped() {
         state.osm_drag_anchor = None;
     }
@@ -193,12 +191,11 @@ pub(super) fn draw_confirm_dialog(
 fn draw_toast(ctx: &Context, state: &mut MapEditorUiState) {
     const DISPLAY_SECS: f32 = 2.5;
 
-    if let Some(start) = state.toast_started {
-        if state.toast_message.is_some() && start.elapsed().as_secs_f32() >= DISPLAY_SECS {
+    if let Some(start) = state.toast_started
+        && state.toast_message.is_some() && start.elapsed().as_secs_f32() >= DISPLAY_SECS {
             state.toast_message = None;
             state.toast_started = None;
         }
-    }
 
     let is_active = state.toast_message.is_some();
     let anim = sow_ui_kit::theme::anim_duration_from_ctx(ctx);

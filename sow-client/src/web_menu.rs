@@ -12,8 +12,8 @@ use std::collections::VecDeque;
 use web_time::Instant;
 
 use serde::Deserialize;
-use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
 
 use crate::app::SowApp;
 use sow_ui::UiAction;
@@ -355,10 +355,7 @@ impl SowApp {
                         Some(UiAction::JoinLobby(lobby_id)),
                     );
                 }
-                WebMenuCommand::JoinWithPassword {
-                    lobby_id,
-                    password,
-                } => {
+                WebMenuCommand::JoinWithPassword { lobby_id, password } => {
                     crate::analytics::track_with(
                         "menu_password_join_attempt",
                         serde_json::json!({ "lobby_id": lobby_id }),
@@ -419,10 +416,14 @@ impl SowApp {
                     match serde_json::from_value::<sow_core::player::Leader>(value) {
                         Ok(leader) => {
                             self.ui.app.main_menu_state.selected_leader = leader;
-                            self.ui.app.main_menu_state.selected_civilization = leader.civilization();
-                            self.ui.app.main_menu_state.custom_game_config.player_leader = leader;
-                            self.ui.app.main_menu_state.custom_game_config.player_civilization =
+                            self.ui.app.main_menu_state.selected_civilization =
                                 leader.civilization();
+                            self.ui.app.main_menu_state.custom_game_config.player_leader = leader;
+                            self.ui
+                                .app
+                                .main_menu_state
+                                .custom_game_config
+                                .player_civilization = leader.civilization();
                         }
                         Err(error) => log::warn!("[WEB MENU] invalid leader: {error}"),
                     }
@@ -452,10 +453,7 @@ impl SowApp {
                     );
                 }
                 WebMenuCommand::LeaveLobby => {
-                    self.process_ui_actions(
-                        &self.ui.egui_ctx.clone(),
-                        Some(UiAction::LeaveLobby),
-                    );
+                    self.process_ui_actions(&self.ui.egui_ctx.clone(), Some(UiAction::LeaveLobby));
                 }
                 WebMenuCommand::StartPrivate { lobby_id } => {
                     self.process_ui_actions(
@@ -522,7 +520,8 @@ impl SowApp {
                             .as_ref()
                             .and_then(|s| s.players.iter().find(|p| p.id == player_id))
                         {
-                            let (cap_x, cap_y) = (player.centroid_x as u32, player.centroid_y as u32);
+                            let (cap_x, cap_y) =
+                                (player.centroid_x as u32, player.centroid_y as u32);
                             self.send_intent(sow_core::protocol::GameplayIntent::Spawn {
                                 x: cap_x,
                                 y: cap_y,
@@ -593,18 +592,14 @@ impl SowApp {
                     self.ui.app.hud_state.transfer_confirm_pending = false;
                 }
                 WebMenuCommand::AcceptResourceRequest { target_player_id } => {
-                    self.send_intent(
-                        sow_core::protocol::GameplayIntent::AcceptResourceRequest {
-                            target_player: target_player_id,
-                        },
-                    );
+                    self.send_intent(sow_core::protocol::GameplayIntent::AcceptResourceRequest {
+                        target_player: target_player_id,
+                    });
                 }
                 WebMenuCommand::RejectResourceRequest { target_player_id } => {
-                    self.send_intent(
-                        sow_core::protocol::GameplayIntent::RejectResourceRequest {
-                            target_player: target_player_id,
-                        },
-                    );
+                    self.send_intent(sow_core::protocol::GameplayIntent::RejectResourceRequest {
+                        target_player: target_player_id,
+                    });
                 }
                 WebMenuCommand::ConfirmBetrayal => {
                     let warning = self
@@ -628,7 +623,9 @@ impl SowApp {
                     self.ui.app.hud_state.betrayal_warning_cached = None;
                 }
                 WebMenuCommand::CancelAttack { attack_id } => {
-                    self.send_intent(sow_core::protocol::GameplayIntent::CancelAttack { attack_id });
+                    self.send_intent(sow_core::protocol::GameplayIntent::CancelAttack {
+                        attack_id,
+                    });
                 }
                 WebMenuCommand::RecallFleet { fleet_id } => {
                     self.send_intent(sow_core::protocol::GameplayIntent::RecallFleet { fleet_id });
@@ -647,26 +644,17 @@ impl SowApp {
                     }
                 }
                 WebMenuCommand::ReturnToMenu => {
-                    self.process_ui_actions(
-                        &self.ui.egui_ctx.clone(),
-                        Some(UiAction::LeaveLobby),
-                    );
+                    self.process_ui_actions(&self.ui.egui_ctx.clone(), Some(UiAction::LeaveLobby));
                 }
                 WebMenuCommand::ContinueObserving => {
                     self.ui.is_spectating = true;
                     self.ui.endgame_cache = None;
                 }
                 WebMenuCommand::ZoomIn => {
-                    self.process_ui_actions(
-                        &self.ui.egui_ctx.clone(),
-                        Some(UiAction::ZoomIn),
-                    );
+                    self.process_ui_actions(&self.ui.egui_ctx.clone(), Some(UiAction::ZoomIn));
                 }
                 WebMenuCommand::ZoomOut => {
-                    self.process_ui_actions(
-                        &self.ui.egui_ctx.clone(),
-                        Some(UiAction::ZoomOut),
-                    );
+                    self.process_ui_actions(&self.ui.egui_ctx.clone(), Some(UiAction::ZoomOut));
                 }
                 WebMenuCommand::CenterCamera => {
                     self.process_ui_actions(
@@ -679,8 +667,7 @@ impl SowApp {
                         self.ui.tutorial_active,
                         self.net.is_offline,
                     ) {
-                        self.ui.tutorial_objectives_open =
-                            !self.ui.tutorial_objectives_open;
+                        self.ui.tutorial_objectives_open = !self.ui.tutorial_objectives_open;
                         if self.ui.tutorial_objectives_open {
                             self.ui.show_leaderboard = false;
                             #[cfg(any(feature = "dev", debug_assertions))]
@@ -704,8 +691,8 @@ impl SowApp {
                     #[cfg(any(feature = "dev", debug_assertions))]
                     {
                         if self.ui.show_dev_sidebar && value.is_finite() {
-                            sow_ui_kit::theme::dev_config::DevConfig::update(|config| {
-                                match field {
+                            sow_ui_kit::theme::dev_config::DevConfig::update(
+                                |config| match field {
                                     WebDevConfigField::Thickness => {
                                         config.thickness = value.clamp(0.0, 1.0)
                                     }
@@ -721,8 +708,8 @@ impl SowApp {
                                     WebDevConfigField::TerritoryOpacity => {
                                         config.territory_opacity = value.clamp(0.0, 1.0)
                                     }
-                                }
-                            });
+                                },
+                            );
                         }
                     }
                     #[cfg(not(any(feature = "dev", debug_assertions)))]
@@ -798,10 +785,8 @@ fn hovered_tile_owner(app: &SowApp) -> (u32, u16) {
 fn hud_publish_key(app: &SowApp) -> HudPublishKey {
     let hud = &app.ui.app.hud_state;
     let (hovered_tile, hovered_owner) = hovered_tile_owner(app);
-    let tutorial_active = crate::hud::tutorial::tutorial_renders(
-        app.ui.tutorial_active,
-        app.net.is_offline,
-    );
+    let tutorial_active =
+        crate::hud::tutorial::tutorial_renders(app.ui.tutorial_active, app.net.is_offline);
     let tutorial_objectives_open = tutorial_active && app.ui.tutorial_objectives_open;
     let (dev_sidebar_open, dev_config_key) = dev_config_key(app);
     let snapshot_tick = app
@@ -836,7 +821,10 @@ fn hud_publish_key(app: &SowApp) -> HudPublishKey {
             .selected_building_kind
             .map(|kind| kind as u8)
             .unwrap_or(u8::MAX),
-        selected_nuke: hud.selected_nuke_kind.map(|kind| kind as u8).unwrap_or(u8::MAX),
+        selected_nuke: hud
+            .selected_nuke_kind
+            .map(|kind| kind as u8)
+            .unwrap_or(u8::MAX),
         building_costs: std::array::from_fn(|index| hud.building_costs[index].to_bits()),
         settings_mute: app.ui.app.settings_state.mute_all,
         settings_music_volume: app.ui.app.settings_state.music_volume.to_bits(),
@@ -914,7 +902,11 @@ fn dev_tools_payload(_app: &SowApp) -> serde_json::Value {
     })
 }
 
-fn player_json(player: &sow_core::protocol::PlayerSnapshot, my_pid: u16, total_land_tiles: u32) -> serde_json::Value {
+fn player_json(
+    player: &sow_core::protocol::PlayerSnapshot,
+    my_pid: u16,
+    total_land_tiles: u32,
+) -> serde_json::Value {
     let territory_pct = (player.tile_count as f32 / total_land_tiles.max(1) as f32).clamp(0.0, 1.0);
     serde_json::json!({
         "id": player.id,
@@ -1058,7 +1050,11 @@ fn build_inbox(snapshot: &sow_core::protocol::SimSnapshot, my_pid: u16) -> serde
     };
     let mut requests = Vec::new();
     for requester_id in &me.alliance_requests {
-        if let Some(requester) = snapshot.players.iter().find(|player| player.id == *requester_id) {
+        if let Some(requester) = snapshot
+            .players
+            .iter()
+            .find(|player| player.id == *requester_id)
+        {
             requests.push(serde_json::json!({
                 "kind": "alliance",
                 "requester_id": requester.id,
@@ -1069,7 +1065,11 @@ fn build_inbox(snapshot: &sow_core::protocol::SimSnapshot, my_pid: u16) -> serde
         }
     }
     for request in &me.resource_requests {
-        if let Some(requester) = snapshot.players.iter().find(|player| player.id == request.requester) {
+        if let Some(requester) = snapshot
+            .players
+            .iter()
+            .find(|player| player.id == request.requester)
+        {
             requests.push(serde_json::json!({
                 "kind": "resources",
                 "requester_id": requester.id,
@@ -1092,10 +1092,11 @@ fn build_hud_payload(app: &SowApp) -> serde_json::Value {
     let snapshot = app.sim.current_snapshot.as_ref();
     let snapshot_tick = snapshot.map(|snapshot| snapshot.tick).unwrap_or(0);
     let me = my_player_summary(app, snapshot_tick, my_pid);
-    let match_over = !app.ui.is_spectating && snapshot.is_some_and(|snapshot| {
-        snapshot.winner.is_some()
-            || me.is_some_and(|player| !player.alive && player.has_spawned)
-    });
+    let match_over = !app.ui.is_spectating
+        && snapshot.is_some_and(|snapshot| {
+            snapshot.winner.is_some()
+                || me.is_some_and(|player| !player.alive && player.has_spawned)
+        });
     let is_winner = snapshot.is_some_and(|snapshot| {
         if let Some(team) = snapshot.winning_team {
             me.and_then(|player| player.team) == Some(team)
@@ -1105,9 +1106,12 @@ fn build_hud_payload(app: &SowApp) -> serde_json::Value {
     });
     let winner_name = snapshot
         .and_then(|snapshot| {
-            snapshot
-                .winner
-                .and_then(|winner_id| snapshot.players.iter().find(|player| player.id == winner_id))
+            snapshot.winner.and_then(|winner_id| {
+                snapshot
+                    .players
+                    .iter()
+                    .find(|player| player.id == winner_id)
+            })
         })
         .map(|player| player.name.clone())
         .unwrap_or_default();
@@ -1189,7 +1193,8 @@ fn build_hud_payload(app: &SowApp) -> serde_json::Value {
 
     if let Some(snapshot) = snapshot {
         if hovered_owner != 0 {
-            payload["hovered"] = cached_hover_payload(snapshot, hovered_tile, hovered_owner, my_pid);
+            payload["hovered"] =
+                cached_hover_payload(snapshot, hovered_tile, hovered_owner, my_pid);
         }
         if app.ui.show_leaderboard {
             payload["leaderboard"] = cached_leaderboard_payload(snapshot, my_pid);
@@ -1198,7 +1203,11 @@ fn build_hud_payload(app: &SowApp) -> serde_json::Value {
             payload["inbox"] = cached_inbox_payload(snapshot, my_pid);
         }
         if let Some(target_id) = hud.show_ask_panel {
-            if let Some(target) = snapshot.players.iter().find(|player| player.id == target_id) {
+            if let Some(target) = snapshot
+                .players
+                .iter()
+                .find(|player| player.id == target_id)
+            {
                 payload["transfer"] = serde_json::json!({
                     "target_id": target.id,
                     "target_name": &target.name,
@@ -1235,15 +1244,17 @@ fn build_hud_payload(app: &SowApp) -> serde_json::Value {
     );
     if match_over {
         let reward = app.ui.reward_cache.or_else(|| {
-            me.map(|player| sow_data::rewards::calculate(sow_data::rewards::RewardInput {
-                won: is_winner,
-                players_defeated: app.progress_session_defeats.players,
-                empires_defeated: app.progress_session_defeats.empires,
-                tribes_defeated: app.progress_session_defeats.tribes,
-                kills: player.kills,
-                assists: player.assists,
-                tutorial: app.sim.config.tutorial,
-            }))
+            me.map(|player| {
+                sow_data::rewards::calculate(sow_data::rewards::RewardInput {
+                    won: is_winner,
+                    players_defeated: app.progress_session_defeats.players,
+                    empires_defeated: app.progress_session_defeats.empires,
+                    tribes_defeated: app.progress_session_defeats.tribes,
+                    kills: player.kills,
+                    assists: player.assists,
+                    tutorial: app.sim.config.tutorial,
+                })
+            })
         });
         if let Some(reward) = reward {
             payload["rewards"] = serde_json::json!({
@@ -1467,7 +1478,9 @@ pub(crate) fn publish_state(app: &mut SowApp) {
         &JsValue::from_str("SOW_MENU_STATE"),
         &js_str,
     );
-    if let Ok(func_val) = js_sys::Reflect::get(window.as_ref(), &JsValue::from_str("SOW_onStateUpdate")) {
+    if let Ok(func_val) =
+        js_sys::Reflect::get(window.as_ref(), &JsValue::from_str("SOW_onStateUpdate"))
+    {
         if let Ok(func) = func_val.dyn_into::<js_sys::Function>() {
             let _ = func.call1(window.as_ref(), &js_str);
         }

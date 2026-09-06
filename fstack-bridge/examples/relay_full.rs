@@ -16,9 +16,9 @@
 //!     - `ClientMessage::Ready`    → relay phase: `lobby_id` lookup in the
 //!       in-memory `LobbyRegistry`, per-lobby tick loop broadcasts `Turn`s at
 //!       `tick_rate_ms`, `Gameplay` intents flow back through the same conn.
-//!   Connections that send nothing in 3s are treated as the orchestrator WS:
-//!   they receive periodic `LobbiesBroadcast` (so the backfill daemon spawns
-//!   bots against this relay).
+//!       Connections that send nothing in 3s are treated as the orchestrator WS:
+//!       they receive periodic `LobbiesBroadcast` (so the backfill daemon spawns
+//!       bots against this relay).
 //! - mgmt :8080 (kernel, 127.0.0.1 — mgmt NIC): internal HTTP for the
 //!   orchestrator — `POST /internal/lobby/register`, `GET /internal/lobbies`.
 //!
@@ -34,11 +34,11 @@
 //!   sow-backfill --url ws://<data-pip>:80/ws/ --maps-root ~/maps
 
 use fstack_bridge::bridge::{self, Ev};
-use fstack_bridge::ffi::{ev_set, kevent, EV_ADD, EVFILT_READ};
+use fstack_bridge::ffi::{ev_set, kevent, EVFILT_READ, EV_ADD};
 use futures_util::{SinkExt, StreamExt};
 use libc::{
-    c_int, c_void, sockaddr_in, socklen_t, AF_INET, INADDR_ANY, SOCK_STREAM, SOL_SOCKET,
-    SO_REUSEADDR, FIONBIO,
+    c_int, c_void, sockaddr_in, socklen_t, AF_INET, FIONBIO, INADDR_ANY, SOCK_STREAM, SOL_SOCKET,
+    SO_REUSEADDR,
 };
 use log::{error, info, warn};
 use redis::Commands;
@@ -47,8 +47,8 @@ use sow_core::player::PlayerType;
 use sow_core::protocol::{
     ClientMessage, GameplayIntent, LobbyInfo, LobbyKind, LobbyPlayerSyncState, PlayerInfo,
     ServerJoinAckMessage, ServerJoinFailedMessage, ServerLobbiesBroadcastMessage,
-    ServerLobbyClosedMessage, ServerMessage, ServerStartMessage, ServerTurnMessage,
-    StampedIntent, Turn,
+    ServerLobbyClosedMessage, ServerMessage, ServerStartMessage, ServerTurnMessage, StampedIntent,
+    Turn,
 };
 use std::collections::{HashMap, HashSet};
 use std::ffi::CString;
@@ -340,7 +340,6 @@ struct LobbyState {
     match_history: Arc<Mutex<Vec<Turn>>>,
     tracker: Arc<std::sync::Mutex<MatchTracker>>,
     ev_tx: mpsc::Sender<RelayEvent>,
-    config: Option<GameConfig>,
 }
 
 type Registry = Arc<RwLock<HashMap<u64, Arc<LobbyState>>>>;
@@ -349,7 +348,14 @@ type Registry = Arc<RwLock<HashMap<u64, Arc<LobbyState>>>>;
 /// lobby roster so the backfill daemon keeps spawning until full.
 struct StubState {
     next_player: AtomicU16,
-    joined: Mutex<Vec<(u16, String, sow_core::player::Civilization, sow_core::player::Leader)>>,
+    joined: Mutex<
+        Vec<(
+            u16,
+            String,
+            sow_core::player::Civilization,
+            sow_core::player::Leader,
+        )>,
+    >,
 }
 
 impl StubState {
@@ -402,7 +408,7 @@ impl StubState {
     /// engine simulates an N-player match (1-player matches end immediately).
     async fn start_players(&self, self_id: u16) -> Vec<PlayerInfo> {
         fn color_for(id: u16) -> [f32; 3] {
-            let c = (id as f32) * 0.6180339887;
+            let c = (id as f32) * 0.618_034;
             [c.fract(), (c + 0.33).fract(), (c + 0.66).fract()]
         }
         let joined = self.joined.lock().await.clone();
@@ -500,7 +506,15 @@ fn main() {
         }
 
         let mut kev: kevent = mem::zeroed();
-        ev_set(&mut kev, lfd as usize, EVFILT_READ, EV_ADD, 0, 512, ptr::null_mut());
+        ev_set(
+            &mut kev,
+            lfd as usize,
+            EVFILT_READ,
+            EV_ADD,
+            0,
+            512,
+            ptr::null_mut(),
+        );
         fstack_bridge::ff_kevent(bridge::KQ, &kev, 1, ptr::null_mut(), 0, ptr::null());
 
         // Redis: advertise the single game port once at boot.
@@ -528,9 +542,7 @@ fn main() {
 
         eprintln!(
             "[BOOT] listening on :{}, mgmt :{} (stub={}), entering ff_run",
-            GAME_PORT,
-            MGMT_PORT,
-            stub_enabled
+            GAME_PORT, MGMT_PORT, stub_enabled
         );
         fstack_bridge::ff_run(bridge::driver_cb, ptr::null_mut());
     }
@@ -630,7 +642,10 @@ async fn handle_http(
                 }
             };
             if rb.lobby_id == 0 {
-                return ("400 Bad Request", serde_json::json!({ "error": "lobby_id required" }));
+                return (
+                    "400 Bad Request",
+                    serde_json::json!({ "error": "lobby_id required" }),
+                );
             }
             let exists = registry.read().await.contains_key(&rb.lobby_id);
             if !exists {
@@ -693,7 +708,6 @@ async fn spawn_lobby(registry: &Registry, body: RegisterBody) -> Arc<LobbyState>
         match_history,
         tracker,
         ev_tx,
-        config: body.config,
     });
 
     eprintln!(
@@ -932,9 +946,6 @@ async fn bridge_worker(registry: Registry, stub: Option<Arc<StubState>>) {
 enum Role {
     StubBot {
         player_id: u16,
-        name: String,
-        civilization: sow_core::player::Civilization,
-        leader: sow_core::player::Leader,
     },
     RelayPlayer {
         lobby: Arc<LobbyState>,
@@ -965,76 +976,68 @@ async fn ws_task(
     // First frame decides the role. The backfill daemon (orchestrator) sends
     // nothing: classify it after a short grace period.
     let role: Option<Role>;
-    match tokio::time::timeout(
-        Duration::from_secs(ORCHESTRATOR_GRACE_SECS),
-        read.next(),
-    )
-    .await
-    {
-        Ok(Some(Ok(Message::Binary(b)))) => {
-            match bincode::deserialize::<ClientMessage>(&b) {
-                Ok(ClientMessage::Join {
-                    name,
-                    civilization,
-                    leader,
-                    ..
-                }) => {
-                    if let Some(stub_state) = &stub {
-                        let pid = stub_state.next_player.fetch_add(1, Ordering::SeqCst);
-                        if pid > STUB_MAX_PLAYERS {
-                            let fail = ServerMessage::JoinFailed(ServerJoinFailedMessage {
-                                reason: "lobby full".to_string(),
-                            });
-                            let _ = direct_tx.try_send(bincode::serialize(&fail).unwrap_or_default());
-                            eprintln!("[stub] join full fd={}", fd);
-                            role = None;
-                        } else {
-                            stub_state
-                                .joined
-                                .lock()
-                                .await
-                                .push((pid, name.clone(), civilization, leader));
-                            let ack = ServerMessage::JoinAck(ServerJoinAckMessage {
-                                lobby_id: STUB_LOBBY_ID,
-                                player_id: pid,
-                                map_name: STUB_MAP.to_string(),
-                                is_private: false,
-                                lobby_info: None,
-                            });
-                            let _ = direct_tx.try_send(bincode::serialize(&ack).unwrap_or_default());
-                            eprintln!("[stub] join pid={} name={} fd={}", pid, name, fd);
-                            role = Some(Role::StubBot {
-                                player_id: pid,
-                                name,
-                                civilization,
-                                leader,
-                            });
-                        }
-                    } else {
-                        eprintln!("[stub] Join ignored (stub disabled) fd={}", fd);
+    match tokio::time::timeout(Duration::from_secs(ORCHESTRATOR_GRACE_SECS), read.next()).await {
+        Ok(Some(Ok(Message::Binary(b)))) => match bincode::deserialize::<ClientMessage>(&b) {
+            Ok(ClientMessage::Join {
+                name,
+                civilization,
+                leader,
+                ..
+            }) => {
+                if let Some(stub_state) = &stub {
+                    let pid = stub_state.next_player.fetch_add(1, Ordering::SeqCst);
+                    if pid > STUB_MAX_PLAYERS {
+                        let fail = ServerMessage::JoinFailed(ServerJoinFailedMessage {
+                            reason: "lobby full".to_string(),
+                        });
+                        let _ = direct_tx.try_send(bincode::serialize(&fail).unwrap_or_default());
+                        eprintln!("[stub] join full fd={}", fd);
                         role = None;
+                    } else {
+                        stub_state.joined.lock().await.push((
+                            pid,
+                            name.clone(),
+                            civilization,
+                            leader,
+                        ));
+                        let ack = ServerMessage::JoinAck(ServerJoinAckMessage {
+                            lobby_id: STUB_LOBBY_ID,
+                            player_id: pid,
+                            map_name: STUB_MAP.to_string(),
+                            is_private: false,
+                            lobby_info: None,
+                        });
+                        let _ = direct_tx.try_send(bincode::serialize(&ack).unwrap_or_default());
+                        eprintln!("[stub] join pid={} name={} fd={}", pid, name, fd);
+                        role = Some(Role::StubBot { player_id: pid });
                     }
-                }
-                Ok(ClientMessage::Ready { lobby_id, player_id }) => {
-                    role = try_ready_register(&registry, lobby_id, player_id, &direct_tx).await;
-                    eprintln!(
-                        "[bincode] first-frame Ready lobby={} player={} role={} fd={}",
-                        lobby_id,
-                        player_id,
-                        role.is_some(),
-                        fd
-                    );
-                }
-                Ok(_) => {
-                    eprintln!("[ws] ignored first frame fd={}", fd);
-                    role = None;
-                }
-                Err(e) => {
-                    eprintln!("[bincode] deserialize err {} fd={}", e, fd);
+                } else {
+                    eprintln!("[stub] Join ignored (stub disabled) fd={}", fd);
                     role = None;
                 }
             }
-        }
+            Ok(ClientMessage::Ready {
+                lobby_id,
+                player_id,
+            }) => {
+                role = try_ready_register(&registry, lobby_id, player_id, &direct_tx).await;
+                eprintln!(
+                    "[bincode] first-frame Ready lobby={} player={} role={} fd={}",
+                    lobby_id,
+                    player_id,
+                    role.is_some(),
+                    fd
+                );
+            }
+            Ok(_) => {
+                eprintln!("[ws] ignored first frame fd={}", fd);
+                role = None;
+            }
+            Err(e) => {
+                eprintln!("[bincode] deserialize err {} fd={}", e, fd);
+                role = None;
+            }
+        },
         Ok(Some(Ok(_))) => role = None,
         Ok(Some(Err(e))) => {
             eprintln!("[ws] recv err fd={} err={}", fd, e);
@@ -1055,8 +1058,7 @@ async fn ws_task(
     }
 
     // Stub bot: answer Ready with Start, then wait for the client to leave.
-    if let Some(Role::StubBot { player_id, .. }) = &role
-    {
+    if let Some(Role::StubBot { player_id, .. }) = &role {
         let pid = *player_id;
         loop {
             tokio::select! {
@@ -1113,7 +1115,9 @@ async fn ws_task(
     if let (Some(lobby), Some(pid)) = (&my_lobby, &my_player_id) {
         let _ = lobby.ev_tx.try_send(RelayEvent::Gameplay {
             player_id: *pid,
-            intent: GameplayIntent::MarkDisconnected { is_disconnected: false },
+            intent: GameplayIntent::MarkDisconnected {
+                is_disconnected: false,
+            },
         });
         let hist = lobby.match_history.lock().await;
         for past_turn in hist.iter() {
@@ -1125,7 +1129,10 @@ async fn ws_task(
                     tokio::time::timeout(Duration::from_millis(500), direct_tx.send(json)).await;
             }
         }
-        eprintln!("[bincode] Ready lobby={} player={} registered fd={}", lobby.id, pid, fd);
+        eprintln!(
+            "[bincode] Ready lobby={} player={} registered fd={}",
+            lobby.id, pid, fd
+        );
     }
 
     loop {
@@ -1228,20 +1235,28 @@ async fn try_ready_register(
     let lobby = match lobby {
         Some(l) => l,
         None => {
-            eprintln!("[bincode] invalid Ready lobby={} player={} (no such lobby)", lobby_id, player_id);
+            eprintln!(
+                "[bincode] invalid Ready lobby={} player={} (no such lobby)",
+                lobby_id, player_id
+            );
             return None;
         }
     };
     if !lobby.valid_players.contains_key(&player_id) {
-        eprintln!("[bincode] invalid Ready lobby={} player={} (not a valid player)", lobby_id, player_id);
+        eprintln!(
+            "[bincode] invalid Ready lobby={} player={} (not a valid player)",
+            lobby_id, player_id
+        );
         return None;
     }
 
-    lobby
-        .clients
-        .lock()
-        .await
-        .insert(player_id, ClientChannel { sender: direct_tx.clone(), missed_ticks: 0 });
+    lobby.clients.lock().await.insert(
+        player_id,
+        ClientChannel {
+            sender: direct_tx.clone(),
+            missed_ticks: 0,
+        },
+    );
     eprintln!(
         "[bincode] Ready lobby={} player={} registered",
         lobby_id, player_id
@@ -1249,7 +1264,9 @@ async fn try_ready_register(
 
     let _ = lobby.ev_tx.try_send(RelayEvent::Gameplay {
         player_id,
-        intent: GameplayIntent::MarkDisconnected { is_disconnected: false },
+        intent: GameplayIntent::MarkDisconnected {
+            is_disconnected: false,
+        },
     });
 
     {
@@ -1274,9 +1291,7 @@ async fn orchestrator_task(
         tokio_tungstenite::WebSocketStream<bridge::Conn>,
         Message,
     >,
-    read: &mut futures_util::stream::SplitStream<
-        tokio_tungstenite::WebSocketStream<bridge::Conn>,
-    >,
+    read: &mut futures_util::stream::SplitStream<tokio_tungstenite::WebSocketStream<bridge::Conn>>,
     stub: &Option<Arc<StubState>>,
 ) {
     let Some(stub_state) = stub else { return };

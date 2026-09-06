@@ -258,19 +258,16 @@ impl SowApp {
         self.ui.app.hud_state.bottom_dialog = None;
         if let Some(title) = self.ui.tutorial_pending_completion {
             // A quest just completed: a portrait-less "Quest Complete" flash, auto-dismissing.
-            let clicked = self.present_dialog(
-                ctx,
-                DialogPayload {
-                    id: &format!("tutorial_completion_{}_{}", self.sim.config.seed, idx),
-                    visual: None,
-                    name: None,
-                    title: "Objective Complete".to_string(),
-                    body: format!("{title} completed"),
-                    buttons: Vec::new(),
-                    click_anywhere: true,
-                    auto_dismiss: Some(QUEST_COMPLETE_SECS),
-                },
-            );
+            let clicked = self.present_dialog(DialogPayload {
+                id: &format!("tutorial_completion_{}_{}", self.sim.config.seed, idx),
+                visual: None,
+                name: None,
+                title: "Objective Complete".to_string(),
+                body: format!("{title} completed"),
+                buttons: Vec::new(),
+                click_anywhere: true,
+                auto_dismiss: Some(QUEST_COMPLETE_SECS),
+            });
             let elapsed = self
                 .ui
                 .tutorial_spawn_time
@@ -298,19 +295,16 @@ impl SowApp {
                     }
                     sow_core::player::PlayerType::Human => SpeakerVisual::Avatar(ADVISOR),
                 });
-            let clicked = self.present_dialog(
-                ctx,
-                DialogPayload {
-                    id: &format!("tutorial_intro_{}_{}", self.sim.config.seed, name),
-                    visual,
-                    name: Some(line.speaker),
-                    title: line.title,
-                    body: line.body,
-                    buttons: vec![DialogButton::new("Got it", ThemeButtonStyle::Primary)],
-                    click_anywhere: true,
-                    auto_dismiss: Some(DIALOG_AUTODISMISS_SECS),
-                },
-            );
+            let clicked = self.present_dialog(DialogPayload {
+                id: &format!("tutorial_intro_{}_{}", self.sim.config.seed, name),
+                visual,
+                name: Some(line.speaker),
+                title: line.title,
+                body: line.body,
+                buttons: vec![DialogButton::new("Got it", ThemeButtonStyle::Primary)],
+                click_anywhere: true,
+                auto_dismiss: Some(DIALOG_AUTODISMISS_SECS),
+            });
             let elapsed = self
                 .ui
                 .tutorial_spawn_time
@@ -339,19 +333,16 @@ impl SowApp {
             } else {
                 Some(DIALOG_AUTODISMISS_SECS)
             };
-            let clicked = self.present_dialog(
-                ctx,
-                DialogPayload {
-                    id: &format!("tutorial_dialog_{}_{}", self.sim.config.seed, idx),
-                    visual: Some(SpeakerVisual::Avatar(ADVISOR)),
-                    name: Some("Boudica".to_string()),
-                    title: step.title.to_string(),
-                    body: step.body.to_string(),
-                    buttons,
-                    click_anywhere: !is_last_step,
-                    auto_dismiss,
-                },
-            );
+            let clicked = self.present_dialog(DialogPayload {
+                id: &format!("tutorial_dialog_{}_{}", self.sim.config.seed, idx),
+                visual: Some(SpeakerVisual::Avatar(ADVISOR)),
+                name: Some("Boudica".to_string()),
+                title: step.title.to_string(),
+                body: step.body.to_string(),
+                buttons,
+                click_anywhere: !is_last_step,
+                auto_dismiss,
+            });
             let elapsed = self
                 .ui
                 .tutorial_spawn_time
@@ -406,12 +397,7 @@ impl SowApp {
     /// One frame async: the payload is drawn later this frame and the click arrives next frame via
     /// `bottom_dialog_click` — imperceptible for a dismiss. The click is **id-tagged**, so a click
     /// left over from a different dialog still fading out is discarded rather than misattributed.
-
-    fn present_dialog(
-        &mut self,
-        _ctx: &egui::Context,
-        payload: DialogPayload,
-    ) -> Option<usize> {
+    fn present_dialog(&mut self, payload: DialogPayload) -> Option<usize> {
         let id = payload.id;
         let visual = payload.visual;
         let name = payload.name;

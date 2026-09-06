@@ -4,11 +4,7 @@ use sow_data::emoji::{ATLAS_HEIGHT, ATLAS_WIDTH, lookup};
 #[macro_export]
 macro_rules! repo_asset_bytes {
     ($path:expr) => {
-        include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../assets/",
-            $path
-        ))
+        include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/", $path))
     };
 }
 

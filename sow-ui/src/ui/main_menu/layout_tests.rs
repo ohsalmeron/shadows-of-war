@@ -23,8 +23,10 @@ fn home_resize_keeps_panel_bound_to_map_and_clear_of_footer() {
     );
     let texture_id = texture.id();
     assets.thumbnails.insert("world".into(), texture);
-    let mut state = MainMenuState::default();
-    state.is_connected = true;
+    let mut state = MainMenuState {
+        is_connected: true,
+        ..Default::default()
+    };
     state.lobbies.push(LobbyInfo {
         id: 1,
         num_players: 8,
@@ -183,8 +185,10 @@ fn home_rotation_keeps_quick_match_geometry_stable() {
     );
     let texture_id = texture.id();
     assets.thumbnails.insert("world".into(), texture);
-    let mut state = MainMenuState::default();
-    state.is_connected = true;
+    let mut state = MainMenuState {
+        is_connected: true,
+        ..Default::default()
+    };
 
     let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(1440.0, 810.0));
     let mut expected: Option<(Rect, Rect, Rect, Vec<Rect>)> = None;
@@ -300,8 +304,10 @@ fn home_rotation_keeps_quick_match_geometry_stable() {
 
 #[test]
 fn waiting_keeps_queue_alive_while_navigation_changes_sections() {
-    let mut state = MainMenuState::default();
-    state.is_waiting = true;
+    let mut state = MainMenuState {
+        is_waiting: true,
+        ..Default::default()
+    };
 
     assert_eq!(state.visible_route(), MainMenuRoute::Queue);
     assert_eq!(state.active_section(), MainMenuSection::Battle);

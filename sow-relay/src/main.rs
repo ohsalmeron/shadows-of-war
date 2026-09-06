@@ -27,8 +27,10 @@ use futures_util::{SinkExt, StreamExt};
 use hmac::{Hmac, Mac};
 use libc::{c_int, c_void};
 use log::{error, info, warn};
+use rand::{RngCore, rngs::OsRng};
 use redis::Commands;
-use rand::{rngs::OsRng, RngCore};
+use rustls::{Certificate, PrivateKey, ServerConfig};
+use sha2::{Digest, Sha256};
 use sow_core::game_config::{BotDifficulty, GameConfig};
 use sow_core::player::Leader;
 use sow_core::protocol::{
@@ -36,8 +38,6 @@ use sow_core::protocol::{
     ServerLobbiesBroadcastMessage, ServerLobbyClosedMessage, ServerMessage, ServerTurnMessage,
     StampedIntent, Team, Turn,
 };
-use rustls::{Certificate, PrivateKey, ServerConfig};
-use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::CString;
 use std::io::BufReader;
@@ -49,13 +49,13 @@ use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use std::task::{Context, Poll};
 use std::time::Instant;
+use tokio::io::AsyncWriteExt;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use tokio_rustls::TlsAcceptor;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::error::TrySendError;
-use tokio::sync::{mpsc, oneshot, Mutex, RwLock, Semaphore};
-use tokio::io::AsyncWriteExt;
-use tokio::time::{interval, Duration};
+use tokio::sync::{Mutex, RwLock, Semaphore, mpsc, oneshot};
+use tokio::time::{Duration, interval};
+use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::tungstenite::Message;
 
 const DEFAULT_MGMT_PORT: u16 = 8080;
@@ -124,7 +124,10 @@ impl RelayAdmissionPolicy {
             .parse::<u32>()
             .map_err(|_| "SOW_RELAY_HANDSHAKES_PER_IP must be a positive integer".to_string())?;
         if max_connections_per_ip > max_connections {
-            return Err("SOW_RELAY_MAX_CONNECTIONS_PER_IP must not exceed SOW_RELAY_MAX_CONNECTIONS".to_string());
+            return Err(
+                "SOW_RELAY_MAX_CONNECTIONS_PER_IP must not exceed SOW_RELAY_MAX_CONNECTIONS"
+                    .to_string(),
+            );
         }
         Ok(Self {
             max_connections,
@@ -149,14 +152,20 @@ impl RelayAdmissionPolicy {
         if state.active >= self.max_connections {
             let count = self.rejected_global.fetch_add(1, Ordering::Relaxed) + 1;
             if count.is_power_of_two() {
-                warn!("[admission] global connection cap rejected peer={} count={count}", peer);
+                warn!(
+                    "[admission] global connection cap rejected peer={} count={count}",
+                    peer
+                );
             }
             return false;
         }
         if !state.by_ip.contains_key(&ip) && state.by_ip.len() >= MAX_ADMISSION_IPS {
             let count = self.rejected_global.fetch_add(1, Ordering::Relaxed) + 1;
             if count.is_power_of_two() {
-                warn!("[admission] IP table cap rejected peer={} count={count}", peer);
+                warn!(
+                    "[admission] IP table cap rejected peer={} count={count}",
+                    peer
+                );
             }
             return false;
         }
@@ -173,14 +182,20 @@ impl RelayAdmissionPolicy {
             if entry.active >= self.max_connections_per_ip {
                 let count = self.rejected_per_ip.fetch_add(1, Ordering::Relaxed) + 1;
                 if count.is_power_of_two() {
-                    warn!("[admission] per-IP connection cap rejected peer={} count={count}", peer);
+                    warn!(
+                        "[admission] per-IP connection cap rejected peer={} count={count}",
+                        peer
+                    );
                 }
                 return false;
             }
             if entry.accepted_in_window >= self.handshakes_per_ip {
                 let count = self.rejected_rate.fetch_add(1, Ordering::Relaxed) + 1;
                 if count.is_power_of_two() {
-                    warn!("[admission] per-IP handshake rate rejected peer={} count={count}", peer);
+                    warn!(
+                        "[admission] per-IP handshake rate rejected peer={} count={count}",
+                        peer
+                    );
                 }
                 return false;
             }
@@ -202,7 +217,9 @@ impl RelayAdmissionPolicy {
         state.active = state.active.saturating_sub(1);
         if let Some(entry) = state.by_ip.get_mut(&ip) {
             entry.active = entry.active.saturating_sub(1);
-            if entry.active == 0 && now.duration_since(entry.window_started) >= Duration::from_secs(1) {
+            if entry.active == 0
+                && now.duration_since(entry.window_started) >= Duration::from_secs(1)
+            {
                 state.by_ip.remove(&ip);
             }
         }
@@ -249,10 +266,10 @@ fn strict_runtime_security() -> bool {
 }
 
 fn configured_db_url() -> Result<String, String> {
-    let db_url = std::env::var("SOW_DB_URL")
-        .unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
-    let parsed = reqwest::Url::parse(&db_url)
-        .map_err(|e| format!("invalid SOW_DB_URL={db_url}: {e}"))?;
+    let db_url =
+        std::env::var("SOW_DB_URL").unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
+    let parsed =
+        reqwest::Url::parse(&db_url).map_err(|e| format!("invalid SOW_DB_URL={db_url}: {e}"))?;
     if strict_runtime_security() && parsed.scheme() != "https" {
         return Err("SOW_DB_URL must use https when SOW_MGMT_TLS_REQUIRED=1".to_string());
     }
@@ -267,8 +284,8 @@ fn configured_db_url() -> Result<String, String> {
 }
 
 fn db_client(db_url: &str) -> Result<reqwest::Client, String> {
-    let parsed = reqwest::Url::parse(db_url)
-        .map_err(|e| format!("invalid database URL {db_url}: {e}"))?;
+    let parsed =
+        reqwest::Url::parse(db_url).map_err(|e| format!("invalid database URL {db_url}: {e}"))?;
     let mut builder = reqwest::Client::builder();
     if let Ok(raw_ip) = std::env::var("SOW_DB_RESOLVE_IP") {
         let ip = raw_ip
@@ -293,7 +310,9 @@ fn validate_runtime_security() -> Result<(), String> {
         return Err("SOW_MGMT_TLS_REQUIRED must be 1; refusing insecure relay startup".to_string());
     }
     if !tickets_required() {
-        return Err("SOW_RELAY_TICKETS_REQUIRED must be 1; refusing legacy relay startup".to_string());
+        return Err(
+            "SOW_RELAY_TICKETS_REQUIRED must be 1; refusing legacy relay startup".to_string(),
+        );
     }
     configured_db_url().map(|_| ())
 }
@@ -392,7 +411,10 @@ fn load_tls_acceptor() -> Option<TlsAcceptor> {
         .with_single_cert(certs, key)
     {
         Ok(config) => {
-            info!("[tls] cert loaded from {}, key from {}", cert_path, key_path);
+            info!(
+                "[tls] cert loaded from {}, key from {}",
+                cert_path, key_path
+            );
             Some(TlsAcceptor::from(Arc::new(config)))
         }
         Err(e) => {
@@ -635,7 +657,9 @@ fn record_match_report(
     let fields = vec![
         (
             "winner_player_id",
-            winner_player_id.map(|value| value.to_string()).unwrap_or_default(),
+            winner_player_id
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
         ),
         (
             "winning_team",
@@ -654,7 +678,7 @@ fn record_match_report(
         } else {
             let expire_result: redis::RedisResult<()> = con.expire(&key, 3600);
             if let Err(error) = expire_result {
-            error!("[REDIS] match report TTL failed key={key}: {error}");
+                error!("[REDIS] match report TTL failed key={key}: {error}");
             }
         }
     } else {
@@ -737,7 +761,12 @@ impl ReplayJournal {
             return Err("replay journal already finalized".to_string());
         }
         let (reply, result) = oneshot::channel();
-        if self.tx.send(ReplayCommand::Finalize { reply }).await.is_err() {
+        if self
+            .tx
+            .send(ReplayCommand::Finalize { reply })
+            .await
+            .is_err()
+        {
             return Err("replay writer stopped".to_string());
         }
         let replay = result
@@ -756,7 +785,10 @@ async fn replay_writer(
     if let Some(parent) = journal_path.parent() {
         if let Err(e) = tokio::fs::create_dir_all(parent).await {
             failed.store(true, Ordering::Release);
-            error!("[replay] create journal directory {:?} failed: {}", parent, e);
+            error!(
+                "[replay] create journal directory {:?} failed: {}",
+                parent, e
+            );
             return;
         }
     }
@@ -912,8 +944,8 @@ fn trigger_match_finalize(match_id: u64, lobby_json: String, journal: Arc<Replay
                 return;
             }
         };
-        let secret = std::env::var("SOW_DB_SECRET")
-            .expect("SOW_DB_SECRET validated at relay startup");
+        let secret =
+            std::env::var("SOW_DB_SECRET").expect("SOW_DB_SECRET validated at relay startup");
         let url = format!("{}/internal/match-finalize", db_url.trim_end_matches('/'));
 
         let match_id_string = match_id.to_string();
@@ -1208,7 +1240,10 @@ fn main() {
         acceptor
     });
     if std::env::var("SOW_MGMT_TLS_REQUIRED").ok().as_deref() == Some("1")
-        && TLS_ACCEPTOR.get().and_then(|acceptor| acceptor.as_ref()).is_none()
+        && TLS_ACCEPTOR
+            .get()
+            .and_then(|acceptor| acceptor.as_ref())
+            .is_none()
     {
         error!("[sow-relay] management TLS is required but the relay certificate is unavailable");
         std::process::exit(78);
@@ -1237,7 +1272,9 @@ fn main() {
             std::process::exit(1);
         }
         if qid >= nbq || nbq == 0 {
-            error!("[sow-relay] invalid F-Stack queue assignment: proc_id={pid} queue_id={qid} nb_queues={nbq}");
+            error!(
+                "[sow-relay] invalid F-Stack queue assignment: proc_id={pid} queue_id={qid} nb_queues={nbq}"
+            );
             std::process::exit(1);
         }
         let expected_workers = expected_worker_count();
@@ -1286,7 +1323,10 @@ fn main() {
         rt.spawn(mgmt_http(registry.clone(), mport));
         rt.spawn(bridge_worker(registry.clone()));
 
-        info!("[BOOT] dynamic game listeners, mgmt :{}, entering ff_run", mport);
+        info!(
+            "[BOOT] dynamic game listeners, mgmt :{}, entering ff_run",
+            mport
+        );
         fstack_bridge::ff_run(bridge::driver_cb, ptr::null_mut());
     }
 }
@@ -1413,9 +1453,11 @@ async fn release_game_port(port: u16) {
     if !removed {
         return;
     }
-    LISTENER_COUNT.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
-        Some(n.saturating_sub(1))
-    }).ok();
+    LISTENER_COUNT
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+            Some(n.saturating_sub(1))
+        })
+        .ok();
 
     let redis_con = redis_shared();
     tokio::task::spawn_blocking(move || {
@@ -1461,11 +1503,7 @@ async fn mgmt_http(registry: Registry, mport: u16) {
     }
 }
 
-async fn mgmt_connection<S>(
-    mut sock: S,
-    registry: Registry,
-    nonce_cache: MgmtNonceCache,
-)
+async fn mgmt_connection<S>(mut sock: S, registry: Registry, nonce_cache: MgmtNonceCache)
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
@@ -1505,7 +1543,9 @@ where
         .unwrap_or(0);
     if clen > MAX_MGMT_BODY_BYTES {
         let _ = sock
-            .write_all(b"HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+            .write_all(
+                b"HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            )
             .await;
         return;
     }
@@ -1521,8 +1561,8 @@ where
     }
 
     let body = &buf[header_end..header_end + clen];
-    let authorized = path == "/healthz"
-        || verify_mgmt_auth(&method, &path, body, &headers, &nonce_cache).await;
+    let authorized =
+        path == "/healthz" || verify_mgmt_auth(&method, &path, body, &headers, &nonce_cache).await;
     let (status, resp) = if authorized {
         handle_http(&registry, &method, &path, body).await
     } else {
@@ -1555,11 +1595,14 @@ async fn handle_http(
                     return (
                         "400 Bad Request",
                         serde_json::json!({ "error": format!("bad body: {e}") }),
-                    )
+                    );
                 }
             };
             if rb.lobby_id == 0 {
-                return ("400 Bad Request", serde_json::json!({ "error": "lobby_id required" }));
+                return (
+                    "400 Bad Request",
+                    serde_json::json!({ "error": "lobby_id required" }),
+                );
             }
             if tickets_required() && rb.ticket_expires_at == 0 {
                 return (
@@ -1568,10 +1611,14 @@ async fn handle_http(
                 );
             }
             if tickets_required()
-                && rb
-                    .players
-                    .iter()
-                    .any(|player| !player.is_internal && player.relay_ticket_digest.as_deref().and_then(decode_ticket_digest).is_none())
+                && rb.players.iter().any(|player| {
+                    !player.is_internal
+                        && player
+                            .relay_ticket_digest
+                            .as_deref()
+                            .and_then(decode_ticket_digest)
+                            .is_none()
+                })
             {
                 return (
                     "400 Bad Request",
@@ -1598,10 +1645,7 @@ async fn handle_http(
                 );
             }
             if let Err(e) = bind_game_port(rb.relay_port).await {
-                return (
-                    "409 Conflict",
-                    serde_json::json!({ "error": e }),
-                );
+                return ("409 Conflict", serde_json::json!({ "error": e }));
             }
             let existing = registry.read().await.get(&rb.lobby_id).cloned();
             if let Some(existing) = existing {
@@ -1676,7 +1720,10 @@ async fn handle_http(
                 "[relay] lobby {} closed via mgmt API (removed={})",
                 lobby_id, removed
             );
-            ("200 OK", serde_json::json!({ "ok": true, "removed": removed }))
+            (
+                "200 OK",
+                serde_json::json!({ "ok": true, "removed": removed }),
+            )
         }
         _ => ("404 Not Found", serde_json::json!({ "error": "not found" })),
     }
@@ -1687,7 +1734,10 @@ async fn spawn_lobby(registry: &Registry, body: RegisterBody) -> Arc<LobbyState>
     let internal_bot_count = body.players.iter().filter(|p| p.is_internal).count();
     let expected_external_connections = roster_total.saturating_sub(internal_bot_count);
     let mut lobby_value = serde_json::to_value(&body).unwrap_or_default();
-    if let Some(players) = lobby_value.get_mut("players").and_then(|value| value.as_array_mut()) {
+    if let Some(players) = lobby_value
+        .get_mut("players")
+        .and_then(|value| value.as_array_mut())
+    {
         for player in players {
             if let Some(object) = player.as_object_mut() {
                 object.remove("relay_ticket_digest");
@@ -1866,7 +1916,7 @@ async fn tick_task(
                         }),
                     ) {
                         let frame = Arc::new(json);
-                        for (_, client) in clients.iter() {
+                        for client in clients.values() {
                             let _ = client.sender.try_send(frame.clone());
                         }
                     }
@@ -2075,17 +2125,17 @@ async fn bridge_worker(registry: Registry) {
                     ));
                 }
                 Ev::Data { fd, guard } => match conns.get(&fd) {
-                    Some(tx) => {
-                        match tx.try_send(guard) {
-                            Ok(()) => {}
-                            Err(TrySendError::Full(guard)) => {
-                                error!("[bridge] per-connection RX budget exhausted fd={fd}; closing connection to preserve TLS stream integrity");
-                                drop(guard);
-                                conns.remove(&fd);
-                            }
-                            Err(TrySendError::Closed(guard)) => drop(guard),
+                    Some(tx) => match tx.try_send(guard) {
+                        Ok(()) => {}
+                        Err(TrySendError::Full(guard)) => {
+                            error!(
+                                "[bridge] per-connection RX budget exhausted fd={fd}; closing connection to preserve TLS stream integrity"
+                            );
+                            drop(guard);
+                            conns.remove(&fd);
                         }
-                    }
+                        Err(TrySendError::Closed(guard)) => drop(guard),
+                    },
                     None => drop(guard),
                 },
                 Ev::Closed { fd } => {
@@ -2103,7 +2153,7 @@ async fn bridge_worker(registry: Registry) {
 /// tokio-tungstenite needs AsyncRead + AsyncWrite; we delegate both.
 enum MaybeTlsConn {
     Plain(bridge::Conn),
-    Tls(tokio_rustls::server::TlsStream<bridge::Conn>),
+    Tls(Box<tokio_rustls::server::TlsStream<bridge::Conn>>),
 }
 
 impl AsyncRead for MaybeTlsConn {
@@ -2114,7 +2164,7 @@ impl AsyncRead for MaybeTlsConn {
     ) -> Poll<std::io::Result<()>> {
         match self.get_mut() {
             MaybeTlsConn::Plain(c) => Pin::new(c).poll_read(cx, buf),
-            MaybeTlsConn::Tls(c) => Pin::new(c).poll_read(cx, buf),
+            MaybeTlsConn::Tls(c) => Pin::new(c.as_mut()).poll_read(cx, buf),
         }
     }
 }
@@ -2127,21 +2177,21 @@ impl AsyncWrite for MaybeTlsConn {
     ) -> Poll<std::io::Result<usize>> {
         match self.get_mut() {
             MaybeTlsConn::Plain(c) => Pin::new(c).poll_write(cx, buf),
-            MaybeTlsConn::Tls(c) => Pin::new(c).poll_write(cx, buf),
+            MaybeTlsConn::Tls(c) => Pin::new(c.as_mut()).poll_write(cx, buf),
         }
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         match self.get_mut() {
             MaybeTlsConn::Plain(c) => Pin::new(c).poll_flush(cx),
-            MaybeTlsConn::Tls(c) => Pin::new(c).poll_flush(cx),
+            MaybeTlsConn::Tls(c) => Pin::new(c.as_mut()).poll_flush(cx),
         }
     }
 
     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         match self.get_mut() {
             MaybeTlsConn::Plain(c) => Pin::new(c).poll_shutdown(cx),
-            MaybeTlsConn::Tls(c) => Pin::new(c).poll_shutdown(cx),
+            MaybeTlsConn::Tls(c) => Pin::new(c.as_mut()).poll_shutdown(cx),
         }
     }
 }
@@ -2156,9 +2206,7 @@ enum Role {
 
 fn role_session_id(role: &Option<Role>) -> Option<u64> {
     match role {
-        Some(Role::RelayPlayer { lobby, player_id }) => {
-            lobby.session_ids.get(player_id).copied()
-        }
+        Some(Role::RelayPlayer { lobby, player_id }) => lobby.session_ids.get(player_id).copied(),
         None => None,
     }
 }
@@ -2184,8 +2232,7 @@ async fn ws_task(
     // These timings are intentionally emitted once per connection, without
     // payloads or credentials. They distinguish bridge scheduling, TLS, WS,
     // and first-frame delays while keeping the hot packet path unchanged.
-    let log_handshake_timing =
-        |result: &str, tls_us: u128, ws_us: u128, first_frame_us: u128| {
+    let log_handshake_timing = |result: &str, tls_us: u128, ws_us: u128, first_frame_us: u128| {
         info!(
             "[relay] handshake_timing worker={} port={} peer={} fd={} generation={} accept_to_task_us={} tls_us={} ws_us={} first_frame_us={} result={}",
             WORKER_QUEUE_ID.load(Ordering::Relaxed),
@@ -2211,7 +2258,7 @@ async fn ws_task(
         {
             Ok(Ok(tls)) => {
                 tls_us = tls_started.elapsed().as_micros();
-                MaybeTlsConn::Tls(tls)
+                MaybeTlsConn::Tls(Box::new(tls))
             }
             Ok(Err(e)) => {
                 tls_us = tls_started.elapsed().as_micros();
@@ -2262,24 +2309,16 @@ async fn ws_task(
     let first_frame_started = Instant::now();
     let first_frame_us: u128;
     let role: Option<Role>;
-    match tokio::time::timeout(
-        Duration::from_secs(ORCHESTRATOR_GRACE_SECS),
-        read.next(),
-    )
-    .await
-    {
+    match tokio::time::timeout(Duration::from_secs(ORCHESTRATOR_GRACE_SECS), read.next()).await {
         Ok(Some(Ok(Message::Binary(b)))) => {
             first_frame_us = first_frame_started.elapsed().as_micros();
             match bincode::deserialize::<ClientMessage>(&b) {
-                Ok(ClientMessage::Ready { lobby_id, player_id }) => {
+                Ok(ClientMessage::Ready {
+                    lobby_id,
+                    player_id,
+                }) => {
                     role = try_ready_register(
-                        &registry,
-                        lobby_id,
-                        player_id,
-                        None,
-                        generation,
-                        peer,
-                        &direct_tx,
+                        &registry, lobby_id, player_id, None, generation, &direct_tx,
                     )
                     .await;
                     let audit_session_id = role_session_id(&role);
@@ -2294,7 +2333,11 @@ async fn ws_task(
                         generation
                     );
                 }
-                Ok(ClientMessage::ReadyWithTicket { lobby_id, player_id, ticket }) => {
+                Ok(ClientMessage::ReadyWithTicket {
+                    lobby_id,
+                    player_id,
+                    ticket,
+                }) => {
                     role = try_register_with_admission(
                         &registry,
                         lobby_id,
@@ -2316,7 +2359,11 @@ async fn ws_task(
                         generation
                     );
                 }
-                Ok(ClientMessage::ReconnectWithTicket { lobby_id, player_id, ticket }) => {
+                Ok(ClientMessage::ReconnectWithTicket {
+                    lobby_id,
+                    player_id,
+                    ticket,
+                }) => {
                     role = try_register_with_admission(
                         &registry,
                         lobby_id,
@@ -2341,7 +2388,10 @@ async fn ws_task(
                 Ok(ClientMessage::Join { .. }) => {
                     // Real clients Join the orchestrator (sow-server), never the
                     // relay. Ignore stale/spike-era joins.
-                    warn!("[relay] Join ignored (orchestrator handles joins) fd={}", fd);
+                    warn!(
+                        "[relay] Join ignored (orchestrator handles joins) fd={}",
+                        fd
+                    );
                     role = None;
                 }
                 Ok(_) => {
@@ -2366,24 +2416,14 @@ async fn ws_task(
         }
         Ok(None) => {
             first_frame_us = first_frame_started.elapsed().as_micros();
-            log_handshake_timing(
-                "closed_before_first_frame",
-                tls_us,
-                ws_us,
-                first_frame_us,
-            );
+            log_handshake_timing("closed_before_first_frame", tls_us, ws_us, first_frame_us);
             return;
         }
         Err(_) => {
             first_frame_us = first_frame_started.elapsed().as_micros();
             // Nothing in the grace window → optional orchestration/operations
             // WS (the bot/backfill compatibility client uses this feed).
-            log_handshake_timing(
-                "orchestrator_grace_timeout",
-                tls_us,
-                ws_us,
-                first_frame_us,
-            );
+            log_handshake_timing("orchestrator_grace_timeout", tls_us, ws_us, first_frame_us);
             orchestrator_task(&mut write, &mut read, &registry).await;
             return;
         }
@@ -2621,7 +2661,11 @@ async fn ws_task(
     }
 
     if let (Some(lobby), Some(pid)) = (my_lobby, my_player_id) {
-        let _ = lobby.ev_tx.try_send(RelayEvent::Leave { player_id: pid, generation, peer });
+        let _ = lobby.ev_tx.try_send(RelayEvent::Leave {
+            player_id: pid,
+            generation,
+            peer,
+        });
     }
 }
 
@@ -2634,7 +2678,6 @@ async fn try_ready_register(
     player_id: u16,
     ticket: Option<&str>,
     generation: u64,
-    _peer: SocketAddr,
     direct_tx: &mpsc::Sender<Arc<Vec<u8>>>,
 ) -> Option<Role> {
     let admission = match ticket {
@@ -2642,12 +2685,7 @@ async fn try_ready_register(
         None => RelayAdmission::Legacy,
     };
     try_register_with_admission(
-        registry,
-        lobby_id,
-        player_id,
-        admission,
-        generation,
-        direct_tx,
+        registry, lobby_id, player_id, admission, generation, direct_tx,
     )
     .await
 }
@@ -2681,72 +2719,101 @@ async fn try_register_with_admission(
     let lobby = match lobby {
         Some(l) => l,
         None => {
-            warn!("[relay] invalid Ready lobby={} player={} (no such lobby)", lobby_id, player_id);
+            warn!(
+                "[relay] invalid Ready lobby={} player={} (no such lobby)",
+                lobby_id, player_id
+            );
             return None;
         }
     };
     if !lobby.valid_players.contains_key(&player_id) {
-        warn!("[relay] invalid Ready lobby={} player={} (not a valid player)", lobby_id, player_id);
+        warn!(
+            "[relay] invalid Ready lobby={} player={} (not a valid player)",
+            lobby_id, player_id
+        );
         return None;
     }
     let reconnect_token = {
         let mut auth = lobby.auth.lock().await;
         match admission {
-        RelayAdmission::Initial(ticket) => {
-            if !ticket_is_current(lobby.ticket_expires_at) {
-                warn!("[relay] expired relay ticket lobby={} player={}", lobby_id, player_id);
+            RelayAdmission::Initial(ticket) => {
+                if !ticket_is_current(lobby.ticket_expires_at) {
+                    warn!(
+                        "[relay] expired relay ticket lobby={} player={}",
+                        lobby_id, player_id
+                    );
+                    return None;
+                }
+                let valid = lobby
+                    .ticket_digests
+                    .get(&player_id)
+                    .is_some_and(|expected| ticket_matches(ticket, expected));
+                if !valid {
+                    warn!(
+                        "[relay] invalid relay ticket lobby={} player={}",
+                        lobby_id, player_id
+                    );
+                    return None;
+                }
+                if !auth.initial_used.insert(player_id) {
+                    warn!(
+                        "[relay] replayed initial relay ticket lobby={} player={}",
+                        lobby_id, player_id
+                    );
+                    return None;
+                }
+                let (token, digest) = new_reconnect_token();
+                auth.reconnect_digests.insert(player_id, digest);
+                Some(token)
+            }
+            RelayAdmission::Reconnect(ticket) => {
+                if !ticket_is_current(lobby.ticket_expires_at) {
+                    warn!(
+                        "[relay] expired reconnect ticket lobby={} player={}",
+                        lobby_id, player_id
+                    );
+                    return None;
+                }
+                let valid = auth
+                    .reconnect_digests
+                    .get(&player_id)
+                    .is_some_and(|expected| ticket_matches(ticket, expected));
+                if !valid {
+                    warn!(
+                        "[relay] invalid or replayed reconnect ticket lobby={} player={}",
+                        lobby_id, player_id
+                    );
+                    return None;
+                }
+                let (token, digest) = new_reconnect_token();
+                auth.reconnect_digests.insert(player_id, digest);
+                Some(token)
+            }
+            RelayAdmission::Legacy if tickets_required() => {
+                warn!(
+                    "[relay] missing relay ticket lobby={} player={}",
+                    lobby_id, player_id
+                );
                 return None;
             }
-            let valid = lobby
-                .ticket_digests
-                .get(&player_id)
-                .is_some_and(|expected| ticket_matches(ticket, expected));
-            if !valid {
-                warn!("[relay] invalid relay ticket lobby={} player={}", lobby_id, player_id);
-                return None;
-            }
-            if !auth.initial_used.insert(player_id) {
-                warn!("[relay] replayed initial relay ticket lobby={} player={}", lobby_id, player_id);
-                return None;
-            }
-            let (token, digest) = new_reconnect_token();
-            auth.reconnect_digests.insert(player_id, digest);
-            Some(token)
-        }
-        RelayAdmission::Reconnect(ticket) => {
-            if !ticket_is_current(lobby.ticket_expires_at) {
-                warn!("[relay] expired reconnect ticket lobby={} player={}", lobby_id, player_id);
-                return None;
-            }
-            let valid = auth
-                .reconnect_digests
-                .get(&player_id)
-                .is_some_and(|expected| ticket_matches(ticket, expected));
-            if !valid {
-                warn!("[relay] invalid or replayed reconnect ticket lobby={} player={}", lobby_id, player_id);
-                return None;
-            }
-            let (token, digest) = new_reconnect_token();
-            auth.reconnect_digests.insert(player_id, digest);
-            Some(token)
-        }
-        RelayAdmission::Legacy if tickets_required() => {
-            warn!("[relay] missing relay ticket lobby={} player={}", lobby_id, player_id);
-            return None;
-        }
-        RelayAdmission::Legacy => None,
+            RelayAdmission::Legacy => None,
         }
     };
 
-    lobby
-        .clients
-        .lock()
-        .await
-        .insert(player_id, ClientChannel { sender: direct_tx.clone(), missed_ticks: 0, generation });
+    lobby.clients.lock().await.insert(
+        player_id,
+        ClientChannel {
+            sender: direct_tx.clone(),
+            missed_ticks: 0,
+            generation,
+        },
+    );
 
     let _ = lobby.ev_tx.try_send(RelayEvent::Gameplay {
         player_id,
-        intent: GameplayIntent::MarkDisconnected { is_disconnected: false },
+        intent: GameplayIntent::MarkDisconnected {
+            is_disconnected: false,
+        },
     });
 
     if let Some(token) = reconnect_token {
@@ -2757,17 +2824,20 @@ async fn try_register_with_admission(
         };
         match bincode::serialize(&message) {
             Ok(json) => {
-                if tokio::time::timeout(
-                    Duration::from_millis(500),
-                    direct_tx.send(Arc::new(json)),
-                )
-                .await
-                .is_err()
+                if tokio::time::timeout(Duration::from_millis(500), direct_tx.send(Arc::new(json)))
+                    .await
+                    .is_err()
                 {
-                    warn!("[relay] reconnect ticket delivery failed lobby={} player={}", lobby_id, player_id);
+                    warn!(
+                        "[relay] reconnect ticket delivery failed lobby={} player={}",
+                        lobby_id, player_id
+                    );
                 }
             }
-            Err(e) => warn!("[relay] reconnect ticket serialization failed lobby={} player={} err={}", lobby_id, player_id, e),
+            Err(e) => warn!(
+                "[relay] reconnect ticket serialization failed lobby={} player={} err={}",
+                lobby_id, player_id, e
+            ),
         }
     }
 
@@ -2775,11 +2845,9 @@ async fn try_register_with_admission(
     for past_turn in history {
         let msg = ServerTurnMessage { turn: past_turn };
         if let Ok(json) = bincode::serialize(&ServerMessage::Turn(msg)) {
-            let _ = tokio::time::timeout(
-                Duration::from_millis(500),
-                direct_tx.send(Arc::new(json)),
-            )
-            .await;
+            let _ =
+                tokio::time::timeout(Duration::from_millis(500), direct_tx.send(Arc::new(json)))
+                    .await;
         }
     }
 
@@ -2793,9 +2861,7 @@ async fn orchestrator_task(
         tokio_tungstenite::WebSocketStream<MaybeTlsConn>,
         Message,
     >,
-    read: &mut futures_util::stream::SplitStream<
-        tokio_tungstenite::WebSocketStream<MaybeTlsConn>,
-    >,
+    read: &mut futures_util::stream::SplitStream<tokio_tungstenite::WebSocketStream<MaybeTlsConn>>,
     registry: &Registry,
 ) {
     let mut ticker = interval(Duration::from_secs(1));
@@ -2864,17 +2930,21 @@ fn lobby_info(state: &Arc<LobbyState>) -> LobbyInfo {
 #[cfg(test)]
 mod dispatcher_tests {
     use super::{
-        ticket_matches, try_ready_register, AdmissionState, IpAdmissionState,
-        RelayAdmissionPolicy, Registry,
+        AdmissionState, IpAdmissionState, Registry, RelayAdmissionPolicy, ticket_matches,
+        try_ready_register,
     };
     use sha2::{Digest, Sha256};
     use std::collections::HashMap;
     use std::net::SocketAddr;
     use std::sync::Arc;
     use std::sync::Mutex as StdMutex;
-    use tokio::sync::{mpsc, RwLock};
+    use tokio::sync::{RwLock, mpsc};
 
-    fn policy(max_connections: usize, max_connections_per_ip: usize, handshakes_per_ip: u32) -> RelayAdmissionPolicy {
+    fn policy(
+        max_connections: usize,
+        max_connections_per_ip: usize,
+        handshakes_per_ip: u32,
+    ) -> RelayAdmissionPolicy {
         RelayAdmissionPolicy {
             max_connections,
             max_connections_per_ip,
@@ -2895,17 +2965,11 @@ mod dispatcher_tests {
     async fn rejects_ready_for_lobby_not_owned_by_worker() {
         let registry: Registry = Arc::new(RwLock::new(HashMap::new()));
         let (tx, _rx) = mpsc::channel(1);
-        assert!(try_ready_register(
-            &registry,
-            42,
-            7,
-            None,
-            1,
-            "127.0.0.1:1".parse().unwrap(),
-            &tx,
-        )
-        .await
-        .is_none());
+        assert!(
+            try_ready_register(&registry, 42, 7, None, 1, &tx,)
+                .await
+                .is_none()
+        );
     }
 
     #[test]
@@ -2914,7 +2978,10 @@ mod dispatcher_tests {
         let digest = Sha256::digest(ticket.as_bytes());
         let expected: [u8; 32] = digest.into();
         assert!(ticket_matches(ticket, &expected));
-        assert!(!ticket_matches("0123456789abcdef0123456789abcde0", &expected));
+        assert!(!ticket_matches(
+            "0123456789abcdef0123456789abcde0",
+            &expected
+        ));
     }
 
     #[test]

@@ -244,142 +244,146 @@ impl MapEditorSession {
             None
         };
 
-        if let Some(ref mut gp) = self.gui_painter {
-            if let Some(ref mut s) = self.surface {
-                let frame = s.acquire_frame();
-                if let Some(sp) = self.prev_sync_point.take() {
-                    let _ = self.render_ctx.context.wait_for(&sp, !0);
-                }
+        if let Some(ref mut gp) = self.gui_painter
+            && let Some(ref mut s) = self.surface
+        {
+            let frame = s.acquire_frame();
+            if let Some(sp) = self.prev_sync_point.take() {
+                drop(self.render_ctx.context.wait_for(&sp, !0));
+            }
 
-                self.render_ctx.command_encoder.start();
-                self.render_ctx
-                    .command_encoder
-                    .init_texture(frame.texture());
+            self.render_ctx.command_encoder.start();
+            self.render_ctx
+                .command_encoder
+                .init_texture(frame.texture());
 
-                let screen_desc = blade_egui::ScreenDescriptor {
-                    physical_size: (self.screen_w as u32, self.screen_h as u32),
-                    scale_factor: sf_fact,
-                };
-                let paint_jobs = self.egui_ctx.tessellate(egui_output.shapes, sf_fact);
-                gp.update_textures(
-                    &mut self.render_ctx.command_encoder,
-                    &egui_output.textures_delta,
-                    &self.render_ctx.context,
-                );
+            let screen_desc = blade_egui::ScreenDescriptor {
+                physical_size: (self.screen_w as u32, self.screen_h as u32),
+                scale_factor: sf_fact,
+            };
+            let paint_jobs = self.egui_ctx.tessellate(egui_output.shapes, sf_fact);
+            gp.update_textures(
+                &mut self.render_ctx.command_encoder,
+                &egui_output.textures_delta,
+                &self.render_ctx.context,
+            );
 
-                // OSM mode: black clear; map tiles are drawn by egui in the central panel.
-                #[cfg(feature = "osm")]
-                if !draw_terrain {
-                    let _pass = self.render_ctx.command_encoder.render(
-                        "osm_bg_clear",
-                        gpu::RenderTargetSet {
-                            colors: &[gpu::RenderTarget {
-                                view: frame.texture_view(),
-                                init_op: gpu::InitOp::Clear(gpu::TextureColor::OpaqueBlack),
-                                finish_op: gpu::FinishOp::Store,
-                            }],
-                            depth_stencil: None,
-                        },
-                    );
-                }
-
-                #[cfg(target_arch = "wasm32")]
-                if !draw_terrain {
-                    let _pass = self.render_ctx.command_encoder.render(
-                        "osm_bg_clear",
-                        gpu::RenderTargetSet {
-                            colors: &[gpu::RenderTarget {
-                                view: frame.texture_view(),
-                                init_op: gpu::InitOp::Clear(gpu::TextureColor::OpaqueBlack),
-                                finish_op: gpu::FinishOp::Store,
-                            }],
-                            depth_stencil: None,
-                        },
-                    );
-                }
-
-                if draw_terrain {
-                    if let Some(ref mut mr) = self.map_renderer {
-                        if self.needs_first_upload {
-                            self.render_ctx
-                                .command_encoder
-                                .init_texture(mr.terrain_texture);
-                            self.render_ctx
-                                .command_encoder
-                                .init_texture(mr.owner_texture);
-                            self.needs_first_upload = false;
-                            mr.upload_terrain(&mut self.render_ctx.command_encoder);
-                        }
-
-                        if self.needs_owner_upload {
-                            mr.upload_initial_owners(
-                                &mut self.render_ctx.command_encoder,
-                                &self.render_ctx.context,
-                            );
-                            self.needs_owner_upload = false;
-                        }
-
-                        // Push dirty terrain tiles to GPU (editor brush strokes).
-                        if !self.dirty_tiles.is_empty() {
-                            for &idx in &self.dirty_tiles {
-                                if idx < self.terrain.len() {
-                                    mr.terrain[idx] = self.terrain[idx];
-                                }
-                            }
-                            mr.sync_terrain_to_gpu(
-                                &mut self.render_ctx.command_encoder,
-                                &self.render_ctx.context,
-                            );
-                            self.dirty_tiles.clear();
-                        }
-
-                        // Render Map viewport
-                        let mut player_colors = [[0.5, 0.5, 0.5, 1.0]; 256];
-                        player_colors[1] = [0.1, 0.6, 0.9, 1.0];
-
-                        let globals = terrain_globals.expect("terrain_globals set in brush mode");
-                        let colors_struct = sow_render::PlayerColors {
-                            colors: player_colors,
-                        };
-
-                        mr.draw(
-                            &mut self.render_ctx.command_encoder,
-                            frame.texture_view(),
-                            globals,
-                            colors_struct,
-                        );
-                    }
-                }
-
-                // Draw EGUI overlay on top of map viewport
-                let mut pass = self.render_ctx.command_encoder.render(
-                    "editor_ui_pass",
+            // OSM mode: black clear; map tiles are drawn by egui in the central panel.
+            #[cfg(feature = "osm")]
+            if !draw_terrain {
+                let clear_pass = self.render_ctx.command_encoder.render(
+                    "osm_bg_clear",
                     gpu::RenderTargetSet {
                         colors: &[gpu::RenderTarget {
                             view: frame.texture_view(),
-                            init_op: gpu::InitOp::Load,
+                            init_op: gpu::InitOp::Clear(gpu::TextureColor::OpaqueBlack),
                             finish_op: gpu::FinishOp::Store,
                         }],
                         depth_stencil: None,
                     },
                 );
-                gp.paint(
-                    &mut pass,
-                    &paint_jobs,
-                    &screen_desc,
-                    &self.render_ctx.context,
-                );
-                drop(pass);
-                gp.sync(&self.render_ctx.context);
-
-                self.render_ctx.command_encoder.present(frame);
-                let sync_point = self
-                    .render_ctx
-                    .context
-                    .submit(&mut self.render_ctx.command_encoder);
-                gp.after_submit(&sync_point);
-                self.prev_sync_point = Some(sync_point);
+                drop(clear_pass);
             }
+
+            #[cfg(target_arch = "wasm32")]
+            if !draw_terrain {
+                let clear_pass = self.render_ctx.command_encoder.render(
+                    "osm_bg_clear",
+                    gpu::RenderTargetSet {
+                        colors: &[gpu::RenderTarget {
+                            view: frame.texture_view(),
+                            init_op: gpu::InitOp::Clear(gpu::TextureColor::OpaqueBlack),
+                            finish_op: gpu::FinishOp::Store,
+                        }],
+                        depth_stencil: None,
+                    },
+                );
+                drop(clear_pass);
+            }
+
+            if draw_terrain && let Some(ref mut mr) = self.map_renderer {
+                if self.needs_first_upload {
+                    self.render_ctx
+                        .command_encoder
+                        .init_texture(mr.terrain_texture);
+                    self.render_ctx
+                        .command_encoder
+                        .init_texture(mr.owner_texture);
+                    self.needs_first_upload = false;
+                    mr.upload_terrain(&mut self.render_ctx.command_encoder);
+                }
+
+                if self.needs_owner_upload {
+                    mr.upload_initial_owners(
+                        &mut self.render_ctx.command_encoder,
+                        &self.render_ctx.context,
+                    );
+                    self.needs_owner_upload = false;
+                }
+
+                // Push dirty terrain tiles to GPU (editor brush strokes).
+                if !self.dirty_tiles.is_empty() {
+                    for &idx in &self.dirty_tiles {
+                        if idx < self.terrain.len() {
+                            mr.terrain[idx] = self.terrain[idx];
+                        }
+                    }
+                    mr.sync_terrain_to_gpu(
+                        &mut self.render_ctx.command_encoder,
+                        &self.render_ctx.context,
+                    );
+                    self.dirty_tiles.clear();
+                }
+
+                // Render Map viewport
+                let mut player_colors = [[0.5, 0.5, 0.5, 1.0]; 256];
+                player_colors[1] = [0.1, 0.6, 0.9, 1.0];
+
+                let globals = terrain_globals.expect("terrain_globals set in brush mode");
+                let colors_struct = sow_render::PlayerColors {
+                    colors: player_colors,
+                };
+                let skin_styles_struct = sow_render::PlayerSkinStyles {
+                    styles: [[0.0; 4]; 256],
+                };
+
+                mr.draw(
+                    &mut self.render_ctx.command_encoder,
+                    frame.texture_view(),
+                    globals,
+                    colors_struct,
+                    skin_styles_struct,
+                );
+            }
+
+            // Draw EGUI overlay on top of map viewport
+            let mut pass = self.render_ctx.command_encoder.render(
+                "editor_ui_pass",
+                gpu::RenderTargetSet {
+                    colors: &[gpu::RenderTarget {
+                        view: frame.texture_view(),
+                        init_op: gpu::InitOp::Load,
+                        finish_op: gpu::FinishOp::Store,
+                    }],
+                    depth_stencil: None,
+                },
+            );
+            gp.paint(
+                &mut pass,
+                &paint_jobs,
+                &screen_desc,
+                &self.render_ctx.context,
+            );
+            drop(pass);
+            gp.sync(&self.render_ctx.context);
+
+            self.render_ctx.command_encoder.present(frame);
+            let sync_point = self
+                .render_ctx
+                .context
+                .submit(&mut self.render_ctx.command_encoder);
+            gp.after_submit(&sync_point);
+            self.prev_sync_point = Some(sync_point);
         }
 
         transition
@@ -388,7 +392,7 @@ impl MapEditorSession {
     /// Wait for in-flight GPU work and destroy editor map textures (splash exit step 1).
     pub fn teardown_gpu(&mut self) {
         if let Some(sp) = self.prev_sync_point.take() {
-            let _ = self.render_ctx.context.wait_for(&sp, !0);
+            drop(self.render_ctx.context.wait_for(&sp, !0));
         }
         if let Some(mut mr) = self.map_renderer.take() {
             mr.destroy(&self.render_ctx);

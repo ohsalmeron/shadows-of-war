@@ -334,7 +334,6 @@ impl MapRenderer {
         context: &gpu::Context,
         dirty_tiles: &[sow_core::protocol::DirtyTile],
         conquest_duration: f32,
-        _explored: &sow_core::bitset::DenseBitSet,
         visible: &sow_core::bitset::DenseBitSet,
         force_full_upload: bool,
     ) {
@@ -438,11 +437,9 @@ impl MapRenderer {
                         any_fade_changed = true;
                     }
                 } else {
-                    if current_fade > 0 {
-                        if !self.is_fading[tile_idx as usize] {
-                            self.is_fading[tile_idx as usize] = true;
-                            self.fade_active.push(tile_idx);
-                        }
+                    if current_fade > 0 && !self.is_fading[tile_idx as usize] {
+                        self.is_fading[tile_idx as usize] = true;
+                        self.fade_active.push(tile_idx);
                     }
                 }
             }

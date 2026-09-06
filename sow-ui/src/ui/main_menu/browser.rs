@@ -215,9 +215,11 @@ mod tests {
 
     #[test]
     fn quick_match_keeps_last_lobby_during_connected_empty_snapshot() {
-        let mut state = MainMenuState::default();
-        state.is_connected = true;
-        state.lobbies = vec![lobby(1, LobbyKind::Matchmaking, true)];
+        let mut state = MainMenuState {
+            is_connected: true,
+            lobbies: vec![lobby(1, LobbyKind::Matchmaking, true)],
+            ..Default::default()
+        };
 
         assert_eq!(
             visible_matchmaking_lobby_at(&mut state, 0.0).map(|lobby| lobby.id),
@@ -239,8 +241,10 @@ mod tests {
 
     #[test]
     fn quick_match_countdown_uses_elapsed_time_and_switches_directly() {
-        let mut state = MainMenuState::default();
-        state.is_connected = true;
+        let mut state = MainMenuState {
+            is_connected: true,
+            ..Default::default()
+        };
         let mut old = lobby(1, LobbyKind::Matchmaking, true);
         old.timer_secs = 3.0;
         state.lobbies = vec![old];

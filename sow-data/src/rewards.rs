@@ -55,9 +55,8 @@ pub fn calculate(input: RewardInput) -> MatchReward {
         laurels = laurels.saturating_add(LAURELS_WIN);
     }
     laurels = laurels.saturating_add((input.kills as u64).saturating_mul(LAURELS_PER_KILL));
-    laurels = laurels.saturating_add(
-        (input.empires_defeated as u64).saturating_mul(LAURELS_PER_EMPIRE),
-    );
+    laurels =
+        laurels.saturating_add((input.empires_defeated as u64).saturating_mul(LAURELS_PER_EMPIRE));
     laurels = laurels.saturating_add((input.assists as u64).saturating_mul(LAURELS_PER_ASSIST));
 
     MatchReward {

@@ -63,37 +63,35 @@ impl SowApp {
                     render_ctx.context.destroy_surface(&mut s);
                 }
             }
-        } else if needs_reconfigure {
-            if let Some(render_ctx) = self.gfx.render_ctx.as_mut() {
-                if let Some(sp) = self.gfx.prev_sync_point.take() {
-                    let _ = render_ctx.context.wait_for(&sp, !0);
-                }
-                if let Some(ref mut s) = self.gfx.surface {
-                    let display_sync = if cfg!(any(target_os = "android", target_os = "ios")) {
-                        gpu::DisplaySync::Block
-                    } else {
-                        gpu::DisplaySync::Tear
-                    };
-                    #[cfg(target_arch = "wasm32")]
-                    crate::web_canvas::set_canvas_backing_store_size(
-                        physical_size.width,
-                        physical_size.height,
-                    );
-                    render_ctx.context.reconfigure_surface(
-                        s,
-                        gpu::SurfaceConfig {
-                            size: gpu::Extent {
-                                width: physical_size.width,
-                                height: physical_size.height,
-                                depth: 1,
-                            },
-                            usage: gpu::TextureUsage::TARGET,
-                            display_sync,
-                            color_space: gpu::ColorSpace::Linear,
-                            ..Default::default()
+        } else if needs_reconfigure && let Some(render_ctx) = self.gfx.render_ctx.as_mut() {
+            if let Some(sp) = self.gfx.prev_sync_point.take() {
+                let _ = render_ctx.context.wait_for(&sp, !0);
+            }
+            if let Some(ref mut s) = self.gfx.surface {
+                let display_sync = if cfg!(any(target_os = "android", target_os = "ios")) {
+                    gpu::DisplaySync::Block
+                } else {
+                    gpu::DisplaySync::Tear
+                };
+                #[cfg(target_arch = "wasm32")]
+                crate::web_canvas::set_canvas_backing_store_size(
+                    physical_size.width,
+                    physical_size.height,
+                );
+                render_ctx.context.reconfigure_surface(
+                    s,
+                    gpu::SurfaceConfig {
+                        size: gpu::Extent {
+                            width: physical_size.width,
+                            height: physical_size.height,
+                            depth: 1,
                         },
-                    );
-                }
+                        usage: gpu::TextureUsage::TARGET,
+                        display_sync,
+                        color_space: gpu::ColorSpace::Linear,
+                        ..Default::default()
+                    },
+                );
             }
         }
 
@@ -116,10 +114,8 @@ impl SowApp {
         if recreate_surface {
             self.check_surface();
         }
-        if needs_reconfigure {
-            if let Some(win) = self.gfx.window.as_ref() {
-                win.request_redraw();
-            }
+        if needs_reconfigure && let Some(win) = self.gfx.window.as_ref() {
+            win.request_redraw();
         }
     }
     pub(crate) fn process_camera_zoom(&mut self, zoom_factor: f32, cx: f32, cy: f32) {

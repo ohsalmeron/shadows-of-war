@@ -17,11 +17,7 @@ const TICK_WARN_US: u64 = 80_000;
 /// Seconds between perf summaries while anomalies keep occurring.
 const SUMMARY_SECS: u64 = 30;
 
-static RING: [AtomicUsize; CAP] = {
-    #[allow(clippy::declare_interior_mutable_const)]
-    const Z: AtomicUsize = AtomicUsize::new(0);
-    [Z; CAP]
-};
+static RING: [AtomicUsize; CAP] = [const { AtomicUsize::new(0) }; CAP];
 static IDX: AtomicUsize = AtomicUsize::new(0);
 static ANOMALIES: AtomicUsize = AtomicUsize::new(0);
 static LAST_SUMMARY_MS: AtomicUsize = AtomicUsize::new(0);

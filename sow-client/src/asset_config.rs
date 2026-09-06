@@ -85,10 +85,11 @@ impl AssetConfig {
     }
 
     fn resolve_cache_bust() -> String {
-        if let Some(ts) = Self::js_global("SOW_BUILD_TS") {
-            if ts != "__BUILD_TS__" && !ts.is_empty() {
-                return ts;
-            }
+        if let Some(ts) = Self::js_global("SOW_BUILD_TS")
+            && ts != "__BUILD_TS__"
+            && !ts.is_empty()
+        {
+            return ts;
         }
         String::new()
     }
@@ -116,10 +117,10 @@ pub(crate) fn require_endpoint(name: &str) -> String {
             return v;
         }
     }
-    if let Ok(v) = std::env::var(name) {
-        if !v.is_empty() {
-            return v;
-        }
+    if let Ok(v) = std::env::var(name)
+        && !v.is_empty()
+    {
+        return v;
     }
     #[cfg(target_os = "ios")]
     if let Some(v) = ios_info_plist_value(name) {
@@ -155,9 +156,8 @@ fn ios_info_plist_value(name: &str) -> Option<String> {
     let mut buffer = [0i8; 2048];
     // SAFETY: both pointers refer to valid buffers for the synchronous call;
     // the bridge writes at most capacity - 1 bytes and NUL-terminates them.
-    let length = unsafe {
-        sow_ios_config_value(key.as_ptr(), buffer.as_mut_ptr(), buffer.len() as i32)
-    };
+    let length =
+        unsafe { sow_ios_config_value(key.as_ptr(), buffer.as_mut_ptr(), buffer.len() as i32) };
     if length <= 0 || length as usize >= buffer.len() {
         return None;
     }
@@ -185,10 +185,8 @@ fn macos_info_plist_value(name: &str) -> Option<String> {
     #[link(name = "CoreFoundation", kind = "framework")]
     unsafe extern "C" {
         fn CFBundleGetMainBundle() -> CFBundleRef;
-        fn CFBundleGetValueForInfoDictionaryKey(
-            bundle: CFBundleRef,
-            key: CFStringRef,
-        ) -> CFTypeRef;
+        fn CFBundleGetValueForInfoDictionaryKey(bundle: CFBundleRef, key: CFStringRef)
+        -> CFTypeRef;
         fn CFGetTypeID(cf: CFTypeRef) -> CFTypeID;
         fn CFStringCreateWithCString(
             allocator: CFAllocatorRef,
@@ -207,11 +205,7 @@ fn macos_info_plist_value(name: &str) -> Option<String> {
 
     let key = CString::new(name).ok()?;
     let key_ref = unsafe {
-        CFStringCreateWithCString(
-            std::ptr::null(),
-            key.as_ptr(),
-            K_CF_STRING_ENCODING_UTF8,
-        )
+        CFStringCreateWithCString(std::ptr::null(), key.as_ptr(), K_CF_STRING_ENCODING_UTF8)
     };
     if key_ref.is_null() {
         return None;

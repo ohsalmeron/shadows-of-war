@@ -51,6 +51,7 @@ pub struct AssetLoader {
     /// Queued thumbnail keys; drained by sow-client each frame.
     pub thumbnails_fetch_pending: Vec<String>,
     /// Prevents repeatedly queueing the same rotation thumbnails every frame.
+    #[cfg(not(target_arch = "wasm32"))]
     matchmaking_thumbnails_prefetched: bool,
     /// Pre-loaded avatar textures
     pub avatars: HashMap<sow_core::player::Leader, TextureHandle>,
@@ -173,6 +174,7 @@ impl AssetLoader {
             thumbnails_in_flight: HashSet::new(),
             thumbnail_errors: HashMap::new(),
             thumbnails_fetch_pending: Vec::new(),
+            #[cfg(not(target_arch = "wasm32"))]
             matchmaking_thumbnails_prefetched: false,
             avatars: HashMap::new(),
             avatar_fallback: None,

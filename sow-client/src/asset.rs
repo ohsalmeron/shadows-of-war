@@ -6,9 +6,9 @@ impl SowApp {
     pub fn update_assets(&mut self) {
         #[cfg(not(target_arch = "wasm32"))]
         {
-        self.poll_thumbnail_fetches();
-        self.poll_leader_portrait_fetches();
-        self.poll_boot_ui_fetches();
+            self.poll_thumbnail_fetches();
+            self.poll_leader_portrait_fetches();
+            self.poll_boot_ui_fetches();
         }
         #[cfg(target_arch = "wasm32")]
         if self.ui.app.phase == ClientPhase::Playing {
@@ -41,19 +41,18 @@ impl SowApp {
                         self.ui.app.main_menu_state.map_download_progress = progress;
                         if let (Some(lid), Some(pid)) =
                             (self.sim.my_lobby_id, self.sim.my_player_id)
+                            && let Some(c) = self.net.client.as_ref()
                         {
-                            if let Some(c) = self.net.client.as_ref() {
-                                c.send(
-                                    bincode::serialize(
-                                        &sow_core::protocol::ClientMessage::MapDownloadProgress {
-                                            lobby_id: lid,
-                                            player_id: pid,
-                                            progress,
-                                        },
-                                    )
-                                    .unwrap(),
-                                );
-                            }
+                            c.send(
+                                bincode::serialize(
+                                    &sow_core::protocol::ClientMessage::MapDownloadProgress {
+                                        lobby_id: lid,
+                                        player_id: pid,
+                                        progress,
+                                    },
+                                )
+                                .unwrap(),
+                            );
                         }
                     }
                 }
@@ -99,22 +98,19 @@ impl SowApp {
 
                         if let (Some(lid), Some(pid)) =
                             (self.sim.my_lobby_id, self.sim.my_player_id)
+                            && let Some(c) = self.net.client.as_ref()
                         {
-                            if let Some(c) = self.net.client.as_ref() {
-                                c.send(
-                                    bincode::serialize(
-                                        &sow_core::protocol::ClientMessage::MapDownloadProgress {
-                                            lobby_id: lid,
-                                            player_id: pid,
-                                            progress: 100,
-                                        },
-                                    )
-                                    .unwrap(),
-                                );
-                                c.send(
-                                    bincode::serialize(&self.make_ready_message(lid, pid)).unwrap(),
-                                );
-                            }
+                            c.send(
+                                bincode::serialize(
+                                    &sow_core::protocol::ClientMessage::MapDownloadProgress {
+                                        lobby_id: lid,
+                                        player_id: pid,
+                                        progress: 100,
+                                    },
+                                )
+                                .unwrap(),
+                            );
+                            c.send(bincode::serialize(&self.make_ready_message(lid, pid)).unwrap());
                         }
                     }
                 }
@@ -180,10 +176,7 @@ impl SowApp {
                     }
                 }
                 MapDownloadEvent::PortalAvatarFailed { reason } => {
-                    self.ui
-                        .app
-                        .asset_loader
-                        .note_portal_avatar_failed(reason);
+                    self.ui.app.asset_loader.note_portal_avatar_failed(reason);
                 }
                 MapDownloadEvent::LeaderPortraitFailed {
                     leader,
@@ -428,9 +421,7 @@ impl SowApp {
         let request = ehttp::Request::get(&url);
         ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
             let send = match result {
-                Ok(res) if res.ok => MapDownloadEvent::PortalAvatarReady {
-                    bytes: res.bytes,
-                },
+                Ok(res) if res.ok => MapDownloadEvent::PortalAvatarReady { bytes: res.bytes },
                 Ok(res) => MapDownloadEvent::PortalAvatarFailed {
                     reason: format!("HTTP {}", res.status),
                 },
@@ -606,11 +597,14 @@ impl SowApp {
                     // No fallback: continuing without an identity once masked a
                     // 403 from a misrouted endpoint and booted the wrong mode.
                     // A failed identity load is a hard failure — crash loudly.
-                        panic!(
+                    panic!(
                         "[identity] profile request id={request_id} failed status={status:?} — no fallback, refusing to continue without identity"
-                        );
-                    }
-                crate::player_progress::DbEvent::TutorialCompletionFailed { request_id, status } => {
+                    );
+                }
+                crate::player_progress::DbEvent::TutorialCompletionFailed {
+                    request_id,
+                    status,
+                } => {
                     self.profile_request_in_flight = false;
                     log::warn!(
                         "[tutorial] completion request id={request_id} failed status={status:?}; local reward retained"
@@ -629,8 +623,7 @@ impl SowApp {
                     self.ui.app.main_menu_state.profile.loading = false;
                     self.ui.app.main_menu_state.profile.error = None;
                     self.ui.app.main_menu_state.profile.history = view.recent_matches.clone();
-                    self.ui.app.main_menu_state.profile.history_cursor =
-                        view.recent_matches.len();
+                    self.ui.app.main_menu_state.profile.history_cursor = view.recent_matches.len();
                     self.ui.app.main_menu_state.profile.history_has_next =
                         view.matches_played > view.recent_matches.len() as u32;
                     self.ui.app.main_menu_state.profile.ratings.clear();
@@ -646,7 +639,9 @@ impl SowApp {
                     self.ui.app.main_menu_state.profile.loading = false;
                     self.ui.app.main_menu_state.profile.error = Some(format!(
                         "Profile unavailable (HTTP {}).",
-                        status.map(|value| value.to_string()).unwrap_or_else(|| "network error".into())
+                        status
+                            .map(|value| value.to_string())
+                            .unwrap_or_else(|| "network error".into())
                     ));
                 }
                 crate::player_progress::DbEvent::NativeProfileHistoryLoaded {
@@ -686,7 +681,10 @@ impl SowApp {
                     self.ui.app.main_menu_state.profile.search_query = query;
                     self.ui.app.main_menu_state.profile.search_results = items;
                 }
-                crate::player_progress::DbEvent::NativeMatchDetailLoaded { match_id: _, detail } => {
+                crate::player_progress::DbEvent::NativeMatchDetailLoaded {
+                    match_id: _,
+                    detail,
+                } => {
                     self.ui.app.main_menu_state.profile.loading = false;
                     self.ui.app.main_menu_state.profile.error = None;
                     self.ui.app.main_menu_state.profile.match_detail = Some(detail);
@@ -712,7 +710,9 @@ impl SowApp {
                     operation,
                 } => {
                     if self.progress_account_id.as_deref() != Some(account_id.as_str()) {
-                        log::error!("[store] ignoring {operation} response for a different account");
+                        log::error!(
+                            "[store] ignoring {operation} response for a different account"
+                        );
                         self.ui.app.main_menu_state.store_busy = false;
                         continue;
                     }

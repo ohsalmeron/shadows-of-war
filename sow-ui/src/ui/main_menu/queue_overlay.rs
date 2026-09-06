@@ -518,6 +518,18 @@ fn draw_players_panel(
     let mut click_elsewhere = false;
 
     summary_frame().show(ui, |ui| {
+        let mut row_context = PlayerRowContext {
+            asset_loader,
+            strings,
+            host,
+            show_team_chips,
+            is_teams,
+            action,
+            name_click: &mut name_click,
+            menu_open,
+            new_menu_open: &mut new_menu_open,
+            click_elsewhere: &mut click_elsewhere,
+        };
         ui.set_width(ui.available_width());
         if fill_height {
             ui.set_height(ui.available_height());
@@ -557,6 +569,7 @@ fn draw_players_panel(
 
                         if fill_height {
                             // Desktop Teams mode: 2 columns side-by-side (Red Left, Blue Right)
+                            row_context.show_team_chips = false;
                             ui.columns(2, |cols| {
                                 cols[0].vertical(|ui| {
                                     ui.spacing_mut().item_spacing = egui::vec2(0.0, 6.0);
@@ -567,20 +580,7 @@ fn draw_players_panel(
                                         Color32::from_rgb(239, 68, 68),
                                     );
                                     for &p in &red_players {
-                                        draw_player_row(
-                                            ui,
-                                            p,
-                                            asset_loader,
-                                            strings,
-                                            host,
-                                            false,
-                                            is_teams,
-                                            action,
-                                            &mut name_click,
-                                            menu_open,
-                                            &mut new_menu_open,
-                                            &mut click_elsewhere,
-                                        );
+                                        draw_player_row(ui, p, &mut row_context);
                                     }
                                 });
                                 cols[1].vertical(|ui| {
@@ -592,20 +592,7 @@ fn draw_players_panel(
                                         Color32::from_rgb(59, 130, 246),
                                     );
                                     for &p in &blue_players {
-                                        draw_player_row(
-                                            ui,
-                                            p,
-                                            asset_loader,
-                                            strings,
-                                            host,
-                                            false,
-                                            is_teams,
-                                            action,
-                                            &mut name_click,
-                                            menu_open,
-                                            &mut new_menu_open,
-                                            &mut click_elsewhere,
-                                        );
+                                        draw_player_row(ui, p, &mut row_context);
                                     }
                                 });
                             });
@@ -618,20 +605,7 @@ fn draw_players_panel(
                                 Color32::from_rgb(239, 68, 68),
                             );
                             for &p in &red_players {
-                                draw_player_row(
-                                    ui,
-                                    p,
-                                    asset_loader,
-                                    strings,
-                                    host,
-                                    show_team_chips,
-                                    is_teams,
-                                    action,
-                                    &mut name_click,
-                                    menu_open,
-                                    &mut new_menu_open,
-                                    &mut click_elsewhere,
-                                );
+                                draw_player_row(ui, p, &mut row_context);
                             }
                             ui.add_space(8.0);
                             team_section_header(
@@ -641,83 +615,31 @@ fn draw_players_panel(
                                 Color32::from_rgb(59, 130, 246),
                             );
                             for &p in &blue_players {
-                                draw_player_row(
-                                    ui,
-                                    p,
-                                    asset_loader,
-                                    strings,
-                                    host,
-                                    show_team_chips,
-                                    is_teams,
-                                    action,
-                                    &mut name_click,
-                                    menu_open,
-                                    &mut new_menu_open,
-                                    &mut click_elsewhere,
-                                );
+                                draw_player_row(ui, p, &mut row_context);
                             }
                         }
                     } else if fill_height && lobby.players.len() > 6 {
                         // Desktop FFA/HvN long list: 2 balanced columns
-                        let mid = (lobby.players.len() + 1) / 2;
+                        let mid = lobby.players.len().div_ceil(2);
                         let (left_players, right_players) = lobby.players.split_at(mid);
                         ui.columns(2, |cols| {
                             cols[0].vertical(|ui| {
                                 ui.spacing_mut().item_spacing = egui::vec2(0.0, 6.0);
                                 for p in left_players {
-                                    draw_player_row(
-                                        ui,
-                                        p,
-                                        asset_loader,
-                                        strings,
-                                        host,
-                                        show_team_chips,
-                                        is_teams,
-                                        action,
-                                        &mut name_click,
-                                        menu_open,
-                                        &mut new_menu_open,
-                                        &mut click_elsewhere,
-                                    );
+                                    draw_player_row(ui, p, &mut row_context);
                                 }
                             });
                             cols[1].vertical(|ui| {
                                 ui.spacing_mut().item_spacing = egui::vec2(0.0, 6.0);
                                 for p in right_players {
-                                    draw_player_row(
-                                        ui,
-                                        p,
-                                        asset_loader,
-                                        strings,
-                                        host,
-                                        show_team_chips,
-                                        is_teams,
-                                        action,
-                                        &mut name_click,
-                                        menu_open,
-                                        &mut new_menu_open,
-                                        &mut click_elsewhere,
-                                    );
+                                    draw_player_row(ui, p, &mut row_context);
                                 }
                             });
                         });
                     } else {
                         // Standard single column
                         for p in &lobby.players {
-                            draw_player_row(
-                                ui,
-                                p,
-                                asset_loader,
-                                strings,
-                                host,
-                                show_team_chips,
-                                is_teams,
-                                action,
-                                &mut name_click,
-                                menu_open,
-                                &mut new_menu_open,
-                                &mut click_elsewhere,
-                            );
+                            draw_player_row(ui, p, &mut row_context);
                         }
                     }
                 });
@@ -757,21 +679,25 @@ fn team_section_header(ui: &mut Ui, label: &str, count: usize, color: Color32) {
     ui.add_space(2.0);
 }
 
-fn draw_player_row(
-    ui: &mut Ui,
-    p: &sow_core::protocol::LobbyPlayerSyncState,
-    asset_loader: &crate::ui::asset_loader::AssetLoader,
-    strings: &sow_i18n::MainMenuStrings,
+struct PlayerRowContext<'a> {
+    asset_loader: &'a crate::ui::asset_loader::AssetLoader,
+    strings: &'a sow_i18n::MainMenuStrings,
     host: HostControls,
     show_team_chips: bool,
     is_teams: bool,
-    action: &mut Option<UiAction>,
-    name_click: &mut Option<u16>,
+    action: &'a mut Option<UiAction>,
+    name_click: &'a mut Option<u16>,
     menu_open: Option<u16>,
-    new_menu_open: &mut Option<u16>,
-    click_elsewhere: &mut bool,
+    new_menu_open: &'a mut Option<u16>,
+    click_elsewhere: &'a mut bool,
+}
+
+fn draw_player_row(
+    ui: &mut Ui,
+    p: &sow_core::protocol::LobbyPlayerSyncState,
+    context: &mut PlayerRowContext<'_>,
 ) {
-    let can_moderate = host.is_host && Some(p.player_id) != host.my_player_id;
+    let can_moderate = context.host.is_host && Some(p.player_id) != context.host.my_player_id;
 
     let row = Frame::NONE
         .fill(sow_ui_kit::theme::palette::surface_transparent())
@@ -784,10 +710,11 @@ fn draw_player_row(
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
-                let avatar_tex = asset_loader
+                let avatar_tex = context
+                    .asset_loader
                     .avatars
                     .get(&p.leader)
-                    .or(asset_loader.avatar_fallback.as_ref());
+                    .or(context.asset_loader.avatar_fallback.as_ref());
                 if let Some(tex) = avatar_tex {
                     ui.add(
                         egui::Image::new(tex)
@@ -815,14 +742,14 @@ fn draw_player_row(
                 if can_moderate {
                     name_resp = name_resp.on_hover_cursor(egui::CursorIcon::PointingHand);
                     if name_resp.clicked() {
-                        *name_click = Some(p.player_id);
+                        *context.name_click = Some(p.player_id);
                     }
                 }
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let map_ready = p.download_progress == 100 || p.is_ready;
                     if map_ready {
-                        status_badge(ui, &strings.ready, Color32::from_rgb(74, 222, 128));
+                        status_badge(ui, &context.strings.ready, Color32::from_rgb(74, 222, 128));
                     } else {
                         status_badge(
                             ui,
@@ -830,11 +757,11 @@ fn draw_player_row(
                             Color32::from_rgb(250, 204, 21),
                         );
                     }
-                    if show_team_chips {
-                        if let Some((label, col)) = team_chip(p.team) {
-                            ui.add_space(4.0);
-                            status_badge(ui, label, col);
-                        }
+                    if context.show_team_chips
+                        && let Some((label, col)) = team_chip(p.team)
+                    {
+                        ui.add_space(4.0);
+                        status_badge(ui, label, col);
                     }
                 });
 
@@ -843,7 +770,7 @@ fn draw_player_row(
             .inner
         });
 
-    if menu_open == Some(p.player_id) && can_moderate {
+    if context.menu_open == Some(p.player_id) && can_moderate {
         let area = egui::Area::new(egui::Id::new(("lobby_roster_menu", p.player_id)))
             .order(egui::Order::Foreground)
             .fixed_pos(row.inner.left_bottom() + egui::vec2(0.0, 4.0))
@@ -862,54 +789,56 @@ fn draw_player_row(
                         let bw = 132.0_f32;
                         if ui
                             .add(
-                                crate::widgets::ThemeButton::new(&strings.kick_btn)
+                                crate::widgets::ThemeButton::new(&context.strings.kick_btn)
                                     .style(crate::widgets::ThemeButtonStyle::Secondary)
                                     .text_size(12.0)
                                     .min_size(egui::vec2(bw, 44.0)),
                             )
                             .clicked()
                         {
-                            *action = Some(UiAction::KickPlayer {
-                                lobby_id: host.lobby_id,
+                            *context.action = Some(UiAction::KickPlayer {
+                                lobby_id: context.host.lobby_id,
                                 target_player_id: p.player_id,
                             });
-                            *new_menu_open = None;
+                            *context.new_menu_open = None;
                         }
-                        if is_teams
+                        if context.is_teams
                             && ui
                                 .add(
-                                    crate::widgets::ThemeButton::new(&strings.move_team_btn)
-                                        .style(crate::widgets::ThemeButtonStyle::Secondary)
-                                        .text_size(12.0)
-                                        .min_size(egui::vec2(bw, 44.0)),
+                                    crate::widgets::ThemeButton::new(
+                                        &context.strings.move_team_btn,
+                                    )
+                                    .style(crate::widgets::ThemeButtonStyle::Secondary)
+                                    .text_size(12.0)
+                                    .min_size(egui::vec2(bw, 44.0)),
                                 )
                                 .clicked()
                         {
-                            *action = Some(UiAction::MovePlayerTeam {
-                                lobby_id: host.lobby_id,
+                            *context.action = Some(UiAction::MovePlayerTeam {
+                                lobby_id: context.host.lobby_id,
                                 target_player_id: p.player_id,
                             });
-                            *new_menu_open = None;
+                            *context.new_menu_open = None;
                         }
                         if ui
                             .add(
-                                crate::widgets::ThemeButton::new(&strings.ban_btn)
+                                crate::widgets::ThemeButton::new(&context.strings.ban_btn)
                                     .style(crate::widgets::ThemeButtonStyle::Danger)
                                     .text_size(12.0)
                                     .min_size(egui::vec2(bw, 44.0)),
                             )
                             .clicked()
                         {
-                            *action = Some(UiAction::BanPlayer {
-                                lobby_id: host.lobby_id,
+                            *context.action = Some(UiAction::BanPlayer {
+                                lobby_id: context.host.lobby_id,
                                 target_player_id: p.player_id,
                             });
-                            *new_menu_open = None;
+                            *context.new_menu_open = None;
                         }
                     });
             });
         if area.response.clicked_elsewhere() {
-            *click_elsewhere = true;
+            *context.click_elsewhere = true;
         }
     }
 }

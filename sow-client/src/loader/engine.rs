@@ -6,7 +6,7 @@ use sow_ui_kit::ClientPhase;
 
 #[cfg(target_arch = "wasm32")]
 async fn yield_to_browser() {
-    use wasm_bindgen::{closure::Closure, JsCast, JsValue};
+    use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 
     let promise = js_sys::Promise::new(&mut |resolve, _reject| {
         let resolve_for_callback = resolve.clone();
@@ -14,10 +14,8 @@ async fn yield_to_browser() {
             let _ = resolve_for_callback.call0(&JsValue::UNDEFINED);
         });
         if let Some(window) = web_sys::window() {
-            let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(
-                callback.unchecked_ref(),
-                0,
-            );
+            let _ = window
+                .set_timeout_with_callback_and_timeout_and_arguments_0(callback.unchecked_ref(), 0);
         } else {
             let _ = resolve.call0(&JsValue::UNDEFINED);
         }
@@ -248,57 +246,57 @@ impl SowApp {
 
                     #[cfg(not(target_arch = "wasm32"))]
                     {
-                    let leader = self.ui.app.main_menu_state.selected_leader;
-                    // Portrait art is keyed by orientation (`width < height`), the
-                    // same test the backdrop uses to pick + decode the texture.
-                    // compact_viewport's extra size thresholds would key boot
-                    // focus differently and strand the decode (wide-short embeds).
-                    let mobile = sow_ui_kit::theme::portrait_layout(&self.ui.egui_ctx);
+                        let leader = self.ui.app.main_menu_state.selected_leader;
+                        // Portrait art is keyed by orientation (`width < height`), the
+                        // same test the backdrop uses to pick + decode the texture.
+                        // compact_viewport's extra size thresholds would key boot
+                        // focus differently and strand the decode (wide-short embeds).
+                        let mobile = sow_ui_kit::theme::portrait_layout(&self.ui.egui_ctx);
 
-                    splash_show_loading(&mut self.ui.app.splash_state);
+                        splash_show_loading(&mut self.ui.app.splash_state);
 
-                    self.ui
-                        .app
-                        .asset_loader
-                        .ensure_ui_assets_loaded(&self.ui.egui_ctx);
-                    // Kick the portrait fetch concurrently with the boot UI art
-                    // fetch — both are network round trips on wasm and were
-                    // previously serialized behind `ui_ready`.
-                    self.ui
-                        .app
-                        .asset_loader
-                        .ensure_boot_leader_loaded(&self.ui.egui_ctx, leader);
-                    self.ui
-                        .app
-                        .asset_loader
-                        .set_leader_portrait_focus(leader, mobile);
-                    let ui_ready = self.ui.app.asset_loader.ui_splash_ready();
-                    if !ui_ready {
-                        splash_show_loading_progress(&mut self.ui.app.splash_state, 0.35);
-                    } else {
-                        splash_show_loading_progress(&mut self.ui.app.splash_state, 0.65);
-                    }
-
-                    let ui_ready = self.ui.app.asset_loader.ui_splash_ready();
-                    let hero_ready = self.ui.app.asset_loader.boot_leader_ready(leader, mobile);
-                    let boot_ready = ui_ready && hero_ready;
-
-                    if boot_ready {
-                        // Native stores the same local progress snapshot as the web client. Keep
-                        // the first-run intro one-time, and expose an explicit menu-preview mode
-                        // for UI work without changing the normal player route.
-                        if std::env::var_os("SOW_NATIVE_MENU").is_some()
-                            || !self.progress.is_first_game()
-                        {
-                            log::info!("native boot: main menu");
-                            self.ui.app.splash_state.done = true;
-                            self.ui.app.splash_state.target_phase =
-                                Some(sow_ui_kit::ClientPhase::MainMenu);
+                        self.ui
+                            .app
+                            .asset_loader
+                            .ensure_ui_assets_loaded(&self.ui.egui_ctx);
+                        // Kick the portrait fetch concurrently with the boot UI art
+                        // fetch — both are network round trips on wasm and were
+                        // previously serialized behind `ui_ready`.
+                        self.ui
+                            .app
+                            .asset_loader
+                            .ensure_boot_leader_loaded(&self.ui.egui_ctx, leader);
+                        self.ui
+                            .app
+                            .asset_loader
+                            .set_leader_portrait_focus(leader, mobile);
+                        let ui_ready = self.ui.app.asset_loader.ui_splash_ready();
+                        if !ui_ready {
+                            splash_show_loading_progress(&mut self.ui.app.splash_state, 0.35);
                         } else {
-                            log::info!("native boot: first-run intro tutorial");
-                            self.start_portal_intro_match();
+                            splash_show_loading_progress(&mut self.ui.app.splash_state, 0.65);
                         }
-                    }
+
+                        let ui_ready = self.ui.app.asset_loader.ui_splash_ready();
+                        let hero_ready = self.ui.app.asset_loader.boot_leader_ready(leader, mobile);
+                        let boot_ready = ui_ready && hero_ready;
+
+                        if boot_ready {
+                            // Native stores the same local progress snapshot as the web client. Keep
+                            // the first-run intro one-time, and expose an explicit menu-preview mode
+                            // for UI work without changing the normal player route.
+                            if std::env::var_os("SOW_NATIVE_MENU").is_some()
+                                || !self.progress.is_first_game()
+                            {
+                                log::info!("native boot: main menu");
+                                self.ui.app.splash_state.done = true;
+                                self.ui.app.splash_state.target_phase =
+                                    Some(sow_ui_kit::ClientPhase::MainMenu);
+                            } else {
+                                log::info!("native boot: first-run intro tutorial");
+                                self.start_portal_intro_match();
+                            }
+                        }
                     }
                 }
                 sow_ui::ui::loading_screen::SplashJob::ExitGame => {
@@ -311,20 +309,20 @@ impl SowApp {
                     } else if step == 1 {
                         #[cfg(not(target_arch = "wasm32"))]
                         {
-                        let leader = self.ui.app.main_menu_state.selected_leader;
-                        let mobile = sow_ui_kit::theme::portrait_layout(&self.ui.egui_ctx);
-                        self.ui
-                            .app
-                            .asset_loader
-                            .ensure_ui_assets_loaded(&self.ui.egui_ctx);
-                        self.ui
-                            .app
-                            .asset_loader
-                            .ensure_boot_leader_loaded(&self.ui.egui_ctx, leader);
-                        self.ui
-                            .app
-                            .asset_loader
-                            .set_leader_portrait_focus(leader, mobile);
+                            let leader = self.ui.app.main_menu_state.selected_leader;
+                            let mobile = sow_ui_kit::theme::portrait_layout(&self.ui.egui_ctx);
+                            self.ui
+                                .app
+                                .asset_loader
+                                .ensure_ui_assets_loaded(&self.ui.egui_ctx);
+                            self.ui
+                                .app
+                                .asset_loader
+                                .ensure_boot_leader_loaded(&self.ui.egui_ctx, leader);
+                            self.ui
+                                .app
+                                .asset_loader
+                                .set_leader_portrait_focus(leader, mobile);
                         }
 
                         let p = self.ui.app.splash_state.progress;
@@ -339,14 +337,10 @@ impl SowApp {
                         #[cfg(target_arch = "wasm32")]
                         let hero_ready = true;
                         #[cfg(not(target_arch = "wasm32"))]
-                        let hero_ready = self
-                            .ui
-                            .app
-                            .asset_loader
-                            .boot_leader_ready(
-                                self.ui.app.main_menu_state.selected_leader,
-                                sow_ui_kit::theme::portrait_layout(&self.ui.egui_ctx),
-                            );
+                        let hero_ready = self.ui.app.asset_loader.boot_leader_ready(
+                            self.ui.app.main_menu_state.selected_leader,
+                            sow_ui_kit::theme::portrait_layout(&self.ui.egui_ctx),
+                        );
                         if self.net.client.is_some() && hero_ready {
                             log::info!(
                                 "Exit game splash: connected, hero image ready, transitioning to main menu"
@@ -437,29 +431,27 @@ impl SowApp {
                         self.sim.fog_visible = sow_core::bitset::DenseBitSet::new();
                         self.sim.force_fog_upload = true;
                         self.release_client_game_gpu();
-                        if let Some(render_ctx) = self.gfx.render_ctx.as_mut() {
-                            if let Some(ref s) = self.gfx.surface {
-                                let format = s.info().format;
-                                self.gfx.map_renderer =
-                                    Some(crate::render::gpu::map_renderer::MapRenderer::new(
-                                        &render_ctx.context,
-                                        self.sim.map_w,
-                                        self.sim.map_h,
-                                        format,
-                                        &map_bytes,
-                                    ));
-                                self.gfx.mover_renderer =
-                                    Some(crate::render::gpu::MoverRenderer::new(
-                                        &render_ctx.context,
-                                        format,
-                                    ));
-                                self.gfx.text_renderer =
-                                    Some(crate::render::gpu::TextRenderer::new(
-                                        &render_ctx.context,
-                                        format,
-                                    ));
-                                self.gfx.needs_first_upload = true;
-                            }
+                        if let Some(render_ctx) = self.gfx.render_ctx.as_mut()
+                            && let Some(ref s) = self.gfx.surface
+                        {
+                            let format = s.info().format;
+                            self.gfx.map_renderer =
+                                Some(crate::render::gpu::map_renderer::MapRenderer::new(
+                                    &render_ctx.context,
+                                    self.sim.map_w,
+                                    self.sim.map_h,
+                                    format,
+                                    &map_bytes,
+                                ));
+                            self.gfx.mover_renderer = Some(crate::render::gpu::MoverRenderer::new(
+                                &render_ctx.context,
+                                format,
+                            ));
+                            self.gfx.text_renderer = Some(crate::render::gpu::TextRenderer::new(
+                                &render_ctx.context,
+                                format,
+                            ));
+                            self.gfx.needs_first_upload = true;
                         }
 
                         // Move to step 2: Texture uploading happens automatically next frame
@@ -509,17 +501,15 @@ impl SowApp {
                         self.tasks.pending_engine_init_data = None;
                         log::info!("EnterGame load complete; fading out loader");
 
-                        if !self.net.is_offline {
-                            if let Some(c) = self.net.client.as_ref() {
-                                if let (Some(lid), Some(pid)) =
-                                    (self.sim.my_lobby_id, self.sim.my_player_id)
-                                {
-                                    let ready_msg = self.make_initial_relay_ready_message(lid, pid);
-                                    let json = bincode::serialize(&ready_msg).unwrap();
-                                    c.send(json);
-                                    self.net.load_telemetry.mark_ready_sent();
-                                }
-                            }
+                        if !self.net.is_offline
+                            && let Some(c) = self.net.client.as_ref()
+                            && let (Some(lid), Some(pid)) =
+                                (self.sim.my_lobby_id, self.sim.my_player_id)
+                        {
+                            let ready_msg = self.make_initial_relay_ready_message(lid, pid);
+                            let json = bincode::serialize(&ready_msg).unwrap();
+                            c.send(json);
+                            self.net.load_telemetry.mark_ready_sent();
                         }
                     } else {
                         let p = self.ui.app.splash_state.progress;

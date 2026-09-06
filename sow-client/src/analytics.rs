@@ -50,7 +50,9 @@ pub fn configure(database_base: &str) {
 #[cfg(target_arch = "wasm32")]
 fn install_pagehide_flush() {
     use wasm_bindgen::JsCast;
-    let Some(window) = web_sys::window() else { return };
+    let Some(window) = web_sys::window() else {
+        return;
+    };
     let callback = wasm_bindgen::closure::Closure::wrap(Box::new(|| {
         flush_if_due(true);
     }) as Box<dyn FnMut()>);
@@ -128,17 +130,15 @@ pub fn flush_if_due(force: bool) {
     let body = build_batch_body(cfg, &entries, account_id.as_deref());
     let mut request = ehttp::Request::post(&cfg.endpoint, body.into_bytes());
     request.headers.insert("Content-Type", "application/json");
-    ehttp::fetch(request, move |result| {
-        match result {
-            Ok(response) if response.ok => {}
-            Ok(response) => {
-                log::debug!("[analytics] flush rejected: HTTP {}", response.status);
-                requeue(entries);
-            }
-            Err(error) => {
-                log::debug!("[analytics] flush failed: {error}");
-                requeue(entries);
-            }
+    ehttp::fetch(request, move |result| match result {
+        Ok(response) if response.ok => {}
+        Ok(response) => {
+            log::debug!("[analytics] flush rejected: HTTP {}", response.status);
+            requeue(entries);
+        }
+        Err(error) => {
+            log::debug!("[analytics] flush failed: {error}");
+            requeue(entries);
         }
     });
 }
@@ -152,11 +152,7 @@ fn requeue(entries: Vec<QueueEntry>) {
 }
 
 /// Pure batch serializer — unit-tested without network.
-fn build_batch_body(
-    cfg: &Config,
-    entries: &[QueueEntry],
-    account_id: Option<&str>,
-) -> String {
+fn build_batch_body(cfg: &Config, entries: &[QueueEntry], account_id: Option<&str>) -> String {
     let events: Vec<serde_json::Value> = entries
         .iter()
         .map(|entry| {

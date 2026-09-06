@@ -433,7 +433,8 @@ pub fn parse_catalog(data: &[u8]) -> Result<MapCatalog, MapFileError> {
 /// Frequency comes from the folder's `info.toml` (written by sow-tools).
 pub fn catalog_from_headers(
     items: impl IntoIterator<Item = (String, MapHeader, u32)>,
-) -> MapCatalog {    let mut entries: Vec<MapCatalogEntry> = items
+) -> MapCatalog {
+    let mut entries: Vec<MapCatalogEntry> = items
         .into_iter()
         .map(|(key, h, frequency)| MapCatalogEntry {
             key,

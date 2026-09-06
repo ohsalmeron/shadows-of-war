@@ -8,7 +8,7 @@
 //!
 //! The right way:
 //!   * egui : sow_ui_kit::widgets::emoji::{emoji_label, outlined_emoji_label,
-//!            try_paint_emoji, paint_emoji_centered, paint_emoji_text_at, HudEmojiButton}
+//!     try_paint_emoji, paint_emoji_centered, paint_emoji_text_at, HudEmojiButton}
 //!   * GPU  : sow_render::TextRenderer::{push_emoji, push_string}
 //!   * new glyph: add it to the atlas (sow-data/src/emoji/manifest.rs, regen via sow-tools).
 //!
@@ -217,18 +217,16 @@ fn emoji_goes_through_the_pipeline() {
             }
 
             // (B) Emoji handed to an approved API but missing from the atlas.
-            if approved {
-                if let Some(lit) = first_str_literal(line) {
-                    for run in emoji_runs(lit) {
-                        if !run_supported(&run) {
-                            violations.push(format!(
+            if approved && let Some(lit) = first_str_literal(line) {
+                for run in emoji_runs(lit) {
+                    if !run_supported(&run) {
+                        violations.push(format!(
                                 "{}:{}: emoji {:?} is not in the atlas (renders as font fallback)\n      {}",
                                 rel(file, workspace),
                                 lineno,
                                 run,
                                 line.trim()
                             ));
-                        }
                     }
                 }
             }

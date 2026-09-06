@@ -84,7 +84,11 @@ impl Card {
         self
     }
 
-    pub fn show<R>(self, ui: &mut Ui, add_contents: impl FnOnce(&mut Ui) -> R) -> egui::InnerResponse<R> {
+    pub fn show<R>(
+        self,
+        ui: &mut Ui,
+        add_contents: impl FnOnce(&mut Ui) -> R,
+    ) -> egui::InnerResponse<R> {
         let (fill, default_stroke) = match self.variant {
             CardVariant::Surface => (
                 palette::surface(),

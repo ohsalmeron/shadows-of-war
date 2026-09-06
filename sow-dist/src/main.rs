@@ -114,9 +114,8 @@ fn copy_dir(src: &Path, dst: &Path) -> Result<()> {
         if e.path().is_dir() {
             copy_dir(&e.path(), &to)?;
         } else {
-            fs::copy(e.path(), &to).with_context(|| {
-                format!("copy {} to {}", e.path().display(), to.display())
-            })?;
+            fs::copy(e.path(), &to)
+                .with_context(|| format!("copy {} to {}", e.path().display(), to.display()))?;
         }
     }
     Ok(())
@@ -131,7 +130,10 @@ fn refresh_map_thumbnails(maps_root: &Path, map_sources: &Path) -> Result<()> {
         )
         .with_context(|| format!("parse {}", manifest_path.display()))?;
         if value.get("version").and_then(|v| v.as_u64()) != Some(1) {
-            bail!("unsupported thumbnail frame manifest: {}", manifest_path.display());
+            bail!(
+                "unsupported thumbnail frame manifest: {}",
+                manifest_path.display()
+            );
         }
         if let Some(sources) = value.get("sources").and_then(|v| v.as_object()) {
             for (name, metadata) in sources {
@@ -164,8 +166,8 @@ fn refresh_map_thumbnails(maps_root: &Path, map_sources: &Path) -> Result<()> {
         if !map_path.is_file() {
             continue;
         }
-        let bytes = fs::read(&map_path)
-            .with_context(|| format!("read map {}", map_path.display()))?;
+        let bytes =
+            fs::read(&map_path).with_context(|| format!("read map {}", map_path.display()))?;
         let map = sow_core::map_file::parse(&bytes)
             .map_err(|error| anyhow::anyhow!("parse {}: {error}", map_path.display()))?;
         let thumbnail = dir.join("thumbnail.webp");
@@ -199,8 +201,9 @@ fn refresh_map_thumbnails(maps_root: &Path, map_sources: &Path) -> Result<()> {
         if let (Some(frame), Some(source)) = (frame, source) {
             let source_path = map_sources.join(source);
             if !rendered_sources.contains_key(&source_path) {
-                let rendered = sow_map::render_source_file(&source_path)
-                    .map_err(|error| anyhow::anyhow!("render {}: {error}", source_path.display()))?;
+                let rendered = sow_map::render_source_file(&source_path).map_err(|error| {
+                    anyhow::anyhow!("render {}: {error}", source_path.display())
+                })?;
                 rendered_sources.insert(source_path.clone(), rendered);
             }
             let rendered = rendered_sources
@@ -224,7 +227,10 @@ fn thumbnail_cache_bust(maps_root: &Path) -> Result<String> {
         .collect::<Vec<_>>();
     files.sort();
     if files.is_empty() {
-        bail!("no generated map thumbnails found in {}", maps_root.display());
+        bail!(
+            "no generated map thumbnails found in {}",
+            maps_root.display()
+        );
     }
     let mut hash = Sha256::new();
     for path in files {
@@ -418,16 +424,24 @@ fn read_shell_bundle(shell: &Path, manifest: &str, parts: &[&str]) -> Result<Str
     Ok(bundle)
 }
 
-fn build_index(
-    paths: &Paths,
-    out: &Path,
-    version: &str,
-    js: &str,
-    wasm: &str,
-    ts: &str,
-    maps_cache_bust: &str,
+struct IndexBuild<'a> {
+    version: &'a str,
+    js: &'a str,
+    wasm: &'a str,
+    ts: &'a str,
+    maps_cache_bust: &'a str,
     cg: bool,
-) -> Result<()> {
+}
+
+fn build_index(paths: &Paths, out: &Path, build: IndexBuild<'_>) -> Result<()> {
+    let IndexBuild {
+        version,
+        js,
+        wasm,
+        ts,
+        maps_cache_bust,
+        cg,
+    } = build;
     let tpl = fs::read_to_string(paths.shell.join("index.html.template"))?;
     let web_purchase_link = if cg {
         String::new()
@@ -544,14 +558,22 @@ fn build_index(
     let menu_css = read_shell_bundle(
         &paths.shell,
         "main_menu.css",
-        &["main_menu.base.css", "main_menu.hud.css", "main_menu.profile.css"],
+        &[
+            "main_menu.base.css",
+            "main_menu.hud.css",
+            "main_menu.profile.css",
+        ],
     )?;
     let menu_js = read_shell_bundle(
         &paths.shell,
         "main_menu.js",
-        &["main_menu.core.js", "main_menu.screens.js", "main_menu.hud.js"],
+        &[
+            "main_menu.core.js",
+            "main_menu.screens.js",
+            "main_menu.hud.js",
+        ],
     )?
-        .replace("</script>", "<\\/script>");
+    .replace("</script>", "<\\/script>");
     let mut fh = fs::read_to_string(&index)?;
     let marker = "/* __INLINE_LOADER_JS__ */";
     if fh.contains(marker) {
@@ -785,10 +807,7 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
         &paths.assets_gameplay.join("skins"),
         &assets.join("gameplay/skins"),
     )?;
-    copy_dir(
-        &paths.assets_site.join("media"),
-        &assets.join("site/media"),
-    )?;
+    copy_dir(&paths.assets_site.join("media"), &assets.join("site/media"))?;
     let maps = out.join("maps");
     fs::create_dir_all(&maps)?;
     if paths.assets_maps.is_dir() {
@@ -802,12 +821,14 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
     build_index(
         paths,
         out,
-        version,
-        &js,
-        &wasm,
-        &ts,
-        &maps_cache_bust,
-        false,
+        IndexBuild {
+            version,
+            js: &js,
+            wasm: &wasm,
+            ts: &ts,
+            maps_cache_bust: &maps_cache_bust,
+            cg: false,
+        },
     )?;
     export_locales(out)?;
 
@@ -857,12 +878,21 @@ fn package_self(paths: &Paths, out: &Path, version: &str) -> Result<()> {
     }
     // Fingerprint site assets (styles/app/legal/wou-auth) with a content hash so edge and
     // browser caches never serve a stale version after a redeploy.
-    for name in ["styles.css", "app.js", "legal.css", "wou-auth.js", "grid-bg.js"] {
+    for name in [
+        "styles.css",
+        "app.js",
+        "legal.css",
+        "wou-auth.js",
+        "grid-bg.js",
+    ] {
         let hash = file_sha256(&out.join(name))?;
         let versioned = format!("{name}?v={}", &hash[..10]);
         let html = out.join("index.html");
         let content = fs::read_to_string(&html)?;
-        fs::write(&html, content.replace(&format!("./{name}"), &format!("./{versioned}")))?;
+        fs::write(
+            &html,
+            content.replace(&format!("./{name}"), &format!("./{versioned}")),
+        )?;
     }
     fs::write(
         out.join("robots.txt"),
@@ -930,7 +960,10 @@ fn package_cg(
     // Portal entry points are the UNCOMPRESSED pair (restored June design):
     // CG's CDN does not serve `.br` as an importable module. The .js/.wasm
     // plain files load natively via import()/fetch on any static host.
-    fs::copy(play_dir.join(format!("sow_client_{jh}.js")), out.join("sow_client.js"))?;
+    fs::copy(
+        play_dir.join(format!("sow_client_{jh}.js")),
+        out.join("sow_client.js"),
+    )?;
     fs::copy(
         play_dir.join(format!("sow_client_{wh}_bg.wasm")),
         out.join("sow_client_bg.wasm"),
@@ -947,12 +980,14 @@ fn package_cg(
     build_index(
         paths,
         out,
-        version,
-        &format!("sow_client_{jh}.js"),
-        &format!("sow_client_{wh}_bg.wasm"),
-        &jh,
-        maps_cache_bust,
-        true,
+        IndexBuild {
+            version,
+            js: &format!("sow_client_{jh}.js"),
+            wasm: &format!("sow_client_{wh}_bg.wasm"),
+            ts: &jh,
+            maps_cache_bust,
+            cg: true,
+        },
     )?;
 
     // Patch index.html: hashed names -> stable PLAIN names, inject portal SDK
@@ -1261,12 +1296,14 @@ mod tests {
         build_index(
             &paths,
             out.path(),
-            "test",
-            "sow_client_test.js",
-            "sow_client_test_bg.wasm",
-            "test",
-            "test-maps",
-            false,
+            IndexBuild {
+                version: "test",
+                js: "sow_client_test.js",
+                wasm: "sow_client_test_bg.wasm",
+                ts: "test",
+                maps_cache_bust: "test-maps",
+                cg: false,
+            },
         )?;
         let html = fs::read_to_string(out.path().join("play/index.html"))?;
         assert!(!html.contains("__INLINE_MAIN_MENU_CSS__"));
@@ -1353,9 +1390,8 @@ mod tests {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .canonicalize()?;
-        let conf = fs::read_to_string(
-            root.join("sow-dist/deploy/freebsd/conf.d/shadowsofwar.io.conf"),
-        )?;
+        let conf =
+            fs::read_to_string(root.join("sow-dist/deploy/freebsd/conf.d/shadowsofwar.io.conf"))?;
         assert!(
             conf.contains("server_name www.shadowsofwar.io;"),
             "Nginx missing dedicated www server_name"
@@ -1364,9 +1400,8 @@ mod tests {
             conf.contains("return 301 https://shadowsofwar.io$request_uri;"),
             "Nginx missing 301 redirect to canonical root"
         );
-        let security = fs::read_to_string(
-            root.join("sow-dist/deploy/freebsd/conf.d/00-00-security.conf"),
-        )?;
+        let security =
+            fs::read_to_string(root.join("sow-dist/deploy/freebsd/conf.d/00-00-security.conf"))?;
         assert!(
             security.contains("log_format origin_bypass"),
             "Nginx security config missing origin_bypass log format"

@@ -95,10 +95,10 @@ pub struct FlowFieldCache {
 impl FlowFieldCache {
     pub fn get_or_compute(&mut self, target: u32, map: &crate::map::GameMap) -> &FlowField {
         if !self.fields.contains_key(&target) {
-            if self.fields.len() >= 8 {
-                if let Some(oldest) = self.access_order.pop_front() {
-                    self.fields.remove(&oldest);
-                }
+            if self.fields.len() >= 8
+                && let Some(oldest) = self.access_order.pop_front()
+            {
+                self.fields.remove(&oldest);
             }
             let mut field = FlowField::new(map.width, map.height, target);
             field.compute_from_target(map);

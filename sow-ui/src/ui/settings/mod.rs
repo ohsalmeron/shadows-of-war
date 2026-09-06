@@ -189,9 +189,11 @@ pub fn draw(root_ui: &mut egui::Ui, state: &mut SettingsState, is_open: bool) ->
                 ui.add_space(12.0);
                 if ui
                     .add(
-                        egui::Button::new(RichText::new("UI Kit Showcase").color(palette::neon_gold()))
-                            .fill(Color32::TRANSPARENT)
-                            .stroke(Stroke::NONE),
+                        egui::Button::new(
+                            RichText::new("UI Kit Showcase").color(palette::neon_gold()),
+                        )
+                        .fill(Color32::TRANSPARENT)
+                        .stroke(Stroke::NONE),
                     )
                     .on_hover_text("Open full-screen UI Kit Component Showcase")
                     .clicked()

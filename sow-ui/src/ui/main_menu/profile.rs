@@ -1,5 +1,5 @@
-use egui::Rect;
 use super::layout;
+use egui::Rect;
 
 /// Native profile data is a presentation snapshot. Network requests stay in sow-client.
 #[derive(Default)]
@@ -50,10 +50,7 @@ pub fn main_menu_avatar_button_rect(ctx: &egui::Context) -> Rect {
     let metrics = layout::main_menu_metrics(ctx);
     let inset = if metrics.is_phone() { 8.0 } else { 10.0 };
     Rect::from_min_size(
-        egui::pos2(
-            screen.min.x + inset,
-            screen.min.y + 7.0,
-        ),
+        egui::pos2(screen.min.x + inset, screen.min.y + 7.0),
         egui::vec2(44.0, 44.0),
     )
 }

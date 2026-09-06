@@ -244,7 +244,10 @@ impl AssetLoader {
     /// Load the complete leader art set used by the native store. The menu hero only needs
     /// the selected leader, while a store grid must never show a text placeholder for the
     /// other offers.
-    pub fn ensure_store_leader_portraits_loaded(&mut self, ctx: &egui::Context) {
+    pub fn ensure_store_leader_portraits_loaded(
+        &mut self,
+        #[cfg(not(target_arch = "wasm32"))] ctx: &egui::Context,
+    ) {
         #[cfg(all(
             not(target_arch = "wasm32"),
             any(target_os = "ios", target_os = "macos")

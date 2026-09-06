@@ -74,10 +74,7 @@ impl SowApp {
         fn fmt_count(n: f64) -> String {
             let n = n.max(0.0);
             let trim = |v: f64, suffix: &str| {
-                format!(
-                    "{}{suffix}",
-                    format!("{v:.1}").trim_end_matches(".0").to_string()
-                )
+                format!("{}{suffix}", format!("{v:.1}").trim_end_matches(".0"))
             };
             if n >= 1.0e6 {
                 trim(n / 1.0e6, "M")
@@ -116,68 +113,68 @@ impl SowApp {
             focus_y: f32,
         }
         let mut rows: Vec<Row> = Vec::new();
-        if my_pid > 0 {
-            if let Some(snap) = &self.sim.current_snapshot {
-                let map_w = self.sim.map_w.max(1) as u32;
-                for a in snap.attacks.iter().filter(|a| a.owner_id == my_pid) {
-                    let name = snap
-                        .players
-                        .iter()
-                        .find(|p| p.id == a.target_owner)
-                        .map(|p| p.name.clone())
-                        .unwrap_or_else(|| "Expanding".to_string());
-                    rows.push(Row {
-                        id: a.id,
-                        dir: Dir::Out,
-                        troops: a.troops,
-                        name,
-                        retreating: a.retreating,
-                        cancel: (!a.retreating)
-                            .then_some(GameplayIntent::CancelAttack { attack_id: a.id }),
-                        focus_x: a.front_cx,
-                        focus_y: a.front_cy,
-                    });
-                }
-                for f in snap.fleets.iter().filter(|f| f.owner_id == my_pid) {
-                    let focus_x = (f.current_tile % map_w) as f32 + 0.5;
-                    let focus_y = (f.current_tile / map_w) as f32 + 0.5;
-                    rows.push(Row {
-                        id: f.id,
-                        dir: Dir::Navy,
-                        troops: f.troops,
-                        name: "Naval Invasion".to_string(),
-                        retreating: f.retreating,
-                        cancel: (!f.retreating)
-                            .then_some(GameplayIntent::RecallFleet { fleet_id: f.id }),
-                        focus_x,
-                        focus_y,
-                    });
-                }
-                for a in snap.attacks.iter().filter(|a| a.target_owner == my_pid) {
-                    let name = snap
-                        .players
-                        .iter()
-                        .find(|p| p.id == a.owner_id)
-                        .map(|p| p.name.clone())
-                        .unwrap_or_else(|| "Unknown".to_string());
-                    rows.push(Row {
-                        id: a.id,
-                        dir: Dir::In,
-                        troops: a.troops,
-                        name,
-                        retreating: a.retreating,
-                        cancel: None,
-                        focus_x: a.front_cx,
-                        focus_y: a.front_cy,
-                    });
-                }
+        if my_pid > 0
+            && let Some(snap) = &self.sim.current_snapshot
+        {
+            let map_w = self.sim.map_w.max(1);
+            for a in snap.attacks.iter().filter(|a| a.owner_id == my_pid) {
+                let name = snap
+                    .players
+                    .iter()
+                    .find(|p| p.id == a.target_owner)
+                    .map(|p| p.name.clone())
+                    .unwrap_or_else(|| "Expanding".to_string());
+                rows.push(Row {
+                    id: a.id,
+                    dir: Dir::Out,
+                    troops: a.troops,
+                    name,
+                    retreating: a.retreating,
+                    cancel: (!a.retreating)
+                        .then_some(GameplayIntent::CancelAttack { attack_id: a.id }),
+                    focus_x: a.front_cx,
+                    focus_y: a.front_cy,
+                });
+            }
+            for f in snap.fleets.iter().filter(|f| f.owner_id == my_pid) {
+                let focus_x = (f.current_tile % map_w) as f32 + 0.5;
+                let focus_y = (f.current_tile / map_w) as f32 + 0.5;
+                rows.push(Row {
+                    id: f.id,
+                    dir: Dir::Navy,
+                    troops: f.troops,
+                    name: "Naval Invasion".to_string(),
+                    retreating: f.retreating,
+                    cancel: (!f.retreating)
+                        .then_some(GameplayIntent::RecallFleet { fleet_id: f.id }),
+                    focus_x,
+                    focus_y,
+                });
+            }
+            for a in snap.attacks.iter().filter(|a| a.target_owner == my_pid) {
+                let name = snap
+                    .players
+                    .iter()
+                    .find(|p| p.id == a.owner_id)
+                    .map(|p| p.name.clone())
+                    .unwrap_or_else(|| "Unknown".to_string());
+                rows.push(Row {
+                    id: a.id,
+                    dir: Dir::In,
+                    troops: a.troops,
+                    name,
+                    retreating: a.retreating,
+                    cancel: None,
+                    focus_x: a.front_cx,
+                    focus_y: a.front_cy,
+                });
             }
         }
         if rows.is_empty() {
             return;
         }
         // Log order: newest (highest id) on top, oldest at the bottom.
-        rows.sort_by(|a, b| b.id.cmp(&a.id));
+        rows.sort_by_key(|row| std::cmp::Reverse(row.id));
 
         // ── Geometry ───────────────────────────────────────────────────────────────────────────
         let screen_rect = ctx.content_rect();
@@ -387,12 +384,13 @@ impl SowApp {
                                                 }
                                             }
 
-                                            if response.clicked() && !cancel_clicked {
-                                                if row.focus_x != 0.0 || row.focus_y != 0.0 {
-                                                    self.input.camera_focus_target =
-                                                        Some((row.focus_x, row.focus_y));
-                                                    self.input.target_zoom = 10.0;
-                                                }
+                                            if response.clicked()
+                                                && !cancel_clicked
+                                                && (row.focus_x != 0.0 || row.focus_y != 0.0)
+                                            {
+                                                self.input.camera_focus_target =
+                                                    Some((row.focus_x, row.focus_y));
+                                                self.input.target_zoom = 10.0;
                                             }
                                         }
                                     });

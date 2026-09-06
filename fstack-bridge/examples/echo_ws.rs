@@ -12,11 +12,11 @@
 //!   printf 'hello' | websocat -b ws://<data-pip>:80
 
 use fstack_bridge::bridge::{self, Ev};
-use fstack_bridge::ffi::{ev_set, kevent, EV_ADD, EVFILT_READ};
+use fstack_bridge::ffi::{ev_set, kevent, EVFILT_READ, EV_ADD};
 use futures_util::{SinkExt, StreamExt};
 use libc::{
-    c_int, c_void, sockaddr_in, socklen_t, AF_INET, INADDR_ANY, SOCK_STREAM, SOL_SOCKET,
-    SO_REUSEADDR, FIONBIO,
+    c_int, c_void, sockaddr_in, socklen_t, AF_INET, FIONBIO, INADDR_ANY, SOCK_STREAM, SOL_SOCKET,
+    SO_REUSEADDR,
 };
 use std::collections::HashMap;
 use std::ffi::CString;
@@ -95,7 +95,15 @@ fn main() {
         }
 
         let mut kev: kevent = mem::zeroed();
-        ev_set(&mut kev, lfd as usize, EVFILT_READ, EV_ADD, 0, 512, ptr::null_mut());
+        ev_set(
+            &mut kev,
+            lfd as usize,
+            EVFILT_READ,
+            EV_ADD,
+            0,
+            512,
+            ptr::null_mut(),
+        );
         fstack_bridge::ff_kevent(bridge::KQ, &kev, 1, ptr::null_mut(), 0, ptr::null());
 
         // Tokio workers run the WS logic; they never touch ff_* (rings only).
@@ -106,7 +114,10 @@ fn main() {
             .expect("tokio runtime");
         rt.spawn(bridge_worker());
 
-        eprintln!("[BOOT] listening on :{}, entering ff_run (bridge driver)", LISTEN_PORT);
+        eprintln!(
+            "[BOOT] listening on :{}, entering ff_run (bridge driver)",
+            LISTEN_PORT
+        );
         fstack_bridge::ff_run(bridge::driver_cb, ptr::null_mut());
     }
 }

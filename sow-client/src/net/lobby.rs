@@ -69,11 +69,12 @@ pub(crate) fn apply_lobbies_broadcast(
     if let Some(id) = joined_id {
         if let Some(broadcast_lobby) = state.lobbies.iter_mut().find(|l| l.id == id) {
             // If the joined lobby is in the broadcast, preserve live timer if countdown is active
-            if let Some(ref snap) = joined_snapshot {
-                if snap.is_counting_down && snap.timer_secs < broadcast_lobby.timer_secs {
-                    broadcast_lobby.timer_secs = snap.timer_secs;
-                    broadcast_lobby.is_counting_down = snap.is_counting_down;
-                }
+            if let Some(ref snap) = joined_snapshot
+                && snap.is_counting_down
+                && snap.timer_secs < broadcast_lobby.timer_secs
+            {
+                broadcast_lobby.timer_secs = snap.timer_secs;
+                broadcast_lobby.is_counting_down = snap.is_counting_down;
             }
         } else if let Some(snap) = joined_snapshot {
             // If the joined lobby is in Loading/ReadyForRelay phase and omitted from broadcast,
@@ -98,13 +99,12 @@ impl SowApp {
         let tx = self.tasks.map_tx.clone();
         let request = ehttp::Request::get(&url);
         ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
-            if let Ok(res) = result {
-                if res.ok {
-                    if let Ok(catalog) = sow_core::map_file::parse_catalog(&res.bytes) {
-                        let _ = tx.send(MapDownloadEvent::CatalogReady(catalog.entries));
-                        return;
-                    }
-                }
+            if let Ok(res) = result
+                && res.ok
+                && let Ok(catalog) = sow_core::map_file::parse_catalog(&res.bytes)
+            {
+                let _ = tx.send(MapDownloadEvent::CatalogReady(catalog.entries));
+                return;
             }
             log::warn!("Failed to fetch map catalog.bin");
             let cached = crate::map_cache::catalog_from_cache();
@@ -126,10 +126,10 @@ impl SowApp {
         host_private: bool,
     ) {
         let join_msg = self.make_join_message(target_lobby_id, host_private, None, None);
-        if let Ok(json) = bincode::serialize(&join_msg) {
-            if let Some(c) = self.net.client.as_ref() {
-                c.send(json);
-            }
+        if let Ok(json) = bincode::serialize(&join_msg)
+            && let Some(c) = self.net.client.as_ref()
+        {
+            c.send(json);
         }
         self.ui.app.main_menu_state.is_waiting = true;
     }

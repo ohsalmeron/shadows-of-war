@@ -1,5 +1,15 @@
 use crate::engine::SowEngine;
 
+pub struct HumanSpawn {
+    pub player_id: u16,
+    pub name: String,
+    pub color: [f32; 3],
+    pub team: Option<crate::protocol::Team>,
+    pub civilization: crate::player::Civilization,
+    pub leader: crate::player::Leader,
+    pub is_ai_controlled: bool,
+}
+
 impl SowEngine {
     pub fn spawn_ai(&mut self, city_state_count: u32, tribe_count: u32) {
         let mut spawned_city_states = 0;
@@ -269,16 +279,16 @@ impl SowEngine {
         }
     }
 
-    pub fn spawn_human(
-        &mut self,
-        player_id: u16,
-        name: String,
-        color: [f32; 3],
-        team: Option<crate::protocol::Team>,
-        civilization: crate::player::Civilization,
-        leader: crate::player::Leader,
-        is_ai_controlled: bool,
-    ) {
+    pub fn spawn_human(&mut self, spawn: HumanSpawn) {
+        let HumanSpawn {
+            player_id,
+            name,
+            color,
+            team,
+            civilization,
+            leader,
+            is_ai_controlled,
+        } = spawn;
         use crate::player::Player;
         use wyrand::WyRand;
 
@@ -345,9 +355,7 @@ impl SowEngine {
             .or_else(|| {
                 team.as_ref()
                     .and_then(|t| self.team_centroid(t))
-                    .and_then(|(cx, cy)| {
-                        self.find_valid_spawn_near(&mut rng, cx, cy, 12, 36)
-                    })
+                    .and_then(|(cx, cy)| self.find_valid_spawn_near(&mut rng, cx, cy, 12, 36))
             })
             .or_else(|| self.find_valid_spawn(&mut rng));
 
@@ -498,10 +506,7 @@ impl SowEngine {
     /// team owns a map half — `Team {Red, Blue}` → Red left, Blue right — and
     /// every member spawns inside it (2 teams → left/right halves, the same
     /// split OF's manifests hand-author).
-    pub(crate) fn team_spawn_area(
-        &self,
-        team: &crate::protocol::Team,
-    ) -> (u32, u32, u32, u32) {
+    pub(crate) fn team_spawn_area(&self, team: &crate::protocol::Team) -> (u32, u32, u32, u32) {
         let (w, h) = (self.state.map.width, self.state.map.height);
         let half = w / 2;
         match team {
@@ -538,10 +543,10 @@ impl SowEngine {
             }
         };
         for _ in 0..300 {
-            if let Some((ux, uy)) = sample(rng) {
-                if self.home_clear(ux, uy) {
-                    return Some((ux, uy));
-                }
+            if let Some((ux, uy)) = sample(rng)
+                && self.home_clear(ux, uy)
+            {
+                return Some((ux, uy));
             }
         }
         for _ in 0..300 {

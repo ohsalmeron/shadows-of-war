@@ -47,13 +47,13 @@ fn main() {
 
     let catalog = sow_core::map_file::catalog_from_headers(items);
     let encoded = sow_core::map_file::encode_catalog(&catalog);
-    if let Some(parent) = args.output.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent).unwrap_or_else(|e| {
-                eprintln!("write-play-catalog: mkdir {}: {e}", parent.display());
-                std::process::exit(1);
-            });
-        }
+    if let Some(parent) = args.output.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent).unwrap_or_else(|e| {
+            eprintln!("write-play-catalog: mkdir {}: {e}", parent.display());
+            std::process::exit(1);
+        });
     }
     std::fs::write(&args.output, &encoded).unwrap_or_else(|e| {
         eprintln!("write-play-catalog: write {}: {e}", args.output.display());

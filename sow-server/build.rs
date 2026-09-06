@@ -19,11 +19,11 @@ fn hash_rs_dir(dir: &Path, state: &mut u64) {
     for e in entries {
         let path = e.path();
         if path.is_dir() {
-            if path.file_name().map_or(false, |n| n == "target") {
+            if path.file_name().is_some_and(|n| n == "target") {
                 continue;
             }
             hash_rs_dir(&path, state);
-        } else if path.extension().map_or(false, |x| x == "rs") {
+        } else if path.extension().is_some_and(|x| x == "rs") {
             fnv1a(path.to_string_lossy().as_bytes(), state);
             if let Ok(bytes) = fs::read(&path) {
                 fnv1a(&bytes, state);

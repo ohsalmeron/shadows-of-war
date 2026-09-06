@@ -36,11 +36,9 @@ impl<'a> Heading<'a> {
 
     pub fn show(self, ui: &mut Ui) -> Response {
         let font_id = FontId::proportional(self.size);
-        let galley = ui.painter().layout_no_wrap(
-            self.text.to_uppercase(),
-            font_id,
-            self.color,
-        );
+        let galley = ui
+            .painter()
+            .layout_no_wrap(self.text.to_uppercase(), font_id, self.color);
         let (rect, response) = ui.allocate_exact_size(galley.size(), Sense::hover());
         if ui.is_rect_visible(rect) {
             sow_ui_kit::theme::paint_premium_glow_galley(
@@ -94,11 +92,9 @@ impl<'a> Subtitle<'a> {
 
     pub fn show(self, ui: &mut Ui) -> Response {
         let font_id = FontId::proportional(self.size);
-        let galley = ui.painter().layout_no_wrap(
-            self.text.to_uppercase(),
-            font_id,
-            self.color,
-        );
+        let galley = ui
+            .painter()
+            .layout_no_wrap(self.text.to_uppercase(), font_id, self.color);
         let (rect, response) = ui.allocate_exact_size(galley.size(), Sense::hover());
         if ui.is_rect_visible(rect) {
             sow_ui_kit::theme::paint_premium_glow_galley(
@@ -152,12 +148,9 @@ impl<'a> BodyText<'a> {
     pub fn show(self, ui: &mut Ui) -> Response {
         let font_id = FontId::proportional(self.size);
         let wrap_w = self.wrap_width.unwrap_or_else(|| ui.available_width());
-        let galley = ui.painter().layout(
-            self.text.to_owned(),
-            font_id,
-            self.color,
-            wrap_w,
-        );
+        let galley = ui
+            .painter()
+            .layout(self.text.to_owned(), font_id, self.color, wrap_w);
         let (rect, response) = ui.allocate_exact_size(galley.size(), Sense::hover());
         if ui.is_rect_visible(rect) {
             sow_ui_kit::theme::paint_premium_glow_galley(
@@ -199,11 +192,9 @@ impl<'a> Caption<'a> {
 
     pub fn show(self, ui: &mut Ui) -> Response {
         let font_id = FontId::proportional(self.size);
-        let galley = ui.painter().layout_no_wrap(
-            self.text.to_owned(),
-            font_id,
-            self.color,
-        );
+        let galley = ui
+            .painter()
+            .layout_no_wrap(self.text.to_owned(), font_id, self.color);
         let (rect, response) = ui.allocate_exact_size(galley.size(), Sense::hover());
         if ui.is_rect_visible(rect) {
             ui.painter().galley(rect.left_top(), galley, self.color);

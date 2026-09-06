@@ -220,11 +220,8 @@ pub(crate) fn render(
                 full_labels_drawn += 1;
             }
 
-            let metrics = NameplateMetrics::compute(
-                scaled_size,
-                player.player_type,
-                show_bot_avatars,
-            );
+            let metrics =
+                NameplateMetrics::compute(scaled_size, player.player_type, show_bot_avatars);
             let render_size = metrics.render_size;
             let font_size = metrics.font_size;
             let text_scale = metrics.text_scale;
@@ -233,19 +230,19 @@ pub(crate) fn render(
             let mut is_allied = false;
             let mut is_heart_flashing = false;
             let mut has_req = false;
-            if my_id != player.id {
-                if let Some(me) = my_player {
-                    if me.alliances.contains(&player.id) {
-                        is_allied = true;
-                        let timer = me.alliance_timers.get(&player.id).copied().unwrap_or(2400);
-                        let has_pending_proposal = me.alliance_requests.contains(&player.id)
-                            || player.alliance_requests.contains(&my_id);
-                        if timer <= 300 && !has_pending_proposal {
-                            is_heart_flashing = true;
-                        }
-                    } else if me.alliance_requests.contains(&player.id) {
-                        has_req = true;
+            if my_id != player.id
+                && let Some(me) = my_player
+            {
+                if me.alliances.contains(&player.id) {
+                    is_allied = true;
+                    let timer = me.alliance_timers.get(&player.id).copied().unwrap_or(2400);
+                    let has_pending_proposal = me.alliance_requests.contains(&player.id)
+                        || player.alliance_requests.contains(&my_id);
+                    if timer <= 300 && !has_pending_proposal {
+                        is_heart_flashing = true;
                     }
+                } else if me.alliance_requests.contains(&player.id) {
+                    has_req = true;
                 }
             }
 
@@ -403,35 +400,49 @@ pub(crate) fn render(
 
             // Leaderboard rank badge (crown/medals): centered over the avatar
             // axis, sitting flush on its top edge — zero margin, never overlapping.
-            if let Some(&rank_1based) = rank_of.get(&player.id) {
-                if rank_1based <= 3 {
-                    let (icon, tint_arr, tint_col) = match rank_1based {
-                        1 => ("👑", [250.0 / 255.0, 204.0 / 255.0, 21.0 / 255.0, 1.0], egui::Color32::from_rgb(250, 204, 21)),
-                        2 => ("🥈", [203.0 / 255.0, 213.0 / 255.0, 225.0 / 255.0, 1.0], egui::Color32::from_rgb(203, 213, 225)),
-                        _ => ("🥉", [217.0 / 255.0, 119.0 / 255.0, 6.0 / 255.0, 1.0], egui::Color32::from_rgb(217, 119, 6)),
-                    };
-                    let rank_rect = egui::Rect::from_center_size(
-                        egui::pos2(center.x, avatar_cy - avatar_size / 2.0 - badge_size / 2.0),
-                        egui::vec2(badge_size, badge_size),
+            if let Some(&rank_1based) = rank_of.get(&player.id)
+                && rank_1based <= 3
+            {
+                let (icon, tint_arr, tint_col) = match rank_1based {
+                    1 => (
+                        "👑",
+                        [250.0 / 255.0, 204.0 / 255.0, 21.0 / 255.0, 1.0],
+                        egui::Color32::from_rgb(250, 204, 21),
+                    ),
+                    2 => (
+                        "🥈",
+                        [203.0 / 255.0, 213.0 / 255.0, 225.0 / 255.0, 1.0],
+                        egui::Color32::from_rgb(203, 213, 225),
+                    ),
+                    _ => (
+                        "🥉",
+                        [217.0 / 255.0, 119.0 / 255.0, 6.0 / 255.0, 1.0],
+                        egui::Color32::from_rgb(217, 119, 6),
+                    ),
+                };
+                let rank_rect = egui::Rect::from_center_size(
+                    egui::pos2(center.x, avatar_cy - avatar_size / 2.0 - badge_size / 2.0),
+                    egui::vec2(badge_size, badge_size),
+                );
+                let rank_gpu = gfx.text_renderer.as_mut().is_some_and(|tr| {
+                    tr.push_emoji(
+                        icon,
+                        [rank_rect.center().x * sf, rank_rect.center().y * sf],
+                        rank_rect.height() * 0.5 * sf,
+                        tint_arr,
+                        ([0.0, 0.0, 0.0, 0.9], 1.5 * sf, 1.5 * sf),
+                    )
+                });
+                if !rank_gpu
+                    && !sow_ui_kit::widgets::try_paint_emoji(painter, icon, rank_rect, tint_col)
+                {
+                    painter.text(
+                        rank_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        icon,
+                        egui::FontId::proportional(badge_size * 0.7),
+                        tint_col,
                     );
-                    let rank_gpu = gfx.text_renderer.as_mut().is_some_and(|tr| {
-                        tr.push_emoji(
-                            icon,
-                            [rank_rect.center().x * sf, rank_rect.center().y * sf],
-                            rank_rect.height() * 0.5 * sf,
-                            tint_arr,
-                            ([0.0, 0.0, 0.0, 0.9], 1.5 * sf, 1.5 * sf),
-                        )
-                    });
-                    if !rank_gpu && !sow_ui_kit::widgets::try_paint_emoji(painter, icon, rank_rect, tint_col) {
-                        painter.text(
-                            rank_rect.center(),
-                            egui::Align2::CENTER_CENTER,
-                            icon,
-                            egui::FontId::proportional(badge_size * 0.7),
-                            tint_col,
-                        );
-                    }
                 }
             }
 
@@ -450,12 +461,14 @@ pub(crate) fn render(
                         ([0.0, 0.0, 0.0, 0.9], 1.5 * sf, 1.5 * sf),
                     )
                 });
-                if !star_gpu && !sow_ui_kit::widgets::try_paint_emoji(
-                    painter,
-                    "⭐",
-                    star_rect,
-                    egui::Color32::WHITE,
-                ) {
+                if !star_gpu
+                    && !sow_ui_kit::widgets::try_paint_emoji(
+                        painter,
+                        "⭐",
+                        star_rect,
+                        egui::Color32::WHITE,
+                    )
+                {
                     painter.text(
                         star_rect.center(),
                         egui::Align2::CENTER_CENTER,
@@ -682,21 +695,12 @@ mod tests {
     #[test]
     fn pokayoke_human_avatar_is_significantly_larger_than_bots() {
         let scaled_size = 14.0;
-        let human_metrics = NameplateMetrics::compute(
-            scaled_size,
-            sow_core::player::PlayerType::Human,
-            true,
-        );
-        let bot_metrics = NameplateMetrics::compute(
-            scaled_size,
-            sow_core::player::PlayerType::Bot,
-            true,
-        );
-        let nation_metrics = NameplateMetrics::compute(
-            scaled_size,
-            sow_core::player::PlayerType::Nation,
-            true,
-        );
+        let human_metrics =
+            NameplateMetrics::compute(scaled_size, sow_core::player::PlayerType::Human, true);
+        let bot_metrics =
+            NameplateMetrics::compute(scaled_size, sow_core::player::PlayerType::Bot, true);
+        let nation_metrics =
+            NameplateMetrics::compute(scaled_size, sow_core::player::PlayerType::Nation, true);
 
         // Human avatar must be >= 1.5x larger than bot and nation icons
         assert!(
@@ -708,18 +712,12 @@ mod tests {
         assert_eq!(bot_metrics.avatar_diameter, nation_metrics.avatar_diameter);
 
         // Bot avatars can be disabled via dev settings, human avatars stay visible
-        let bot_hidden_metrics = NameplateMetrics::compute(
-            scaled_size,
-            sow_core::player::PlayerType::Bot,
-            false,
-        );
+        let bot_hidden_metrics =
+            NameplateMetrics::compute(scaled_size, sow_core::player::PlayerType::Bot, false);
         assert_eq!(bot_hidden_metrics.avatar_diameter, 0.0);
 
-        let human_unaffected_metrics = NameplateMetrics::compute(
-            scaled_size,
-            sow_core::player::PlayerType::Human,
-            false,
-        );
+        let human_unaffected_metrics =
+            NameplateMetrics::compute(scaled_size, sow_core::player::PlayerType::Human, false);
         assert!(human_unaffected_metrics.avatar_diameter > 0.0);
     }
 }

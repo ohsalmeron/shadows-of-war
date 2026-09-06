@@ -164,10 +164,10 @@ mod tests {
     #[test]
     fn equirect_sample_rockies_elevation() {
         let path = heightmap_search_paths().into_iter().find(|p| p.is_file());
-        let Some(_path) = path else {
+        if path.is_none() {
             eprintln!("skip equirect_sample_rockies_elevation: no heightmap on disk");
             return;
-        };
+        }
         let hm = WorldHeightmap::load().expect("heightmap");
         let blue = hm.sample_openfront_blue(-110.0, 45.0);
         assert_ne!(blue, 106, "Rockies should not be water");

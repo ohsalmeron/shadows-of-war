@@ -112,11 +112,7 @@ pub struct SpawnLobbyOpts {
     pub host_name: String,
 }
 
-fn spawn_waiting_lobby(
-    games: &mut Vec<ServerLobby>,
-    next_id: &mut u64,
-    opts: SpawnLobbyOpts,
-) {
+fn spawn_waiting_lobby(games: &mut Vec<ServerLobby>, next_id: &mut u64, opts: SpawnLobbyOpts) {
     let game_mode = opts.game_mode;
     let kind = opts.kind;
     let is_private = opts.is_private;
@@ -241,18 +237,18 @@ fn promote_countdown(games: &mut [ServerLobby]) {
             && g.kind == LobbyKind::Matchmaking
             && g.players.is_empty()
     });
-    if !has_beacon {
-        if let Some(lobby) = games.iter_mut().find(|g| {
-            matches!(g.phase, LobbyPhase::Waiting) && g.kind == LobbyKind::Matchmaking
-        }) {
-            lobby.phase = LobbyPhase::CountingDown;
-            lobby.countdown_secs = LOBBY_COUNTDOWN_SECS;
-            log::info!(
-                "[LOBBY] {} Matchmaking→CountingDown ({} beacon)",
-                lobby.id,
-                lobby.game_mode
-            );
-        }
+    if !has_beacon
+        && let Some(lobby) = games
+            .iter_mut()
+            .find(|g| matches!(g.phase, LobbyPhase::Waiting) && g.kind == LobbyKind::Matchmaking)
+    {
+        lobby.phase = LobbyPhase::CountingDown;
+        lobby.countdown_secs = LOBBY_COUNTDOWN_SECS;
+        log::info!(
+            "[LOBBY] {} Matchmaking→CountingDown ({} beacon)",
+            lobby.id,
+            lobby.game_mode
+        );
     }
 
     // Pass 3: drip fictional humans into Matchmaking lobbies.
@@ -455,15 +451,16 @@ pub fn join_player(
         }
     };
 
-    let (is_joinable, is_full, is_matchmaking, game_mode) = match games.iter().find(|g| g.id == lobby_id) {
-        Some(g) => (
-            g.joinable(),
-            g.players.len() >= g.config.max_players as usize,
-            g.kind == LobbyKind::Matchmaking,
-            g.game_mode.clone(),
-        ),
-        None => return Err("Lobby not found".to_string()),
-    };
+    let (is_joinable, is_full, is_matchmaking, game_mode) =
+        match games.iter().find(|g| g.id == lobby_id) {
+            Some(g) => (
+                g.joinable(),
+                g.players.len() >= g.config.max_players as usize,
+                g.kind == LobbyKind::Matchmaking,
+                g.game_mode.clone(),
+            ),
+            None => return Err("Lobby not found".to_string()),
+        };
 
     if is_matchmaking && (!is_joinable || is_full) {
         log::info!(
@@ -503,8 +500,16 @@ pub fn join_player(
             // PvE: every human is on the Red team against AI nations (Blue).
             Some(Team::Red)
         } else if fallback_lobby.game_mode == "Teams" {
-            let reds = fallback_lobby.players.iter().filter(|p| p.team == Some(Team::Red)).count();
-            let blues = fallback_lobby.players.iter().filter(|p| p.team == Some(Team::Blue)).count();
+            let reds = fallback_lobby
+                .players
+                .iter()
+                .filter(|p| p.team == Some(Team::Red))
+                .count();
+            let blues = fallback_lobby
+                .players
+                .iter()
+                .filter(|p| p.team == Some(Team::Blue))
+                .count();
             Some(if blues < reds { Team::Blue } else { Team::Red })
         } else {
             None
@@ -553,11 +558,11 @@ pub fn join_player(
         );
         return Err("BANNED".to_string());
     }
-    if let Some(ref lobby_pw) = lobby.password.clone() {
-        if password.as_deref() != Some(lobby_pw.as_str()) {
-            log::warn!("[JOIN] {} gave wrong password for lobby {}", name, lobby_id);
-            return Err("Wrong password".to_string());
-        }
+    if let Some(ref lobby_pw) = lobby.password.clone()
+        && password.as_deref() != Some(lobby_pw.as_str())
+    {
+        log::warn!("[JOIN] {} gave wrong password for lobby {}", name, lobby_id);
+        return Err("Wrong password".to_string());
     }
     let max = lobby.config.max_players as usize;
 
@@ -993,8 +998,7 @@ pub fn master_tick(games: &mut Vec<ServerLobby>, next_id: &mut u64) {
                                 lobby.id
                             );
                         }
-                        let has_external_players =
-                            lobby.players.iter().any(|p| !p.is_internal_bot);
+                        let has_external_players = lobby.players.iter().any(|p| !p.is_internal_bot);
                         if !has_external_players {
                             log::warn!(
                                 "[SERVER ORCHESTRATOR] Lobby {} aborted relay spawn: no validated external players remaining (they disconnected or failed map sync).",
@@ -1141,12 +1145,12 @@ pub fn build_lobby_broadcast(games: &[ServerLobby]) -> Vec<LobbyInfo> {
 #[cfg(test)]
 mod name_tests {
     use super::{
-        build_lobby_broadcast, join_player, normalize_player_name, resolve_join_target,
-        kick_player, set_player_team, JoinPlayerOpts, LobbyKind, LobbyPhase, PlayerConnection,
-        ServerLobby,
+        JoinPlayerOpts, LobbyKind, LobbyPhase, PlayerConnection, ServerLobby,
+        build_lobby_broadcast, join_player, kick_player, normalize_player_name,
+        resolve_join_target, set_player_team,
     };
-    use sow_core::player::{Civilization, Leader};
     use sow_core::game_config::GameConfig;
+    use sow_core::player::{Civilization, Leader};
     use sow_core::protocol::Team;
 
     fn queue_lobby(id: u64, kind: LobbyKind, mode: &str) -> ServerLobby {
@@ -1179,7 +1183,10 @@ mod name_tests {
     #[test]
     fn names_are_bounded_and_control_free() {
         assert_eq!(normalize_player_name("  A\nB  "), "AB");
-        assert_eq!(normalize_player_name("0123456789abcdefghi"), "0123456789abcdef");
+        assert_eq!(
+            normalize_player_name("0123456789abcdefghi"),
+            "0123456789abcdef"
+        );
         assert!(normalize_player_name("\n\t").starts_with("ANON"));
     }
 

@@ -268,13 +268,15 @@ pub fn tier_for_score(score: u16) -> (&'static str, Option<String>) {
     };
     let division = if (800..2800).contains(&score) {
         let within = ((score.saturating_sub(800)) % 400) / 100;
-        Some(match within {
-            0 => "IV",
-            1 => "III",
-            2 => "II",
-            _ => "I",
-        }
-        .to_string())
+        Some(
+            match within {
+                0 => "IV",
+                1 => "III",
+                2 => "II",
+                _ => "I",
+            }
+            .to_string(),
+        )
     } else {
         None
     };

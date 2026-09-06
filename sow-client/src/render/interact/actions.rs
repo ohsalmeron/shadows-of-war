@@ -131,17 +131,17 @@ impl SowApp {
                         .current_snapshot
                         .as_ref()
                         .and_then(|s| s.players.iter().find(|p| p.id == pid))
+                        && player.tile_count > 0
+                        && player.alive
                     {
-                        if player.tile_count > 0 && player.alive {
-                            let cx = player.centroid_x;
-                            let cy = player.centroid_y;
+                        let cx = player.centroid_x;
+                        let cy = player.centroid_y;
 
-                            let world_cx = cx + 0.5;
-                            let world_cy = cy + 0.5;
+                        let world_cx = cx + 0.5;
+                        let world_cy = cy + 0.5;
 
-                            self.input.camera_focus_target = Some((world_cx, world_cy));
-                            self.input.target_zoom = 10.0;
-                        }
+                        self.input.camera_focus_target = Some((world_cx, world_cy));
+                        self.input.target_zoom = 10.0;
                     }
                 }
                 UiAction::FocusTile(col, row) => {
@@ -258,7 +258,7 @@ impl SowApp {
                     #[cfg(all(not(target_arch = "wasm32"), not(target_os = "ios")))]
                     self.open_desktop_purchase(&product_id);
                     #[cfg(any(target_arch = "wasm32", target_os = "ios"))]
-                    let _ = product_id;
+                    std::mem::drop(product_id);
                 }
                 UiAction::UnlockLeader {
                     leader_id,
@@ -405,8 +405,10 @@ impl SowApp {
                 Some("Online purchases are not configured for this desktop build.".into());
             return;
         };
-        let encoded_user = url::form_urlencoded::byte_serialize(public_id.as_bytes()).collect::<String>();
-        let encoded_product = url::form_urlencoded::byte_serialize(product_id.as_bytes()).collect::<String>();
+        let encoded_user =
+            url::form_urlencoded::byte_serialize(public_id.as_bytes()).collect::<String>();
+        let encoded_product =
+            url::form_urlencoded::byte_serialize(product_id.as_bytes()).collect::<String>();
         let url = format!(
             "{}/{}/?package_id={}",
             base.trim_end_matches('/'),
@@ -475,6 +477,5 @@ impl SowApp {
             #[cfg(not(target_arch = "wasm32"))]
             spawn_sow_client_connect(url, &self.net.connect_tx, &self.tokio_rt);
         }
-
     }
 }

@@ -18,17 +18,16 @@ pub mod packet;
 pub use packet::tcp_destination_queue;
 
 pub use ffi::{
-    ev_set, ff_accept, ff_bind, ff_close, ff_dpdk_if_up, ff_dpdk_init, ff_freebsd_init,
-    ff_ioctl, ff_kevent, ff_kqueue, ff_listen, ff_load_config, ff_read, ff_rss_self_queue_info,
-    ff_regist_packet_dispatcher, ff_run, ff_setsockopt, ff_shutdown, ff_socket, ff_stop_run, ff_write, ff_zc_mbuf_get,
-    ff_zc_mbuf_segment, ff_zc_mbuf_write, ff_zc_recv, ff_zc_recv_free, ff_zc_send,
-    dispatch_func_t, kevent, loop_func_t, FF_DISPATCH_ERROR, FF_DISPATCH_RESPONSE, EV_ADD, EV_CLEAR,
-    EV_DELETE, EV_EOF, EV_ERROR, EVFILT_READ, EVFILT_WRITE,
+    dispatch_func_t, ev_set, ff_accept, ff_bind, ff_close, ff_dpdk_if_up, ff_dpdk_init,
+    ff_freebsd_init, ff_ioctl, ff_kevent, ff_kqueue, ff_listen, ff_load_config, ff_read,
+    ff_regist_packet_dispatcher, ff_rss_self_queue_info, ff_run, ff_setsockopt, ff_shutdown,
+    ff_socket, ff_stop_run, ff_write, ff_zc_mbuf_get, ff_zc_mbuf_segment, ff_zc_mbuf_write,
+    ff_zc_recv, ff_zc_recv_free, ff_zc_send, kevent, loop_func_t, EVFILT_READ, EVFILT_WRITE,
+    EV_ADD, EV_CLEAR, EV_DELETE, EV_EOF, EV_ERROR, FF_DISPATCH_ERROR, FF_DISPATCH_RESPONSE,
 };
 
 use libc::{c_char, c_int};
 use std::ffi::CString;
-use std::os::raw::c_void;
 use std::ptr;
 
 /// Initialize F-Stack with optional extra DPDK EAL arguments injected after `ff_load_config`.
@@ -49,7 +48,10 @@ use std::ptr;
 /// F-Stack init touches global singletons (EAL, the FreeBSD stack) and is not re-entrant.
 pub unsafe fn init(config_args: &[CString], extra_eal: &[&str]) -> Result<(), i32> {
     // Build the argv vector for ff_load_config (program + --conf ... --proc-type ... --proc-id).
-    let mut argv: Vec<*mut c_char> = config_args.iter().map(|s| s.as_ptr() as *mut c_char).collect();
+    let mut argv: Vec<*mut c_char> = config_args
+        .iter()
+        .map(|s| s.as_ptr() as *mut c_char)
+        .collect();
     argv.push(ptr::null_mut());
     let argc = (argv.len() - 1) as c_int;
 
@@ -120,7 +122,3 @@ unsafe fn eal_argv_display() -> Vec<String> {
 
 /// Re-export of the opaque FFI types for downstream consumers.
 pub use ffi::ff_zc_mbuf;
-
-// Silence unused-import warning for the c_void alias kept for future socket helpers.
-#[allow(unused_imports)]
-use c_void as _c_void;

@@ -77,16 +77,16 @@ impl MapEditorSession {
         }
 
         for key in keys {
-            if let Some(CachedTile::Ready(img)) = self.osm_picker.cache.get(key).cloned() {
-                if !self.osm_picker.textures.contains_key(&key) {
-                    let name = format!("osm_{}_{}_{}", key.z, key.x, key.y);
-                    let size = [img.width() as usize, img.height() as usize];
-                    let color_image = egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw());
-                    let handle =
-                        self.egui_ctx
-                            .load_texture(name, color_image, egui::TextureOptions::LINEAR);
-                    self.osm_picker.textures.insert(key, handle);
-                }
+            if let Some(CachedTile::Ready(img)) = self.osm_picker.cache.get(key).cloned()
+                && !self.osm_picker.textures.contains_key(&key)
+            {
+                let name = format!("osm_{}_{}_{}", key.z, key.x, key.y);
+                let size = [img.width() as usize, img.height() as usize];
+                let color_image = egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw());
+                let handle =
+                    self.egui_ctx
+                        .load_texture(name, color_image, egui::TextureOptions::LINEAR);
+                self.osm_picker.textures.insert(key, handle);
             }
         }
     }

@@ -4,7 +4,7 @@ use image::RgbaImage;
 
 /// Force every pixel fully opaque — thumbnails are drawn as solid albedo, no alpha keying.
 pub fn force_opaque_rgba8(pixels: &mut [u8]) {
-    for px in pixels.chunks_exact_mut(4) {
+    for px in pixels.as_chunks_mut::<4>().0 {
         px[3] = 255;
     }
 }

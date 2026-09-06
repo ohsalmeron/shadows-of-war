@@ -319,11 +319,9 @@ impl SowApp {
                                     .unwrap_or(0);
                                 let n_is_land = (n_terrain & 0x80) != 0;
 
-                                if n_owner == 0 && n_is_land {
-                                    if dist < best_dist {
-                                        best_dist = dist;
-                                        best_tile = Some((tx, ty));
-                                    }
+                                if n_owner == 0 && n_is_land && dist < best_dist {
+                                    best_dist = dist;
+                                    best_tile = Some((tx, ty));
                                 }
                             }
                         }

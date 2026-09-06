@@ -1,7 +1,7 @@
 //! Lifetime player stats persisted via the CrazyGames SDK Data module and sow-database.
 
-use sow_core::player::Leader;
 use serde::Deserialize;
+use sow_core::player::Leader;
 
 pub const STORAGE_KEY: &str = "sow_player_progress";
 
@@ -139,16 +139,9 @@ impl PlayerProgress {
         self.intro_completed = Some(true);
     }
 
-    pub fn apply_reward(
-        &mut self,
-        leader: Leader,
-        reward: sow_data::rewards::MatchReward,
-    ) {
+    pub fn apply_reward(&mut self, leader: Leader, reward: sow_data::rewards::MatchReward) {
         self.add_xp(reward.xp);
-        let entry = self
-            .leader_xp
-            .entry(leader.name().to_string())
-            .or_default();
+        let entry = self.leader_xp.entry(leader.name().to_string()).or_default();
         *entry = entry.saturating_add(reward.leader_xp);
         self.laurels = self.laurels.saturating_add(reward.laurels);
     }
@@ -225,10 +218,7 @@ impl PlayerProgress {
             assists,
             ..Default::default()
         });
-        self.apply_reward(
-            self.preferred_leader.unwrap_or(Leader::Caesar),
-            reward,
-        );
+        self.apply_reward(self.preferred_leader.unwrap_or(Leader::Caesar), reward);
     }
 }
 

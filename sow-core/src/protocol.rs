@@ -301,8 +301,12 @@ pub enum ServerMessage {
     Start(Box<ServerStartMessage>),
     Turn(ServerTurnMessage),
     SyncState(ServerSyncStateMessage),
-    Pong { client_time: f64 },
-    VersionUpdate { version: String },
+    Pong {
+        client_time: f64,
+    },
+    VersionUpdate {
+        version: String,
+    },
     /// Separate capability frame keeps the existing Start struct wire shape
     /// compatible with cached clients during the ticket rollout.
     RelayTicket {
@@ -705,8 +709,7 @@ mod protocol_compat_tests {
             relay_host: current.relay_host,
         };
         let bytes = bincode::serialize(&legacy).expect("serialize legacy start");
-        let decoded: ServerStartMessage =
-            bincode::deserialize(&bytes).expect("start roundtrip");
+        let decoded: ServerStartMessage = bincode::deserialize(&bytes).expect("start roundtrip");
         assert_eq!(decoded.lobby_id, Some(42));
     }
 }

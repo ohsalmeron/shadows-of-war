@@ -40,11 +40,8 @@ fn draw_leader_card(
             let art_width = ui.available_width();
             let art_size = Vec2::new(art_width, art_width * 9.0 / 16.0);
             let (art_rect, _) = ui.allocate_exact_size(art_size, egui::Sense::hover());
-            ui.painter().rect_filled(
-                art_rect,
-                8.0,
-                Color32::from_rgb(24, 28, 38),
-            );
+            ui.painter()
+                .rect_filled(art_rect, 8.0, Color32::from_rgb(24, 28, 38));
             let texture = asset_loader
                 .leader_portrait_texture(leader, false)
                 .or_else(|| asset_loader.avatars.get(&leader));
@@ -87,7 +84,11 @@ fn draw_leader_card(
                 });
             });
             ui.add_space(6.0);
-            ui.label(RichText::new(&offer.perk).size(12.0).color(palette::text_muted()));
+            ui.label(
+                RichText::new(&offer.perk)
+                    .size(12.0)
+                    .color(palette::text_muted()),
+            );
             ui.add_space(10.0);
             if !offer.owned && !offer.free_rotation {
                 ui.horizontal_wrapped(|ui| {
@@ -148,17 +149,23 @@ fn draw_skin_card(
         .corner_radius(CornerRadius::same(10))
         .inner_margin(Margin::same(12))
         .show(ui, |ui| {
-            let preview = ui.allocate_response(
-                Vec2::new(ui.available_width(), 92.0),
-                egui::Sense::hover(),
-            );
+            let preview =
+                ui.allocate_response(Vec2::new(ui.available_width(), 92.0), egui::Sense::hover());
             draw_skin_preview(ui, preview.rect, skin.style);
             ui.add_space(8.0);
             ui.label(RichText::new(&skin.name).strong().size(16.0));
-            ui.label(RichText::new("ALL LEADERS · COSMETIC").size(10.0).color(palette::text_muted()));
+            ui.label(
+                RichText::new("ALL LEADERS · COSMETIC")
+                    .size(10.0)
+                    .color(palette::text_muted()),
+            );
             ui.add_space(8.0);
             if equipped {
-                ui.label(RichText::new("EQUIPPED").strong().color(palette::neon_cyan()));
+                ui.label(
+                    RichText::new("EQUIPPED")
+                        .strong()
+                        .color(palette::neon_cyan()),
+                );
             } else if skin.owned {
                 if Button::secondary("EQUIP")
                     .disabled(busy)
@@ -210,7 +217,10 @@ fn draw_skin_preview(ui: &mut Ui, rect: egui::Rect, style: u8) {
             let mut x = rect.left() - rect.height();
             while x < rect.right() {
                 painter.line_segment(
-                    [egui::pos2(x, rect.top()), egui::pos2(x + rect.height(), rect.bottom())],
+                    [
+                        egui::pos2(x, rect.top()),
+                        egui::pos2(x + rect.height(), rect.bottom()),
+                    ],
                     Stroke::new(3.0_f32, bright),
                 );
                 painter.line_segment(
@@ -230,11 +240,7 @@ fn draw_skin_preview(ui: &mut Ui, rect: egui::Rect, style: u8) {
                 Stroke::new(8.0_f32, light),
                 egui::StrokeKind::Inside,
             );
-            painter.circle_stroke(
-                rect.center(),
-                24.0,
-                Stroke::new(5.0_f32, bright),
-            );
+            painter.circle_stroke(rect.center(), 24.0, Stroke::new(5.0_f32, bright));
         }
     }
 }
@@ -245,6 +251,9 @@ pub fn draw(
     asset_loader: &mut AssetLoader,
     action: &mut Option<UiAction>,
 ) {
+    #[cfg(target_arch = "wasm32")]
+    asset_loader.ensure_store_leader_portraits_loaded();
+    #[cfg(not(target_arch = "wasm32"))]
     asset_loader.ensure_store_leader_portraits_loaded(root_ui.ctx());
     let metrics = super::layout::main_menu_metrics(root_ui.ctx());
     Frame::NONE

@@ -335,33 +335,30 @@ pub(in crate::ui::hud) fn draw_alliance_inbox(
             });
 
         // Click outside the inbox panel closes it
-        if ui.ctx().input(|i| i.pointer.any_pressed()) {
-            if let Some(pos) = ui
+        if ui.ctx().input(|i| i.pointer.any_pressed())
+            && let Some(pos) = ui
                 .ctx()
                 .input(|i| i.pointer.press_origin().or(i.pointer.interact_pos()))
+        {
+            let mut click_absorbed = false;
+            if let Some(rect) = ui
+                .ctx()
+                .data(|d| d.get_temp::<egui::Rect>(egui::Id::new("alliance_inbox_rect")))
+                && rect.contains(pos)
             {
-                let mut click_absorbed = false;
-                if let Some(rect) = ui
-                    .ctx()
-                    .data(|d| d.get_temp::<egui::Rect>(egui::Id::new("alliance_inbox_rect")))
-                {
-                    if rect.contains(pos) {
-                        click_absorbed = true;
-                    }
-                }
+                click_absorbed = true;
+            }
 
-                if let Some(rect) = ui
-                    .ctx()
-                    .data(|d| d.get_temp::<egui::Rect>(egui::Id::new("hud_top_icons_rect")))
-                {
-                    if rect.contains(pos) {
-                        click_absorbed = true;
-                    }
-                }
+            if let Some(rect) = ui
+                .ctx()
+                .data(|d| d.get_temp::<egui::Rect>(egui::Id::new("hud_top_icons_rect")))
+                && rect.contains(pos)
+            {
+                click_absorbed = true;
+            }
 
-                if !click_absorbed {
-                    state.show_alliance_inbox = false;
-                }
+            if !click_absorbed {
+                state.show_alliance_inbox = false;
             }
         }
         ui.ctx().request_repaint();

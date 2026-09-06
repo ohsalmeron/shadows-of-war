@@ -175,17 +175,16 @@ impl SowEngine {
                     })
                     .map(|b| b.id);
 
-                if let Some(port_id) = port_id {
-                    if let Some(player) = self.state.player_mut(pid) {
-                        if player.gold >= cost {
-                            player.gold -= cost;
-                            let queue = self.port_queues.entry(port_id).or_default();
-                            queue.push_back(crate::game::ShipProduction {
-                                kind: *kind,
-                                ticks_until_complete: kind.build_duration_ticks(),
-                            });
-                        }
-                    }
+                if let Some(port_id) = port_id
+                    && let Some(player) = self.state.player_mut(pid)
+                    && player.gold >= cost
+                {
+                    player.gold -= cost;
+                    let queue = self.port_queues.entry(port_id).or_default();
+                    queue.push_back(crate::game::ShipProduction {
+                        kind: *kind,
+                        ticks_until_complete: kind.build_duration_ticks(),
+                    });
                 }
             }
             GameplayIntent::MoveWarships {
@@ -476,23 +475,22 @@ impl SowEngine {
                     let mut actual_g = 0.0;
                     let mut actual_t = 0.0;
                     let mut sender_ok = false;
-                    if let Some(s_player) = self.state.player_mut(sender) {
-                        if s_player.alive {
-                            actual_g = if g > 0.0 { g.min(s_player.gold) } else { 0.0 };
-                            let max_t_to_send = (s_player.troops - 1.0).max(0.0);
-                            actual_t = if t > 0.0 { t.min(max_t_to_send) } else { 0.0 };
-                            s_player.gold -= actual_g;
-                            s_player.troops -= actual_t;
-                            sender_ok = true;
-                        }
+                    if let Some(s_player) = self.state.player_mut(sender)
+                        && s_player.alive
+                    {
+                        actual_g = if g > 0.0 { g.min(s_player.gold) } else { 0.0 };
+                        let max_t_to_send = (s_player.troops - 1.0).max(0.0);
+                        actual_t = if t > 0.0 { t.min(max_t_to_send) } else { 0.0 };
+                        s_player.gold -= actual_g;
+                        s_player.troops -= actual_t;
+                        sender_ok = true;
                     }
                     if sender_ok && (actual_g > 0.0 || actual_t > 0.0) {
-                        if let Some(t_player) = self.state.player_mut(target) {
-                            if t_player.alive {
-                                t_player.gold += actual_g;
-                                t_player.troops =
-                                    (t_player.troops + actual_t).min(t_player.max_troops);
-                            }
+                        if let Some(t_player) = self.state.player_mut(target)
+                            && t_player.alive
+                        {
+                            t_player.gold += actual_g;
+                            t_player.troops = (t_player.troops + actual_t).min(t_player.max_troops);
                         }
                         self.state
                             .events
@@ -549,33 +547,33 @@ impl SowEngine {
                     let mut actual_t = 0.0;
                     let mut acceptor_ok = false;
                     // Acceptor pays the resources
-                    if let Some(acc_player) = self.state.player_mut(acceptor) {
-                        if acc_player.alive {
-                            actual_g = if req.gold > 0.0 {
-                                req.gold.min(acc_player.gold)
-                            } else {
-                                0.0
-                            };
-                            let max_t_to_send = (acc_player.troops - 1.0).max(0.0);
-                            actual_t = if req.troops > 0.0 {
-                                req.troops.min(max_t_to_send)
-                            } else {
-                                0.0
-                            };
-                            acc_player.gold -= actual_g;
-                            acc_player.troops -= actual_t;
-                            acceptor_ok = true;
-                        }
+                    if let Some(acc_player) = self.state.player_mut(acceptor)
+                        && acc_player.alive
+                    {
+                        actual_g = if req.gold > 0.0 {
+                            req.gold.min(acc_player.gold)
+                        } else {
+                            0.0
+                        };
+                        let max_t_to_send = (acc_player.troops - 1.0).max(0.0);
+                        actual_t = if req.troops > 0.0 {
+                            req.troops.min(max_t_to_send)
+                        } else {
+                            0.0
+                        };
+                        acc_player.gold -= actual_g;
+                        acc_player.troops -= actual_t;
+                        acceptor_ok = true;
                     }
                     // Proposer receives the resources
-                    if acceptor_ok && (actual_g > 0.0 || actual_t > 0.0) {
-                        if let Some(prop_player) = self.state.player_mut(target) {
-                            if prop_player.alive {
-                                prop_player.gold += actual_g;
-                                prop_player.troops =
-                                    (prop_player.troops + actual_t).min(prop_player.max_troops);
-                            }
-                        }
+                    if acceptor_ok
+                        && (actual_g > 0.0 || actual_t > 0.0)
+                        && let Some(prop_player) = self.state.player_mut(target)
+                        && prop_player.alive
+                    {
+                        prop_player.gold += actual_g;
+                        prop_player.troops =
+                            (prop_player.troops + actual_t).min(prop_player.max_troops);
                     }
                 }
             }

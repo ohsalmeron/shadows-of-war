@@ -906,7 +906,10 @@ fn stage_relay(config: &Config, release: &Release) -> Result<()> {
     let destination = format!("{}:{}", config.relay_host, RELAY_STAGE);
     run(
         "ssh",
-        &[&config.relay_host, &format!("install -d -m 0700 {}", shell_quote(RELAY_STAGE))],
+        &[
+            &config.relay_host,
+            &format!("install -d -m 0700 {}", shell_quote(RELAY_STAGE)),
+        ],
         None,
     )?;
     run(
@@ -1042,9 +1045,11 @@ sudo chmod 0644 {manifest}
         relay_bin_sha = relay_bin_sha,
         knob = env.knob,
     );
-    run("ssh", &[&config.relay_host, &remote], None)
-        .context("relay activation failed")?;
-    println!("  relay activated and registered ({})", &relay_component[..12]);
+    run("ssh", &[&config.relay_host, &remote], None).context("relay activation failed")?;
+    println!(
+        "  relay activated and registered ({})",
+        &relay_component[..12]
+    );
     Ok(())
 }
 
@@ -1054,7 +1059,9 @@ sudo chmod 0644 {manifest}
 fn verify_relay_identity(config: &Config, release: &Release) -> Result<()> {
     let release_json: serde_json::Value =
         serde_json::from_slice(&fs::read(release.dir.join("release.json"))?)?;
-    let relay = release_json.get("relay").context("release.json has no relay metadata")?;
+    let relay = release_json
+        .get("relay")
+        .context("release.json has no relay metadata")?;
     let expected_sha = relay
         .get("sha256")
         .and_then(serde_json::Value::as_str)
@@ -1083,19 +1090,27 @@ fn verify_relay_identity(config: &Config, release: &Release) -> Result<()> {
         ("git", expected_git),
         ("fstack", expected_fstack),
     ] {
-        let actual = manifest.get(key).and_then(serde_json::Value::as_str).unwrap_or("");
+        let actual = manifest
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("");
         if actual != expected {
             bail!("relay manifest {key}={actual}, release expects {expected}");
         }
     }
-    if manifest.get("ws_write_timeout_ms").and_then(serde_json::Value::as_u64) != Some(expected_knob)
+    if manifest
+        .get("ws_write_timeout_ms")
+        .and_then(serde_json::Value::as_u64)
+        != Some(expected_knob)
     {
         bail!("relay manifest knob mismatch");
     }
     let boot = output(
         "ssh",
-        &[&config.relay_host,
-            "sudo journalctl -u sow-relay@0.service --no-pager -n 8000 2>/dev/null | grep '\\[BOOT\\] git=' | tail -1"],
+        &[
+            &config.relay_host,
+            "sudo journalctl -u sow-relay@0.service --no-pager -n 8000 2>/dev/null | grep '\\[BOOT\\] git=' | tail -1",
+        ],
     )?;
     if !boot.contains(&format!("git={expected_git}"))
         || !boot.contains(&format!("ws_write_timeout_ms={expected_knob}"))
@@ -1111,9 +1126,7 @@ fn verify_relay_identity(config: &Config, release: &Release) -> Result<()> {
         &[&config.relay_host, &format!("sudo sha256sum {RELAY_EXEC}")],
     )?;
     if !deployed.starts_with(expected_bin_sha) {
-        bail!(
-            "relay deployed binary mismatch: {deployed} expected {expected_bin_sha}"
-        );
+        bail!("relay deployed binary mismatch: {deployed} expected {expected_bin_sha}");
     }
     println!(
         "  relay identity verified (git={expected_git} fstack={expected_fstack} bin={expected_bin_sha} knob={expected_knob})"
@@ -1309,8 +1322,11 @@ impl RelayEnv {
 
 /// Registered identity of the f-stack tree used for the relay build.
 fn fstack_version(config: &Config) -> Result<String> {
-    let rev = output("git", &["-C", &config.fstack_repo, "rev-parse", "--short=12", "HEAD"])
-        .with_context(|| format!("f-stack repo has no HEAD: {}", config.fstack_repo))?;
+    let rev = output(
+        "git",
+        &["-C", &config.fstack_repo, "rev-parse", "--short=12", "HEAD"],
+    )
+    .with_context(|| format!("f-stack repo has no HEAD: {}", config.fstack_repo))?;
     let dirty = output("git", &["-C", &config.fstack_repo, "status", "--porcelain"])?;
     Ok(if dirty.is_empty() {
         rev
@@ -1371,7 +1387,11 @@ fn build_relay(paths: &Paths, config: &Config) -> Result<PathBuf> {
             ],
             None,
         )?;
-        fs::create_dir_all(fstack_cache.parent().context("fstack cache parent missing")?)?;
+        fs::create_dir_all(
+            fstack_cache
+                .parent()
+                .context("fstack cache parent missing")?,
+        )?;
         fs::write(&fstack_cache, format!("{fstack_key}\n"))?;
     }
 
@@ -1410,7 +1430,10 @@ fn build_relay(paths: &Paths, config: &Config) -> Result<PathBuf> {
     fs::set_permissions(&destination, fs::Permissions::from_mode(0o550))?;
     fs::create_dir_all(cache.parent().context("relay cache parent missing")?)?;
     fs::write(cache, format!("{fingerprint}\n"))?;
-    println!("  relay binary built ({} bytes)", fs::metadata(&destination)?.len());
+    println!(
+        "  relay binary built ({} bytes)",
+        fs::metadata(&destination)?.len()
+    );
     Ok(local)
 }
 
@@ -1511,7 +1534,10 @@ fn assemble_release(
         paths.root.join("dist/relay-bin/sow-relay"),
         relay.join("bin/sow-relay"),
     )?;
-    fs::set_permissions(relay.join("bin/sow-relay"), fs::Permissions::from_mode(0o550))?;
+    fs::set_permissions(
+        relay.join("bin/sow-relay"),
+        fs::Permissions::from_mode(0o550),
+    )?;
     fs::copy(
         paths.root.join("fstack-bridge/echo-vf.ini"),
         relay.join("conf/echo-vf.ini"),
@@ -1537,8 +1563,14 @@ fn assemble_release(
         String::new()
     };
     for (name, tokens) in [
-        ("sow-relay.service", &[("__WANTS__", wants.as_str()), ("__STOPS__", stops.as_str())][..]),
-        ("sow-relay-worker", &[("__SECONDARY_IDS__", secondary_ids.as_str())][..]),
+        (
+            "sow-relay.service",
+            &[("__WANTS__", wants.as_str()), ("__STOPS__", stops.as_str())][..],
+        ),
+        (
+            "sow-relay-worker",
+            &[("__SECONDARY_IDS__", secondary_ids.as_str())][..],
+        ),
         ("sow-relay@.service", &[][..]),
     ] {
         let src = paths
@@ -1551,15 +1583,27 @@ fn assemble_release(
         }
         fs::write(ops.join(name), content)?;
     }
-    let mut override_tpl =
-        fs::read_to_string(paths.root.join("sow-dist/deploy/linux/sow-relay-override.conf.tmpl"))?;
+    let mut override_tpl = fs::read_to_string(
+        paths
+            .root
+            .join("sow-dist/deploy/linux/sow-relay-override.conf.tmpl"),
+    )?;
     let relay_fstack = fstack_version(config)?;
     for (token, value) in [
         ("__SOW_RELAY_WORKER_COUNT__", env.count.to_string()),
-        ("__SOW_RELAY_TICKETS_REQUIRED__", env.tickets_required.clone()),
+        (
+            "__SOW_RELAY_TICKETS_REQUIRED__",
+            env.tickets_required.clone(),
+        ),
         ("__SOW_RELAY_MAX_CONNECTIONS__", env.max_connections.clone()),
-        ("__SOW_RELAY_MAX_CONNECTIONS_PER_IP__", env.max_connections_per_ip.clone()),
-        ("__SOW_RELAY_HANDSHAKES_PER_IP__", env.handshakes_per_ip.clone()),
+        (
+            "__SOW_RELAY_MAX_CONNECTIONS_PER_IP__",
+            env.max_connections_per_ip.clone(),
+        ),
+        (
+            "__SOW_RELAY_HANDSHAKES_PER_IP__",
+            env.handshakes_per_ip.clone(),
+        ),
         ("__SOW_DB_URL__", env.db_url.clone()),
         ("__SOW_DB_RESOLVE_IP__", env.db_resolve_ip.clone()),
         ("__SOW_REPLAY_SPOOL_DIR__", env.replay_spool.clone()),
@@ -1655,7 +1699,7 @@ fn assemble_release(
     if dir.exists() {
         let _ = fs::remove_dir_all(&dir);
     }
-    if let Err(_) = fs::rename(&work, &dir) {
+    if fs::rename(&work, &dir).is_err() {
         if dir.exists() {
             let _ = fs::remove_dir_all(&dir);
         }
@@ -1681,12 +1725,18 @@ fn relay_component_hash(relay: &Path) -> Result<String> {
     files.sort_by_key(|entry| entry.path().to_path_buf());
     let mut hash = Sha256::new();
     for entry in files {
-        hash.update(entry.path().strip_prefix(relay)?.to_string_lossy().as_bytes());
+        hash.update(
+            entry
+                .path()
+                .strip_prefix(relay)?
+                .to_string_lossy()
+                .as_bytes(),
+        );
         let mut bytes = fs::read(entry.path())?;
         if entry
             .path()
             .file_name()
-            .map_or(false, |n| n.to_string_lossy().contains("override"))
+            .is_some_and(|n| n.to_string_lossy().contains("override"))
         {
             let text = String::from_utf8_lossy(&bytes).to_string();
             let normalized: String = text
@@ -1731,7 +1781,10 @@ fn write_manifest(root: &Path) -> Result<PathBuf> {
 fn relay_manifest_remote(config: &Config) -> Result<Option<serde_json::Value>> {
     let raw = output(
         "ssh",
-        &[&config.relay_host, &format!("sudo cat {RELAY_MANIFEST} 2>/dev/null || true")],
+        &[
+            &config.relay_host,
+            &format!("sudo cat {RELAY_MANIFEST} 2>/dev/null || true"),
+        ],
     )?;
     if raw.is_empty() {
         return Ok(None);
@@ -1802,14 +1855,12 @@ fn remote_plan(config: &Config, release: &Release) -> Result<ComponentPlan> {
         database: current.get("database") != local.get("database"),
         ops: current.get("ops") != local.get("ops"),
         relay: relay_identity_drift
-            || relay_remote
-                .and_then(|manifest| {
-                    manifest
-                        .get("relay_sha256")
-                        .and_then(|value| value.as_str())
-                        .map(str::to_string)
-                })
-                != local.get("relay").cloned(),
+            || relay_remote.and_then(|manifest| {
+                manifest
+                    .get("relay_sha256")
+                    .and_then(|value| value.as_str())
+                    .map(str::to_string)
+            }) != local.get("relay").cloned(),
     })
 }
 
@@ -2169,7 +2220,10 @@ fn verify_public(paths: &Paths, config: &Config, release: &Release) -> Result<()
     let public_assetlinks = output("curl", &["-fsS", "--max-time", "20", &assetlinks_url])
         .context("public assetlinks.json request failed")?;
     if public_assetlinks.trim() != local_assetlinks.trim() {
-        bail!("public assetlinks.json does not match release {}", release.id);
+        bail!(
+            "public assetlinks.json does not match release {}",
+            release.id
+        );
     }
 
     for url in [

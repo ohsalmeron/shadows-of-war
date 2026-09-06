@@ -6,10 +6,12 @@ mod map_playlist;
 use futures_util::{SinkExt, StreamExt};
 use hmac::{Hmac, Mac};
 use lobby::{
-    JoinPlayerOpts, ServerLobby, build_lobby_broadcast, force_start, is_host_teardown, join_player, kick_player,
-    leave_player, lobby_to_info, master_tick, notify_lobby_closed, set_player_team,
+    JoinPlayerOpts, ServerLobby, build_lobby_broadcast, force_start, is_host_teardown, join_player,
+    kick_player, leave_player, lobby_to_info, master_tick, notify_lobby_closed, set_player_team,
     sync_host_lobby_to_members,
 };
+use rand::{RngCore, rngs::OsRng};
+use sha2::{Digest, Sha256};
 use sow_core::game_config::GameConfig;
 use sow_core::protocol::{
     PlayerInfo, ServerJoinAckMessage, ServerJoinFailedMessage, ServerLobbiesBroadcastMessage,
@@ -17,11 +19,9 @@ use sow_core::protocol::{
 use std::collections::HashSet;
 use std::env;
 use std::net::{IpAddr, SocketAddr};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
-use rand::{RngCore, rngs::OsRng};
-use sha2::{Digest, Sha256};
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, Semaphore, broadcast, mpsc};
 use tokio_tungstenite::tungstenite::protocol::Message;
@@ -37,6 +37,35 @@ type HmacSha256 = Hmac<Sha256>;
 
 static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
 static REJECTED_CONNECTIONS: AtomicU64 = AtomicU64::new(0);
+
+struct ForwardedPeerCallback {
+    ip_cell: Arc<std::sync::Mutex<String>>,
+}
+
+impl tokio_tungstenite::tungstenite::handshake::server::Callback for ForwardedPeerCallback {
+    fn on_request(
+        self,
+        req: &tokio_tungstenite::tungstenite::handshake::server::Request,
+        response: tokio_tungstenite::tungstenite::handshake::server::Response,
+    ) -> Result<
+        tokio_tungstenite::tungstenite::handshake::server::Response,
+        tokio_tungstenite::tungstenite::handshake::server::ErrorResponse,
+    > {
+        if let Some(real_ip) = req.headers().get("X-Real-IP")
+            && let Ok(ip) = real_ip.to_str()
+            && let Ok(mut guard) = self.ip_cell.lock()
+        {
+            *guard = ip.to_string();
+        } else if let Some(forwarded) = req.headers().get("X-Forwarded-For")
+            && let Ok(ip) = forwarded.to_str()
+            && let Some(first_ip) = ip.split(',').next()
+            && let Ok(mut guard) = self.ip_cell.lock()
+        {
+            *guard = first_ip.trim().to_string();
+        }
+        Ok(response)
+    }
+}
 
 fn next_session_id() -> u64 {
     NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed)
@@ -161,8 +190,7 @@ fn validate_runtime_security() -> Result<(), String> {
     if scheme != "https" {
         return Err("SOW_RELAY_MGMT_SCHEME must be https".to_string());
     }
-    let tickets = std::env::var("SOW_RELAY_TICKETS_REQUIRED")
-        .unwrap_or_else(|_| "1".to_string());
+    let tickets = std::env::var("SOW_RELAY_TICKETS_REQUIRED").unwrap_or_else(|_| "1".to_string());
     if tickets != "1" {
         return Err("SOW_RELAY_TICKETS_REQUIRED must be 1".to_string());
     }
@@ -331,7 +359,10 @@ async fn register_relay(rc: &RelayCandidate, worker: &RelayWorker) -> Result<(),
             tokio::time::sleep(Duration::from_secs(2u64.pow(attempt as u32))).await;
         }
     }
-    Err(format!("relay registration failed for lobby {}", rc.lobby_id))
+    Err(format!(
+        "relay registration failed for lobby {}",
+        rc.lobby_id
+    ))
 }
 
 /// Deliver the capability before Start, preserving wire order and refusing to
@@ -348,12 +379,10 @@ async fn send_relay_handoff_frame(
         tx.send(frame),
     )
     .await
+    .map_err(|_| format!("timed out sending {label} for lobby {lobby_id} player {player_id}"))?
     .map_err(|_| {
-        format!(
-            "timed out sending {label} for lobby {lobby_id} player {player_id}"
-        )
-    })?
-    .map_err(|_| format!("client channel closed before {label} for lobby {lobby_id} player {player_id}"))
+        format!("client channel closed before {label} for lobby {lobby_id} player {player_id}")
+    })
 }
 
 /// Register the account-backed match before the relay is exposed to clients.
@@ -370,10 +399,10 @@ async fn verify_identity(
     auth: &sow_core::protocol::AuthProof,
     requested_leader: sow_core::player::Leader,
 ) -> Result<VerifiedIdentity, String> {
-    let db_base_url = std::env::var("SOW_DB_URL")
-        .unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
-    let secret_token = std::env::var("SOW_DB_SECRET")
-        .map_err(|_| "SOW_DB_SECRET missing".to_string())?;
+    let db_base_url =
+        std::env::var("SOW_DB_URL").unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
+    let secret_token =
+        std::env::var("SOW_DB_SECRET").map_err(|_| "SOW_DB_SECRET missing".to_string())?;
     let url = format!("{}/internal/verify", db_base_url.trim_end_matches('/'));
     let body = serde_json::json!({
         "provider": auth.provider.trim(),
@@ -414,8 +443,8 @@ async fn register_match_start(rc: &RelayCandidate) -> Result<(), String> {
     if rc.player_ids.is_empty() {
         return Ok(());
     }
-    let db_base_url = std::env::var("SOW_DB_URL")
-        .unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
+    let db_base_url =
+        std::env::var("SOW_DB_URL").unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
     let secret_token = std::env::var("SOW_DB_SECRET")
         .map_err(|_| "SOW_DB_SECRET missing while registering match".to_string())?;
     let url = format!("{}/match/start", db_base_url.trim_end_matches('/'));
@@ -455,7 +484,10 @@ async fn register_match_start(rc: &RelayCandidate) -> Result<(), String> {
             tokio::time::sleep(Duration::from_secs(2u64.pow(attempt as u32))).await;
         }
     }
-    Err(format!("database match registration failed for lobby {}", rc.lobby_id))
+    Err(format!(
+        "database match registration failed for lobby {}",
+        rc.lobby_id
+    ))
 }
 
 #[derive(serde::Deserialize)]
@@ -498,11 +530,14 @@ async fn init_bot_pool() -> Result<(), String> {
         .map(|i| name_pool[i % name_pool.len()].to_string())
         .collect();
 
-    let db_base_url = env::var("SOW_DB_URL")
-        .unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
+    let db_base_url =
+        env::var("SOW_DB_URL").unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
     let secret = env::var("SOW_DB_SECRET")
         .map_err(|_| "SOW_DB_SECRET missing — cannot seed pool".to_string())?;
-    let url = format!("{}/internal/bot-pool/seed", db_base_url.trim_end_matches('/'));
+    let url = format!(
+        "{}/internal/bot-pool/seed",
+        db_base_url.trim_end_matches('/')
+    );
     let body = serde_json::json!({ "external_ids": external_ids });
 
     let client = reqwest::Client::new();
@@ -514,37 +549,33 @@ async fn init_bot_pool() -> Result<(), String> {
             .send()
             .await
         {
-            Ok(res) if res.status().is_success() => {
-                match res.json::<BotPoolSeedResponse>().await {
-                    Ok(resp) if resp.account_ids.len() == pool_size => {
-                        let entries: Vec<bot_fill::BotPoolEntry> = resp
-                            .account_ids
-                            .into_iter()
-                            .zip(display_names.iter().cloned())
-                            .map(|(account_id, display_name)| bot_fill::BotPoolEntry {
-                                account_id,
-                                display_name,
-                            })
-                            .collect();
-                        log::info!("[BOT_POOL] resolved {} identities", entries.len());
-                        bot_fill::BotPool::new(entries).install();
-                        return Ok(());
-                    }
-                    Ok(resp) => log::warn!(
-                        "[BOT_POOL] seed returned {} ids, expected {}",
-                        resp.account_ids.len(),
-                        pool_size
-                    ),
-                    Err(e) => log::warn!("[BOT_POOL] seed response parse error: {e}"),
+            Ok(res) if res.status().is_success() => match res.json::<BotPoolSeedResponse>().await {
+                Ok(resp) if resp.account_ids.len() == pool_size => {
+                    let entries: Vec<bot_fill::BotPoolEntry> = resp
+                        .account_ids
+                        .into_iter()
+                        .zip(display_names.iter().cloned())
+                        .map(|(account_id, display_name)| bot_fill::BotPoolEntry {
+                            account_id,
+                            display_name,
+                        })
+                        .collect();
+                    log::info!("[BOT_POOL] resolved {} identities", entries.len());
+                    bot_fill::BotPool::new(entries).install();
+                    return Ok(());
                 }
-            }
+                Ok(resp) => log::warn!(
+                    "[BOT_POOL] seed returned {} ids, expected {}",
+                    resp.account_ids.len(),
+                    pool_size
+                ),
+                Err(e) => log::warn!("[BOT_POOL] seed response parse error: {e}"),
+            },
             Ok(res) => log::warn!(
                 "[BOT_POOL] seed HTTP {} (attempt {attempt}/5)",
                 res.status()
             ),
-            Err(e) => log::warn!(
-                "[BOT_POOL] seed unreachable: {e} (attempt {attempt}/5)"
-            ),
+            Err(e) => log::warn!("[BOT_POOL] seed unreachable: {e} (attempt {attempt}/5)"),
         }
         if attempt < 5 {
             tokio::time::sleep(Duration::from_secs(2u64.pow(attempt as u32))).await;
@@ -564,8 +595,6 @@ async fn init_bot_pool() -> Result<(), String> {
 //
 // Dynamic ports are bound by the long-lived worker process through the bridge
 // command ring, so no relay subprocess is created for an individual match.
-
-
 
 /// All server events, comming from client
 enum ServerEvent {
@@ -660,9 +689,10 @@ async fn main() {
         std::env::var("SOW_REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1/".to_string());
     let redis_client = redis::Client::open(redis_url).expect("Failed to connect to Redis");
     // Establish one connection at boot as a hard dependency check.
-    let _redis_connection = redis_client
+    let redis_connection = redis_client
         .get_connection()
         .expect("Failed to get Redis connection");
+    drop(redis_connection);
     log::info!("Redis connected");
 
     // Resolve (or lazily create) the persistent bot-account pool before any
@@ -730,7 +760,8 @@ async fn main() {
                 if let Err(e) = register_match_start(&rc).await {
                     log::error!(
                         "[DB] lobby {} will not start without match registration: {}",
-                        rc.lobby_id, e
+                        rc.lobby_id,
+                        e
                     );
                     relay_ports.lock().await.release(rc.relay_port);
                     let closed_msg = sow_core::protocol::ServerLobbyClosedMessage {
@@ -751,7 +782,9 @@ async fn main() {
                 let Some(worker) = workers.get(rc.worker_index) else {
                     log::error!(
                         "[RELAY] worker index {} missing for lobby {} port {}",
-                        rc.worker_index, rc.lobby_id, rc.relay_port
+                        rc.worker_index,
+                        rc.lobby_id,
+                        rc.relay_port
                     );
                     relay_ports.lock().await.release(rc.relay_port);
                     return;
@@ -761,7 +794,9 @@ async fn main() {
                     Ok(()) => {
                         log::info!(
                             "[RELAY] Lobby {} registered with worker {} on dynamic port {}",
-                            rc.lobby_id, worker.id, rc.relay_port
+                            rc.lobby_id,
+                            worker.id,
+                            rc.relay_port
                         );
 
                         // Broadcast Start message to each player with their specific my_player_id.
@@ -818,7 +853,9 @@ async fn main() {
                             if let Err(e) = handoff_result {
                                 log::error!(
                                     "[RELAY] lobby {} player {} handoff failed; Start not sent: {}",
-                                    rc.lobby_id, player_id, e
+                                    rc.lobby_id,
+                                    player_id,
+                                    e
                                 );
                             }
                         }
@@ -826,7 +863,9 @@ async fn main() {
                     Err(e) => {
                         log::error!(
                             "[RELAY] lobby {} port {} registration failed: {}",
-                            rc.lobby_id, rc.relay_port, e
+                            rc.lobby_id,
+                            rc.relay_port,
+                            e
                         );
                         relay_ports.lock().await.release(rc.relay_port);
 
@@ -989,7 +1028,7 @@ async fn main() {
                         }
 
                         // Build broadcast data (serialization is in-memory)
-                        let broadcast_json = if tick_count % 10 == 0 {
+                        let broadcast_json = if tick_count.is_multiple_of(10) {
                             let lobbies_info = build_lobby_broadcast(&games);
                             let broadcast_msg = ServerLobbiesBroadcastMessage { lobbies: lobbies_info };
                             match bincode::serialize(&sow_core::protocol::ServerMessage::LobbiesBroadcast(broadcast_msg)) {
@@ -1126,7 +1165,9 @@ async fn main() {
     let connection_slots = Arc::new(Semaphore::new(max_connections));
     log::info!(
         "SOW-SERVER listening on ws://{} max_connections={} handshake_timeout={}s",
-        addr, max_connections, HANDSHAKE_TIMEOUT_SECS
+        addr,
+        max_connections,
+        HANDSHAKE_TIMEOUT_SECS
     );
 
     // HTTP Static File Server for maps and Admin Dashboard
@@ -1181,7 +1222,10 @@ async fn main() {
             Err(_) => {
                 let rejected = REJECTED_CONNECTIONS.fetch_add(1, Ordering::Relaxed) + 1;
                 if rejected.is_power_of_two() {
-                    log::warn!("Connection cap rejected orchestrator peer={} count={rejected}", addr);
+                    log::warn!(
+                        "Connection cap rejected orchestrator peer={} count={rejected}",
+                        addr
+                    );
                 }
                 drop(stream);
                 continue;
@@ -1197,24 +1241,12 @@ async fn main() {
             let ip_cell_clone = Arc::clone(&ip_cell);
             let ws_stream = match tokio::time::timeout(
                 Duration::from_secs(HANDSHAKE_TIMEOUT_SECS),
-                tokio_tungstenite::accept_hdr_async(stream, move |req: &tokio_tungstenite::tungstenite::handshake::server::Request, response: tokio_tungstenite::tungstenite::handshake::server::Response| {
-                if let Some(real_ip) = req.headers().get("X-Real-IP") {
-                    if let Ok(ip) = real_ip.to_str() {
-                        if let Ok(mut guard) = ip_cell_clone.lock() {
-                            *guard = ip.to_string();
-                        }
-                    }
-                } else if let Some(forwarded) = req.headers().get("X-Forwarded-For") {
-                    if let Ok(ip) = forwarded.to_str() {
-                        if let Some(first_ip) = ip.split(',').next() {
-                            if let Ok(mut guard) = ip_cell_clone.lock() {
-                                *guard = first_ip.trim().to_string();
-                            }
-                        }
-                    }
-                }
-                Ok(response)
-            }),
+                tokio_tungstenite::accept_hdr_async(
+                    stream,
+                    ForwardedPeerCallback {
+                        ip_cell: ip_cell_clone,
+                    },
+                ),
             )
             .await
             {
@@ -1234,7 +1266,11 @@ async fn main() {
                 addr.ip().to_string()
             };
             let (mut write, mut read) = ws_stream.split();
-            log::info!("Client connected from IP: {} session_id={}", ip_str, session_id);
+            log::info!(
+                "Client connected from IP: {} session_id={}",
+                ip_str,
+                session_id
+            );
 
             let (direct_tx, mut direct_rx) = mpsc::channel::<Vec<u8>>(4096);
 
@@ -1381,13 +1417,14 @@ async fn main() {
                                                 my_player_id = None;
                                             }
                                             sow_core::protocol::ClientMessage::Ready { lobby_id, player_id } => {
-                                                if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id) {
-                                                    if lobby_id == l_id && player_id == p_id {
-                                                        let _ = ev_tx.send(ServerEvent::Ready {
-                                                            lobby_id: l_id,
-                                                            player_id: p_id,
-                                                        }).await;
-                                                    }
+                                                if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id)
+                                                    && lobby_id == l_id
+                                                    && player_id == p_id
+                                                {
+                                                    let _ = ev_tx.send(ServerEvent::Ready {
+                                                        lobby_id: l_id,
+                                                        player_id: p_id,
+                                                    }).await;
                                                 }
                                             }
                                             sow_core::protocol::ClientMessage::ReadyWithTicket { .. } => {
@@ -1399,62 +1436,64 @@ async fn main() {
                                                 // relay connection, never on the orchestrator socket.
                                             }
                                             sow_core::protocol::ClientMessage::MapDownloadProgress { lobby_id, player_id, progress } => {
-                                                if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id) {
-                                                    if lobby_id == l_id && player_id == p_id {
-                                                        let _ = ev_tx.send(ServerEvent::MapDownloadProgress {
-                                                            lobby_id: l_id,
-                                                            player_id: p_id,
-                                                            progress,
-                                                        }).await;
-                                                    }
+                                                if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id)
+                                                    && lobby_id == l_id
+                                                    && player_id == p_id
+                                                {
+                                                    let _ = ev_tx.send(ServerEvent::MapDownloadProgress {
+                                                        lobby_id: l_id,
+                                                        player_id: p_id,
+                                                        progress,
+                                                    }).await;
                                                 }
                                             }
                                             sow_core::protocol::ClientMessage::RematchRequest { lobby_id: _ } => {
                                                 // Orchestrator ignores RematchRequest, it is handled by the relay server
                                             }
                                             sow_core::protocol::ClientMessage::ForceStart { lobby_id, player_id } => {
-                                                if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id) {
-                                                    if lobby_id == l_id && player_id == p_id {
-                                                        let _ = ev_tx.send(ServerEvent::ForceStart {
-                                                            lobby_id: l_id,
-                                                            player_id: p_id,
-                                                        }).await;
-                                                    }
+                                                if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id)
+                                                    && lobby_id == l_id
+                                                    && player_id == p_id
+                                                {
+                                                    let _ = ev_tx.send(ServerEvent::ForceStart {
+                                                        lobby_id: l_id,
+                                                        player_id: p_id,
+                                                    }).await;
                                                 }
                                             }
                                             sow_core::protocol::ClientMessage::Kick { lobby_id, target_player_id } => {
-                                                if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id) {
-                                                    if lobby_id == l_id {
-                                                        let _ = ev_tx.send(ServerEvent::Kick {
-                                                            lobby_id: l_id,
-                                                            requester_id: p_id,
-                                                            target_id: target_player_id,
-                                                            ban: false,
-                                                        }).await;
-                                                    }
+                                                if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id)
+                                                    && lobby_id == l_id
+                                                {
+                                                    let _ = ev_tx.send(ServerEvent::Kick {
+                                                        lobby_id: l_id,
+                                                        requester_id: p_id,
+                                                        target_id: target_player_id,
+                                                        ban: false,
+                                                    }).await;
                                                 }
                                             }
                                             sow_core::protocol::ClientMessage::Ban { lobby_id, target_player_id } => {
-                                                if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id) {
-                                                    if lobby_id == l_id {
-                                                        let _ = ev_tx.send(ServerEvent::Kick {
-                                                            lobby_id: l_id,
-                                                            requester_id: p_id,
-                                                            target_id: target_player_id,
-                                                            ban: true,
-                                                        }).await;
-                                                    }
+                                                if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id)
+                                                    && lobby_id == l_id
+                                                {
+                                                    let _ = ev_tx.send(ServerEvent::Kick {
+                                                        lobby_id: l_id,
+                                                        requester_id: p_id,
+                                                        target_id: target_player_id,
+                                                        ban: true,
+                                                    }).await;
                                                 }
                                             }
                                             sow_core::protocol::ClientMessage::SetPlayerTeam { lobby_id, target_player_id } => {
-                                                if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id) {
-                                                    if lobby_id == l_id {
-                                                        let _ = ev_tx.send(ServerEvent::SetTeam {
-                                                            lobby_id: l_id,
-                                                            requester_id: p_id,
-                                                            target_id: target_player_id,
-                                                        }).await;
-                                                    }
+                                                if let (Some(l_id), Some(p_id)) = (my_lobby_id, my_player_id)
+                                                    && lobby_id == l_id
+                                                {
+                                                    let _ = ev_tx.send(ServerEvent::SetTeam {
+                                                        lobby_id: l_id,
+                                                        requester_id: p_id,
+                                                        target_id: target_player_id,
+                                                    }).await;
                                                 }
                                             }
                                             sow_core::protocol::ClientMessage::Ping { client_time } => {
@@ -1477,10 +1516,10 @@ async fn main() {
                     }
                     Ok(broadcast_data) = global_rx.recv() => {
                         // Drop lobbies broadcast packets if the client is already in a lobby/match
-                        if my_lobby_id.is_none() {
-                            if write.send(Message::Binary(broadcast_data)).await.is_err() {
-                                break;
-                            }
+                        if my_lobby_id.is_none()
+                            && write.send(Message::Binary(broadcast_data)).await.is_err()
+                        {
+                            break;
                         }
                     }
                     Some(direct_data) = direct_rx.recv() => {
@@ -1628,12 +1667,9 @@ async fn admin_status(
     .unwrap_or(serde_json::json!({"error": "task failed"}));
 
     // Query sow-database stats
-    let db_base = std::env::var("SOW_DB_URL")
-        .unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
-    let db_stats_url = format!(
-        "{}/internal/stats",
-        db_base.trim_end_matches('/')
-    );
+    let db_base =
+        std::env::var("SOW_DB_URL").unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
+    let db_stats_url = format!("{}/internal/stats", db_base.trim_end_matches('/'));
     let db_stats = match reqwest::Client::new()
         .get(&db_stats_url)
         .header("Authorization", format!("Bearer {secret}"))
@@ -1682,14 +1718,14 @@ async fn catalog_json_handler() -> impl axum::response::IntoResponse {
 #[cfg(test)]
 mod relay_worker_tests {
     use super::{
-        parse_relay_worker, send_relay_handoff_frame, RelayPortAllocator,
-        DEFAULT_RELAY_WORKER_COUNT, RELAY_PORT_MAX, RELAY_PORT_MIN,
+        DEFAULT_RELAY_WORKER_COUNT, RELAY_PORT_MAX, RELAY_PORT_MIN, RelayPortAllocator,
+        parse_relay_worker, send_relay_handoff_frame,
     };
 
     #[test]
     fn parses_game_and_management_hosts() {
-        let worker = parse_relay_worker("relay-a.example:mgmt.example:8083", 2)
-            .expect("valid worker");
+        let worker =
+            parse_relay_worker("relay-a.example:mgmt.example:8083", 2).expect("valid worker");
         assert_eq!(worker.id, 2);
         assert_eq!(worker.host, "relay-a.example");
         assert_eq!(worker.mgmt_url, "https://mgmt.example:8083");
@@ -1697,8 +1733,7 @@ mod relay_worker_tests {
 
     #[test]
     fn parses_separate_game_and_management_hosts() {
-        let worker = parse_relay_worker("data.example:mgmt.example:8080", 0)
-            .expect("valid worker");
+        let worker = parse_relay_worker("data.example:mgmt.example:8080", 0).expect("valid worker");
         assert_eq!(worker.host, "data.example");
         assert_eq!(worker.mgmt_url, "https://mgmt.example:8080");
     }

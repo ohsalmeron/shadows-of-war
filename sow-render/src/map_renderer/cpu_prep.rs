@@ -146,9 +146,9 @@ pub(crate) fn fill_terrain_buffer(
             if terrain_byte & 0xa0 == 0x20 {
                 // Ocean RGB occupies the unused normal/noise channels. Build a
                 // visible shore-to-abyss ramp once at upload, without per-fragment math.
-                let depth = terrain_byte & 0x1f;
+                let depth = (terrain_byte & 0x1f).min(8);
                 let color = if terrain_byte & 0x40 != 0 {
-                    [100, 143, 255] // shoreline
+                    [204, 203, 158] // beach on the water side of a shore
                 } else if depth <= 2 {
                     [78, 151, 208] // shallow
                 } else if depth <= 6 {
@@ -169,9 +169,9 @@ pub(crate) fn fill_terrain_buffer(
             let packed_dx = (((dx + 8.0) / 16.0) * 255.0).round().clamp(0.0, 255.0) as u8;
             let packed_dy = (((dy + 8.0) / 16.0) * 255.0).round().clamp(0.0, 255.0) as u8;
 
-            let seed = (x as u32)
+            let seed = x
                 .wrapping_mul(374761393)
-                .wrapping_add((y as u32).wrapping_mul(668265263));
+                .wrapping_add(y.wrapping_mul(668265263));
             let mut hash = seed;
             hash ^= hash >> 16;
             hash = hash.wrapping_mul(0x85ebca6b);

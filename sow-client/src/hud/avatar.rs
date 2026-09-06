@@ -70,10 +70,24 @@ pub fn draw_player_avatar(
 
     match opts.player_type {
         sow_core::player::PlayerType::Nation => {
-            paint_circular_avatar(painter, opts.center, opts.radius, None, vibrant_color, vibrant_color);
+            paint_circular_avatar(
+                painter,
+                opts.center,
+                opts.radius,
+                None,
+                vibrant_color,
+                vibrant_color,
+            );
         }
         sow_core::player::PlayerType::Bot => {
-            paint_circular_avatar(painter, opts.center, opts.radius, None, vibrant_color, vibrant_color);
+            paint_circular_avatar(
+                painter,
+                opts.center,
+                opts.radius,
+                None,
+                vibrant_color,
+                vibrant_color,
+            );
             let animal = sow_core::player::tribe_animal(opts.player_id, opts.player_name);
             let emoji_size = opts.radius * 2.0 * 0.7;
             let emoji_rect =
@@ -108,7 +122,14 @@ pub fn draw_player_avatar(
                 .get(opts.leader)
                 .or(asset_loader.avatar_fallback.as_ref());
             let tex_id = avatar_tex.map(|t| t.id());
-            paint_circular_avatar(painter, opts.center, opts.radius, tex_id, leader_color, leader_color);
+            paint_circular_avatar(
+                painter,
+                opts.center,
+                opts.radius,
+                tex_id,
+                leader_color,
+                leader_color,
+            );
         }
     }
 }
@@ -136,10 +157,7 @@ pub struct GpuAvatarOpts<'a> {
     pub leader: sow_core::player::Leader,
 }
 
-pub fn draw_player_avatar_gpu(
-    tr: &mut crate::render::gpu::TextRenderer,
-    opts: &GpuAvatarOpts,
-) {
+pub fn draw_player_avatar_gpu(tr: &mut crate::render::gpu::TextRenderer, opts: &GpuAvatarOpts) {
     let vibrant = crate::hud::nameplate::ensure_readable_nameplate_color(opts.player_color);
     let vibrant_arr = vibrant.to_array().map(|v| v as f32 / 255.0);
 
@@ -181,12 +199,14 @@ pub fn draw_player_avatar_gpu(
 
     // Category emoji sits on top: tribe animal for bots, empire symbol for nations.
     let glyph = match opts.player_type {
-        sow_core::player::PlayerType::Bot => {
-            Some(sow_core::player::tribe_animal(opts.player_id, opts.player_name))
-        }
-        sow_core::player::PlayerType::Nation => {
-            Some(sow_core::player::empire_emoji(opts.player_id, opts.player_name))
-        }
+        sow_core::player::PlayerType::Bot => Some(sow_core::player::tribe_animal(
+            opts.player_id,
+            opts.player_name,
+        )),
+        sow_core::player::PlayerType::Nation => Some(sow_core::player::empire_emoji(
+            opts.player_id,
+            opts.player_name,
+        )),
         sow_core::player::PlayerType::Human => None,
     };
     if let Some(glyph) = glyph {

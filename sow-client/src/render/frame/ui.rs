@@ -94,14 +94,15 @@ impl SowApp {
                     .max(0.0);
         }
         // Frame-based decay smoothed out UI; sim snapshots keep it strictly synced.
-        if let Some(ref mut secs) = self.ui.app.hud_state.spawn_timer_secs {
-            if self.net.client.is_some() {
-                *secs = (*secs - self.ui.raw_input.predicted_dt).max(0.0);
-            }
+        if let Some(ref mut secs) = self.ui.app.hud_state.spawn_timer_secs
+            && self.net.client.is_some()
+        {
+            *secs = (*secs - self.ui.raw_input.predicted_dt).max(0.0);
         }
         if let Some(ref mut sync) = self.ui.app.hud_state.sync_state {
             sync.time_remaining = (sync.time_remaining - self.ui.raw_input.predicted_dt).max(0.0);
         }
+        #[cfg(not(target_arch = "wasm32"))]
         let mut local_cancel_intents: Vec<sow_core::protocol::GameplayIntent> = Vec::new();
         if self.ui.app.phase == ClientPhase::Playing {
             self.sync_hud_combat_state();
@@ -196,14 +197,16 @@ impl SowApp {
                 .unwrap_or_default()
                 .as_secs()
                 / sow_data::commerce::ROTATION_PERIOD_SECS;
-            self.ui.app.main_menu_state.store_catalog =
-                sow_data::commerce::catalog_for_profile(
-                    &self.progress.owned_leaders,
-                    &self.progress.owned_skins,
-                    self.progress.laurels,
-                    self.progress.gems,
-                    rotation_period,
-                );
+            self.ui.app.main_menu_state.store_catalog = sow_data::commerce::catalog_for_profile(
+                &self.progress.owned_leaders,
+                &self.progress.owned_skins,
+                self.progress.laurels,
+                self.progress.gems,
+                rotation_period,
+            );
+            #[cfg(target_arch = "wasm32")]
+            let ui_action = self.ui.app.draw(ctx);
+            #[cfg(not(target_arch = "wasm32"))]
             let ui_action = self.ui.app.draw(ctx, &mut local_cancel_intents);
 
             if self.ui.update_available {
@@ -259,13 +262,16 @@ impl SowApp {
             }
         }
 
-        for intent in local_cancel_intents {
-            if self.net.is_offline {
-                self.sim.offline_intents.push(intent);
-            } else if let Some(c) = self.net.client.as_ref() {
-                let msg = sow_core::protocol::ClientMessage::Gameplay { intent };
-                if let Ok(json) = bincode::serialize(&msg) {
-                    c.send(json);
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            for intent in local_cancel_intents {
+                if self.net.is_offline {
+                    self.sim.offline_intents.push(intent);
+                } else if let Some(c) = self.net.client.as_ref() {
+                    let msg = sow_core::protocol::ClientMessage::Gameplay { intent };
+                    if let Ok(json) = bincode::serialize(&msg) {
+                        c.send(json);
+                    }
                 }
             }
         }
@@ -331,10 +337,10 @@ impl SowApp {
 
         // Drive continuous redraws when egui requests them (hover transitions, scroll deceleration).
         // Without this, ControlFlow::Wait on WASM freezes animations the moment input stops.
-        if self.ui.egui_ctx.requested_repaint_last_pass() {
-            if let Some(win) = self.gfx.window.as_ref() {
-                win.request_redraw();
-            }
+        if self.ui.egui_ctx.requested_repaint_last_pass()
+            && let Some(win) = self.gfx.window.as_ref()
+        {
+            win.request_redraw();
         }
 
         // ── DRAWING UI ──────────────────────────────────────────

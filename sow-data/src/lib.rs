@@ -6,17 +6,17 @@ pub mod commerce;
 pub mod crazygames;
 #[cfg(feature = "server")]
 pub mod db;
+pub mod emoji;
 #[cfg(feature = "server")]
 pub mod events;
-pub mod emoji;
 pub mod geo_entities;
 pub mod leaders;
-pub mod rewards;
 #[cfg(feature = "server")]
 pub mod metadata_db;
 #[cfg(feature = "server")]
 pub mod moderation;
 pub mod profile;
+pub mod rewards;
 #[cfg(feature = "server")]
 pub mod time_util;
 pub mod tribes;
@@ -32,9 +32,9 @@ pub use metadata_db::{
     GeoEntityRecord, LeaderRecord, get_geo_entity_by_name, get_leader_by_name, init_database,
 };
 pub use profile::{
-    MatchParticipantRecord, MatchRecord, PublicLeaderSummary, PublicMatchDetail, PublicMatchSummary,
-    PublicLeaderboardEntry, PublicProfileIndex, PublicProfileSummary, PublicProfileView,
-    PublicRatingView, SeasonRating, SeasonRecord,
+    MatchParticipantRecord, MatchRecord, PublicLeaderSummary, PublicLeaderboardEntry,
+    PublicMatchDetail, PublicMatchSummary, PublicProfileIndex, PublicProfileSummary,
+    PublicProfileView, PublicRatingView, SeasonRating, SeasonRecord,
 };
 pub use tribes::{
     EMPIRE_EMOJIS, FALLBACK_TRIBES, HISTORICAL_CIVILIZATIONS, TRIBE_ANIMALS, animal_for_id,

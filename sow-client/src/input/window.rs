@@ -56,21 +56,20 @@ impl SowApp {
             WindowEvent::KeyboardInput { event, .. } => {
                 let pressed = event.state == ElementState::Pressed;
 
-                if pressed {
-                    if let winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::F11) =
+                if pressed
+                    && let winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::F11) =
                         event.physical_key
-                    {
-                        #[cfg(not(target_arch = "wasm32"))]
-                        if let Some(win) = self.gfx.window.as_ref() {
-                            let new_fs = win.fullscreen().is_none();
-                            self.ui.app.settings_state.is_fullscreen = new_fs;
-                            let mode = if new_fs {
-                                Some(winit::monitor::Fullscreen::Borderless(None))
-                            } else {
-                                None
-                            };
-                            win.set_fullscreen(mode);
-                        }
+                {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if let Some(win) = self.gfx.window.as_ref() {
+                        let new_fs = win.fullscreen().is_none();
+                        self.ui.app.settings_state.is_fullscreen = new_fs;
+                        let mode = if new_fs {
+                            Some(winit::monitor::Fullscreen::Borderless(None))
+                        } else {
+                            None
+                        };
+                        win.set_fullscreen(mode);
                     }
                 }
 
@@ -113,82 +112,76 @@ impl SowApp {
                 {
                     if let winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyB) =
                         event.physical_key
+                        && !self.ui.egui_ctx.egui_wants_pointer_input()
+                        && let Some((col, row)) =
+                            self.mouse_to_tile(self.input.last_mouse_x, self.input.last_mouse_y)
                     {
-                        if !self.ui.egui_ctx.egui_wants_pointer_input() {
-                            if let Some((col, row)) =
-                                self.mouse_to_tile(self.input.last_mouse_x, self.input.last_mouse_y)
-                            {
-                                let idx = (row * self.sim.map_w as i32 + col) as usize;
+                        let idx = (row * self.sim.map_w as i32 + col) as usize;
 
-                                let owner = self
-                                    .gfx
-                                    .map_renderer
-                                    .as_ref()
-                                    .map(|mr| mr.owners[idx])
-                                    .unwrap_or(0);
-                                let my_id = self.sim.my_player_id.unwrap_or(0);
+                        let owner = self
+                            .gfx
+                            .map_renderer
+                            .as_ref()
+                            .map(|mr| mr.owners[idx])
+                            .unwrap_or(0);
+                        let my_id = self.sim.my_player_id.unwrap_or(0);
 
-                                let owner_snapshot = self
-                                    .sim
-                                    .current_snapshot
-                                    .as_ref()
-                                    .and_then(|s| s.players.iter().find(|p| p.id == owner));
-                                let my_snapshot = self
-                                    .sim
-                                    .current_snapshot
-                                    .as_ref()
-                                    .and_then(|s| s.players.iter().find(|p| p.id == my_id));
+                        let owner_snapshot = self
+                            .sim
+                            .current_snapshot
+                            .as_ref()
+                            .and_then(|s| s.players.iter().find(|p| p.id == owner));
+                        let my_snapshot = self
+                            .sim
+                            .current_snapshot
+                            .as_ref()
+                            .and_then(|s| s.players.iter().find(|p| p.id == my_id));
 
-                                let is_teammate = if let Some(owner) = owner_snapshot {
-                                    if let Some(my_snap) = my_snapshot {
-                                        my_snap.team.is_some() && my_snap.team == owner.team
-                                    } else {
-                                        false
-                                    }
-                                } else {
-                                    false
-                                };
-
-                                let is_betrayer = owner_snapshot
-                                    .map(|p| p.active_emoji.as_deref() == Some("🗡️"))
-                                    .unwrap_or(false);
-                                let is_allied = my_snapshot
-                                    .map(|p| p.alliances.contains(&owner) && !is_betrayer)
-                                    .unwrap_or(false);
-
-                                if owner != 0 && owner != my_id && is_allied {
-                                    let lang = self.ui.app.settings_state.language;
-                                    let msg =
-                                        sow_i18n::get(lang).hud.err_break_alliance_boat.clone();
-                                    let mx = self.input.last_mouse_x;
-                                    let my = self.input.last_mouse_y;
-                                    let world_x =
-                                        (mx as f32 - self.input.camera_x) / self.input.camera_zoom;
-                                    let offset_my = my as f32 - 60.0;
-                                    let world_y =
-                                        (offset_my - self.input.camera_y) / self.input.camera_zoom;
-                                    self.ui.floating_notices.push(crate::app::FloatingNotice {
-                                        text: msg,
-                                        world_x,
-                                        world_y,
-                                        start_time: web_time::Instant::now(),
-                                        duration: web_time::Duration::from_millis(2000),
-                                        color: egui::Color32::from_rgb(248, 113, 113),
-                                    });
-                                    self.open_context_menu_at(mx, my);
-                                } else if !is_teammate && owner != my_id {
-                                    let troops = Some(
-                                        self.ui.app.hud_state.troops
-                                            * (self.ui.app.hud_state.attack_ratio as f64),
-                                    );
-                                    self.send_intent(
-                                        sow_core::protocol::GameplayIntent::LaunchFleet {
-                                            target_tile: idx as u32,
-                                            troops,
-                                        },
-                                    );
-                                }
+                        let is_teammate = if let Some(owner) = owner_snapshot {
+                            if let Some(my_snap) = my_snapshot {
+                                my_snap.team.is_some() && my_snap.team == owner.team
+                            } else {
+                                false
                             }
+                        } else {
+                            false
+                        };
+
+                        let is_betrayer = owner_snapshot
+                            .map(|p| p.active_emoji.as_deref() == Some("🗡️"))
+                            .unwrap_or(false);
+                        let is_allied = my_snapshot
+                            .map(|p| p.alliances.contains(&owner) && !is_betrayer)
+                            .unwrap_or(false);
+
+                        if owner != 0 && owner != my_id && is_allied {
+                            let lang = self.ui.app.settings_state.language;
+                            let msg = sow_i18n::get(lang).hud.err_break_alliance_boat.clone();
+                            let mx = self.input.last_mouse_x;
+                            let my = self.input.last_mouse_y;
+                            let world_x =
+                                (mx as f32 - self.input.camera_x) / self.input.camera_zoom;
+                            let offset_my = my as f32 - 60.0;
+                            let world_y =
+                                (offset_my - self.input.camera_y) / self.input.camera_zoom;
+                            self.ui.floating_notices.push(crate::app::FloatingNotice {
+                                text: msg,
+                                world_x,
+                                world_y,
+                                start_time: web_time::Instant::now(),
+                                duration: web_time::Duration::from_millis(2000),
+                                color: egui::Color32::from_rgb(248, 113, 113),
+                            });
+                            self.open_context_menu_at(mx, my);
+                        } else if !is_teammate && owner != my_id {
+                            let troops = Some(
+                                self.ui.app.hud_state.troops
+                                    * (self.ui.app.hud_state.attack_ratio as f64),
+                            );
+                            self.send_intent(sow_core::protocol::GameplayIntent::LaunchFleet {
+                                target_tile: idx as u32,
+                                troops,
+                            });
                         }
                     }
 
@@ -510,15 +503,13 @@ impl SowApp {
                         .insert(id, (position.x, position.y));
                 }
 
-                if is_touch {
-                    if let Some((_, sx, sy)) = self.input.map_touch_start {
-                        let dx = position.x - sx;
-                        let dy = position.y - sy;
-                        if dx * dx + dy * dy > 400.0 {
-                            self.input.map_touch_start = None;
-                            self.input.hold_attack_target = None;
-                            self.input.hold_attack_accum = 0.0;
-                        }
+                if is_touch && let Some((_, sx, sy)) = self.input.map_touch_start {
+                    let dx = position.x - sx;
+                    let dy = position.y - sy;
+                    if dx * dx + dy * dy > 400.0 {
+                        self.input.map_touch_start = None;
+                        self.input.hold_attack_target = None;
+                        self.input.hold_attack_accum = 0.0;
                     }
                 }
 
@@ -630,8 +621,8 @@ impl SowApp {
                         self.sim.map_w,
                         self.sim.map_h,
                     );
-                    let zmax = camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h)
-                        .max(zmin);
+                    let zmax =
+                        camera_zoom_upper_bound(self.input.screen_w, self.input.screen_h).max(zmin);
                     self.input.target_zoom = self.input.target_zoom.clamp(zmin, zmax);
                     if let Some(win) = self.gfx.window.as_ref() {
                         win.request_redraw();

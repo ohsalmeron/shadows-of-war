@@ -28,12 +28,12 @@ fn leader_for_id(value: Option<&str>, fallback: Leader) -> Leader {
         .unwrap_or(fallback)
 }
 
-fn leader_texture<'a>(
-    assets: &'a AssetLoader,
+fn leader_texture(
+    assets: &AssetLoader,
     leader: Leader,
     mobile: bool,
     portrait: bool,
-) -> Option<&'a TextureHandle> {
+) -> Option<&TextureHandle> {
     if portrait {
         assets
             .leader_portrait_texture(leader, mobile)
@@ -896,15 +896,7 @@ pub fn draw_native(
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
-                    draw_tab_content(
-                        ui,
-                        state,
-                        view.as_ref(),
-                        assets,
-                        action,
-                        phone,
-                        mobile,
-                    );
+                    draw_tab_content(ui, state, view.as_ref(), assets, action, phone, mobile);
 
                     if let Some(error) = &state.profile.error {
                         ui.add_space(SECTION_GAP);
@@ -917,17 +909,16 @@ pub fn draw_native(
                             ui.label("Loading...");
                         });
                     }
-                    if state.profile.error.is_some() {
-                        if let Some(profile_id) = profile_id
-                            && Button::secondary("RETRY")
-                                .small()
-                                .min_size(Vec2::new(ui.available_width(), 40.0))
-                                .show(ui)
-                                .clicked()
-                            && action.is_none()
-                        {
-                            *action = Some(crate::UiAction::OpenPublicProfilePage(profile_id));
-                        }
+                    if state.profile.error.is_some()
+                        && let Some(profile_id) = profile_id
+                        && Button::secondary("RETRY")
+                            .small()
+                            .min_size(Vec2::new(ui.available_width(), 40.0))
+                            .show(ui)
+                            .clicked()
+                        && action.is_none()
+                    {
+                        *action = Some(crate::UiAction::OpenPublicProfilePage(profile_id));
                     }
                 });
         },

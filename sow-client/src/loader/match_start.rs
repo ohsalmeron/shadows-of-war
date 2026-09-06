@@ -140,16 +140,15 @@ impl SowApp {
         }
         if let Some(payload) =
             sow_core::maps::load_map_br_payload(&map_id, crate::map_cache::load(&map_id))
+            && let Ok(map_file) = sow_core::maps::load_map_from_payload(&payload)
         {
-            if let Ok(map_file) = sow_core::maps::load_map_from_payload(&payload) {
-                config.map_width = map_file.width;
-                config.map_height = map_file.height;
-                self.ui
-                    .app
-                    .asset_loader
-                    .maps
-                    .insert(map_id.clone(), payload);
-            }
+            config.map_width = map_file.width;
+            config.map_height = map_file.height;
+            self.ui
+                .app
+                .asset_loader
+                .maps
+                .insert(map_id.clone(), payload);
         }
 
         let start_msg = sow_core::protocol::ServerStartMessage {
@@ -170,12 +169,10 @@ impl SowApp {
                 },
                 color: self.ui.app.main_menu_state.selected_leader.filler_rgb(),
                 player_type: sow_core::player::PlayerType::Human,
-                team: config
-                    .player_team
-                    .or_else(|| match config.game_mode.as_str() {
-                        "Teams" | "HumansVsNations" => Some(sow_core::protocol::Team::Red),
-                        _ => None,
-                    }),
+                team: config.player_team.or(match config.game_mode.as_str() {
+                    "Teams" | "HumansVsNations" => Some(sow_core::protocol::Team::Red),
+                    _ => None,
+                }),
                 spawn_x: 0,
                 spawn_y: 0,
                 civilization: self.ui.app.main_menu_state.selected_civilization,
@@ -220,10 +217,10 @@ impl SowApp {
                             .headers
                             .get("content-length")
                             .or_else(|| res.headers.get("Content-Length"));
-                        if let Some(cl_str) = cl {
-                            if let Ok(b) = cl_str.parse::<usize>() {
-                                *total_bytes.lock().unwrap() = b;
-                            }
+                        if let Some(cl_str) = cl
+                            && let Ok(b) = cl_str.parse::<usize>()
+                        {
+                            *total_bytes.lock().unwrap() = b;
                         }
                         std::ops::ControlFlow::Continue(())
                     }

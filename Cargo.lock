@@ -4155,10 +4155,12 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "sow-core",
  "sow-map",
  "tokio",
  "tokio-tungstenite",
+ "toml",
 ]
 
 [[package]]

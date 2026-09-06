@@ -79,7 +79,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .copied()
             .unwrap_or(0);
 
-        let relay_established: u32 = socket_info.port_conn_counts.values().map(|&c| c).sum();
+        let relay_established: u32 = socket_info.port_conn_counts.values().copied().sum();
         let total_sockets: u32 = socket_info.state_counts.values().sum();
         let maxfiles = get_maxfiles().unwrap_or(0);
 
@@ -119,67 +119,67 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let bw = |s: &str| format!("\x1B[1;36m│\x1B[0m{:<70}\x1B[1;36m│\x1B[0m", s);
 
-        print!(
-            "\x1B[1;36m┌──────────────────────────────────────────────────────────────────────────────┐\x1B[0m\n"
+        println!(
+            "\x1B[1;36m┌──────────────────────────────────────────────────────────────────────────────┐\x1B[0m"
         );
-        print!(
-            "{}\n",
+        println!(
+            "{}",
             bw(&format!(
                 " HOST: \x1B[1;32m{} \x1B[0m    UPTIME: \x1B[1;33m{}",
                 hostname, uptime_str
             ))
         );
-        print!(
-            "{}\n",
+        println!(
+            "{}",
             bw(&format!(
                 " CPU: \x1B[1;37m{:>5.1}%\x1B[0m  (4 cores)    MEM: \x1B[1;37m{:>5.1}%\x1B[0m  (\x1B[1;37m{:.2}G\x1B[0m/\x1B[1;37m{:.2}G\x1B[0m)",
                 cpu_pct, mem_pct, used_gb, total_gb
             ))
         );
-        print!(
-            "\x1B[1;36m├──────────────────────────────────────────────────────────────────────────────┤\x1B[0m\n"
+        println!(
+            "\x1B[1;36m├──────────────────────────────────────────────────────────────────────────────┤\x1B[0m"
         );
 
-        print!(
-            "{}\n",
+        println!(
+            "{}",
             bw(&format!(
                 " MATCHES (sow-relay procs): \x1B[1;35m{:>5}\x1B[0m",
                 relay_process_count
             ))
         );
-        print!(
-            "{}\n",
+        println!(
+            "{}",
             bw(&format!(
                 " PLAYERS IN RELAY (in-game): \x1B[1;32m{:>5}\x1B[0m",
                 relay_established
             ))
         );
-        print!(
-            "{}\n",
+        println!(
+            "{}",
             bw(&format!(
                 " TCP SOCKETS  \x1B[1;37m{:>5}\x1B[0m / {}  (kern.maxfiles)",
                 total_sockets, maxfiles
             ))
         );
-        print!(
-            "{}\n",
+        println!(
+            "{}",
             bw(&format!(
                 "   ESTABLISHED \x1B[1;32m{}\x1B[0m   LISTEN \x1B[1;36m{}\x1B[0m   TIME_WAIT \x1B[1;33m{}\x1B[0m",
                 established_total, listen_total, time_wait_total
             ))
         );
-        print!(
-            "\x1B[1;36m├──────────────────────────────────────────────────────────────────────────────┤\x1B[0m\n"
+        println!(
+            "\x1B[1;36m├──────────────────────────────────────────────────────────────────────────────┤\x1B[0m"
         );
 
         if !vtnet_str.is_empty() {
-            print!("{}\n", bw(&format!(" {}", vtnet_str)));
+            println!("{}", bw(&format!(" {}", vtnet_str)));
         }
         if !lo_str.is_empty() {
-            print!("{}\n", bw(&format!(" {}", lo_str)));
+            println!("{}", bw(&format!(" {}", lo_str)));
         }
-        print!(
-            "\x1B[1;36m└──────────────────────────────────────────────────────────────────────────────┘\x1B[0m\n"
+        println!(
+            "\x1B[1;36m└──────────────────────────────────────────────────────────────────────────────┘\x1B[0m"
         );
 
         stdout.flush()?;
@@ -218,7 +218,7 @@ fn get_relay_process_count() -> Result<u32, Box<dyn Error>> {
 
 fn get_maxfiles() -> Result<u32, Box<dyn Error>> {
     let output = Command::new("sysctl")
-        .args(&["-n", "kern.maxfiles"])
+        .args(["-n", "kern.maxfiles"])
         .output()?;
     let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
     Ok(s.parse().unwrap_or(0))
@@ -252,7 +252,7 @@ fn get_socket_info() -> Result<SocketInfo, Box<dyn Error>> {
                 let clean_state = state.trim().to_uppercase();
                 *info.state_counts.entry(clean_state.clone()).or_insert(0) += 1;
 
-                if clean_state == "ESTABLISHED" && port >= RELAY_PORT_MIN && port <= RELAY_PORT_MAX
+                if clean_state == "ESTABLISHED" && (RELAY_PORT_MIN..=RELAY_PORT_MAX).contains(&port)
                 {
                     *info.port_conn_counts.entry(port).or_insert(0) += 1;
                 }
@@ -273,7 +273,7 @@ fn get_interface_stats() -> Result<HashMap<String, InterfaceStats>, Box<dyn Erro
     let mut stats = HashMap::new();
 
     if cfg!(target_os = "freebsd") {
-        let output = Command::new("netstat").args(&["-i", "-b", "-n"]).output()?;
+        let output = Command::new("netstat").args(["-i", "-b", "-n"]).output()?;
         let output_str = String::from_utf8_lossy(&output.stdout);
 
         for line in output_str.lines() {
@@ -318,7 +318,7 @@ fn get_interface_stats() -> Result<HashMap<String, InterfaceStats>, Box<dyn Erro
 fn get_cpu_ticks() -> Result<CpuTicks, Box<dyn Error>> {
     if cfg!(target_os = "freebsd") {
         let output = Command::new("sysctl")
-            .args(&["-n", "kern.cp_time"])
+            .args(["-n", "kern.cp_time"])
             .output()?;
         let output_str = String::from_utf8_lossy(&output.stdout);
         let parts: Vec<&str> = output_str.split_whitespace().collect();
@@ -332,22 +332,22 @@ fn get_cpu_ticks() -> Result<CpuTicks, Box<dyn Error>> {
             });
         }
     } else {
-        if let Ok(content) = fs::read_to_string("/proc/stat") {
-            if let Some(line) = content.lines().next() {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() >= 5 && parts[0] == "cpu" {
-                    let user = parts[1].parse().unwrap_or(0);
-                    let nice = parts[2].parse().unwrap_or(0);
-                    let system = parts[3].parse().unwrap_or(0);
-                    let idle = parts[4].parse().unwrap_or(0);
-                    return Ok(CpuTicks {
-                        user,
-                        nice,
-                        system,
-                        intr: 0,
-                        idle,
-                    });
-                }
+        if let Ok(content) = fs::read_to_string("/proc/stat")
+            && let Some(line) = content.lines().next()
+        {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 5 && parts[0] == "cpu" {
+                let user = parts[1].parse().unwrap_or(0);
+                let nice = parts[2].parse().unwrap_or(0);
+                let system = parts[3].parse().unwrap_or(0);
+                let idle = parts[4].parse().unwrap_or(0);
+                return Ok(CpuTicks {
+                    user,
+                    nice,
+                    system,
+                    intr: 0,
+                    idle,
+                });
             }
         }
     }
@@ -357,7 +357,7 @@ fn get_cpu_ticks() -> Result<CpuTicks, Box<dyn Error>> {
 fn get_memory_info() -> Result<(u64, u64), Box<dyn Error>> {
     if cfg!(target_os = "freebsd") {
         let output = Command::new("sysctl")
-            .args(&[
+            .args([
                 "-n",
                 "vm.stats.vm.v_page_count",
                 "vm.stats.vm.v_free_count",
@@ -424,13 +424,13 @@ fn get_uptime() -> Result<String, Box<dyn Error>> {
         }
         Ok(uptime_str)
     } else {
-        if let Ok(content) = fs::read_to_string("/proc/uptime") {
-            if let Some(secs_str) = content.split_whitespace().next() {
-                let secs: f64 = secs_str.parse().unwrap_or(0.0);
-                let h = (secs / 3600.0) as u32;
-                let m = ((secs % 3600.0) / 60.0) as u32;
-                return Ok(format!("{} hours, {} minutes", h, m));
-            }
+        if let Ok(content) = fs::read_to_string("/proc/uptime")
+            && let Some(secs_str) = content.split_whitespace().next()
+        {
+            let secs: f64 = secs_str.parse().unwrap_or(0.0);
+            let h = (secs / 3600.0) as u32;
+            let m = ((secs % 3600.0) / 60.0) as u32;
+            return Ok(format!("{} hours, {} minutes", h, m));
         }
         Ok("unknown".to_string())
     }

@@ -267,46 +267,45 @@ pub(in crate::ui::hud) fn draw_emoji_panel(
             .data_mut(|d| d.insert_temp(egui::Id::new("emoji_panel_rect"), response_rect));
     });
 
-    if !state.emoji_panel_just_opened && ui.ctx().input(|i| i.pointer.any_pressed()) {
-        if let Some(pos) = ui
+    if !state.emoji_panel_just_opened
+        && ui.ctx().input(|i| i.pointer.any_pressed())
+        && let Some(pos) = ui
             .ctx()
             .input(|i| i.pointer.press_origin().or(i.pointer.interact_pos()))
+    {
+        let mut is_outside = true;
+
+        if let Some(rect) = ui
+            .ctx()
+            .data(|d| d.get_temp::<egui::Rect>(egui::Id::new("emoji_panel_rect")))
+            && rect.contains(pos)
         {
-            let mut is_outside = true;
+            is_outside = false;
+        }
 
-            if let Some(rect) = ui
+        if state.emoji_panel_pos.is_none() {
+            let screen_size = ui.ctx().content_rect();
+            let hud_rect = ui
                 .ctx()
-                .data(|d| d.get_temp::<egui::Rect>(egui::Id::new("emoji_panel_rect")))
-            {
-                if rect.contains(pos) {
-                    is_outside = false;
-                }
+                .data(|d| d.get_temp::<egui::Rect>(egui::Id::new("hud_bottom_panel_rect")))
+                .unwrap_or_else(|| {
+                    egui::Rect::from_min_max(
+                        pos2(
+                            screen_size.right() - 510.0,
+                            screen_size.bottom()
+                                - HUD_MAP_CONTROLS_MOBILE_FALLBACK_CLEARANCE
+                                - state.safe_area_bottom,
+                        ),
+                        pos2(screen_size.right(), screen_size.bottom()),
+                    )
+                });
+            if hud_rect.contains(pos) {
+                is_outside = false;
             }
+        }
 
-            if state.emoji_panel_pos.is_none() {
-                let screen_size = ui.ctx().content_rect();
-                let hud_rect = ui
-                    .ctx()
-                    .data(|d| d.get_temp::<egui::Rect>(egui::Id::new("hud_bottom_panel_rect")))
-                    .unwrap_or_else(|| {
-                        egui::Rect::from_min_max(
-                            pos2(
-                                screen_size.right() - 510.0,
-                                screen_size.bottom()
-                                    - HUD_MAP_CONTROLS_MOBILE_FALLBACK_CLEARANCE
-                                    - state.safe_area_bottom,
-                            ),
-                            pos2(screen_size.right(), screen_size.bottom()),
-                        )
-                    });
-                if hud_rect.contains(pos) {
-                    is_outside = false;
-                }
-            }
-
-            if is_outside && !state.pin_emoji {
-                state.show_emoji_panel = false;
-            }
+        if is_outside && !state.pin_emoji {
+            state.show_emoji_panel = false;
         }
     }
 

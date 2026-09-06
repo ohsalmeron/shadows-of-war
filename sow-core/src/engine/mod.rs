@@ -365,6 +365,7 @@ impl SowEngine {
 
 mod snapshot;
 mod spawn;
+pub use spawn::HumanSpawn;
 mod tick;
 
 #[cfg(test)]
@@ -458,11 +459,21 @@ mod tests {
 
         // FFA: no teams anywhere.
         for p in spawn_nations("FFA") {
-            assert!(p.team.is_none(), "FFA nation {} has a team {:?}", p.id, p.team);
+            assert!(
+                p.team.is_none(),
+                "FFA nation {} has a team {:?}",
+                p.id,
+                p.team
+            );
         }
         // Teams: nations are wild (human-only teams).
         for p in spawn_nations("Teams") {
-            assert!(p.team.is_none(), "Teams nation {} has a team {:?}", p.id, p.team);
+            assert!(
+                p.team.is_none(),
+                "Teams nation {} has a team {:?}",
+                p.id,
+                p.team
+            );
         }
         // HumansVsNations: every nation is Blue.
         for p in spawn_nations("HumansVsNations") {

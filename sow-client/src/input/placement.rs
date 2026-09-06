@@ -44,9 +44,7 @@ pub struct PlacementQuery<'a> {
     pub buildings: &'a [sow_core::protocol::BuildingSnapshot],
 }
 
-pub fn resolve_build_target_tile(
-    query: &PlacementQuery,
-) -> Result<u32, &'static str> {
+pub fn resolve_build_target_tile(query: &PlacementQuery) -> Result<u32, &'static str> {
     if let Some(tile) = find_stack_target_tile(
         query.kind,
         query.click_x,
@@ -60,9 +58,7 @@ pub fn resolve_build_target_tile(
     resolve_building_placement_tile(query)
 }
 
-pub fn resolve_building_placement_tile(
-    query: &PlacementQuery,
-) -> Result<u32, &'static str> {
+pub fn resolve_building_placement_tile(query: &PlacementQuery) -> Result<u32, &'static str> {
     let kind = query.kind;
     let click_x = query.click_x;
     let click_y = query.click_y;

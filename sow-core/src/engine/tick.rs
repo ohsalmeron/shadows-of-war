@@ -28,18 +28,15 @@ impl SowEngine {
                     .players
                     .iter()
                     .filter(|p| {
-                        p.is_ai_controlled
-                            && !p.has_spawned
-                            && {
-                                let mut m = WyRand::new(seed.wrapping_add(p.id as u64));
-                                m.next_int(1, (end_tick as i32) - 1) as u64 == now
-                            }
+                        p.is_ai_controlled && !p.has_spawned && {
+                            let mut m = WyRand::new(seed.wrapping_add(p.id as u64));
+                            m.next_int(1, (end_tick as i32) - 1) as u64 == now
+                        }
                     })
                     .map(|p| p.id)
                     .collect();
                 for pid in due {
-                    let mut rng =
-                        WyRand::new(seed.wrapping_add(pid as u64).wrapping_add(now));
+                    let mut rng = WyRand::new(seed.wrapping_add(pid as u64).wrapping_add(now));
                     // OF teamSpawnArea parity: team ghosts spawn inside their
                     // map half (Red left, Blue right) — zone is cohesion, the
                     // member floor is separation. Ring/anchor are fallbacks
@@ -51,17 +48,15 @@ impl SowEngine {
                         .players
                         .iter()
                         .find(|p| p.id == pid)
-                        .and_then(|p| p.team.clone());
+                        .and_then(|p| p.team);
                     let spawn_point = team
                         .as_ref()
                         .map(|t| self.team_spawn_area(t))
                         .and_then(|area| self.find_spawn_in_area(&mut rng, area))
                         .or_else(|| {
-                            team.as_ref()
-                                .and_then(|t| self.team_centroid(t))
-                                .and_then(|(cx, cy)| {
-                                    self.find_valid_spawn_near(&mut rng, cx, cy, 12, 36)
-                                })
+                            team.as_ref().and_then(|t| self.team_centroid(t)).and_then(
+                                |(cx, cy)| self.find_valid_spawn_near(&mut rng, cx, cy, 12, 36),
+                            )
                         })
                         .or_else(|| self.find_valid_spawn(&mut rng));
                     if let Some((sx, sy)) = spawn_point {
@@ -91,7 +86,7 @@ impl SowEngine {
                         .players
                         .iter()
                         .find(|p| p.id == pid)
-                        .and_then(|p| p.team.clone())
+                        .and_then(|p| p.team)
                         .map(|t| self.team_spawn_area(&t))
                         .and_then(|area| self.find_spawn_in_area(&mut rng, area))
                         .or_else(|| self.find_valid_spawn(&mut rng));
@@ -137,15 +132,15 @@ impl SowEngine {
 
                 // Update player counts if necessary
                 if kind == crate::game::BuildingKind::City {
-                    if old_owner != 0 {
-                        if let Some(p) = self.state.player_mut(old_owner) {
-                            p.cities = p.cities.saturating_sub(1);
-                        }
+                    if old_owner != 0
+                        && let Some(p) = self.state.player_mut(old_owner)
+                    {
+                        p.cities = p.cities.saturating_sub(1);
                     }
-                    if new_owner != 0 {
-                        if let Some(p) = self.state.player_mut(new_owner) {
-                            p.cities += 1;
-                        }
+                    if new_owner != 0
+                        && let Some(p) = self.state.player_mut(new_owner)
+                    {
+                        p.cities += 1;
                     }
                 }
             }
@@ -294,10 +289,10 @@ impl SowEngine {
                 self.end_game(wid, Some(team));
             }
         } else if teams_with_land == 1 && unaffiliated_with_land == 0 {
-            if let Some(team) = last_team_with_land {
-                if let Some(&(wid, _)) = best_player_on_team.get(&team) {
-                    self.end_game(wid, Some(team));
-                }
+            if let Some(team) = last_team_with_land
+                && let Some(&(wid, _)) = best_player_on_team.get(&team)
+            {
+                self.end_game(wid, Some(team));
             }
         } else if teams_with_land == 0
             && unaffiliated_with_land == 0

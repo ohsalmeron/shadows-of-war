@@ -3,10 +3,10 @@ use crate::metadata_db::{
     SEASON_RATINGS_TABLE, SEASONS_TABLE,
 };
 use crate::profile::{
-    LeaderCareerStats, MatchRecord, PublicLeaderboardEntry, PublicLeaderSummary,
-    PublicMatchDetail, PublicMatchParticipant, PublicMatchSummary, PublicProfileIndex,
-    PublicProfileSummary, PublicProfileView,
-    PublicRatingView, SeasonRating, SeasonRecord, public_handle, public_profile_id, win_rate,
+    LeaderCareerStats, MatchRecord, PublicLeaderSummary, PublicLeaderboardEntry, PublicMatchDetail,
+    PublicMatchParticipant, PublicMatchSummary, PublicProfileIndex, PublicProfileSummary,
+    PublicProfileView, PublicRatingView, SeasonRating, SeasonRecord, public_handle,
+    public_profile_id, win_rate,
 };
 use log::{error, info};
 use redb::ReadableTable;
@@ -157,11 +157,7 @@ impl PlayerProfile {
         self.sync_level();
     }
 
-    pub fn apply_reward(
-        &mut self,
-        leader: &str,
-        reward: crate::rewards::MatchReward,
-    ) {
+    pub fn apply_reward(&mut self, leader: &str, reward: crate::rewards::MatchReward) {
         self.add_xp(reward.xp);
         let entry = self.leader_xp.entry(leader.to_string()).or_default();
         *entry = entry.saturating_add(reward.leader_xp);
@@ -340,10 +336,9 @@ impl PlayerDb {
         {
             if let Ok(mut table) = write_txn.open_table(PLAYERS_TABLE)
                 && let Ok(json) = serde_json::to_string(account)
+                && let Err(error) = table.insert(account.id.as_str(), json.as_bytes())
             {
-                if let Err(error) = table.insert(account.id.as_str(), json.as_bytes()) {
-                    error!("Failed to persist account {} to REDB: {error}", account.id);
-                }
+                error!("Failed to persist account {} to REDB: {error}", account.id);
             }
             if let Ok(mut table) = write_txn.open_table(PUBLIC_PROFILES_TABLE) {
                 let public_id = if account.public_id.is_empty() {
@@ -361,7 +356,10 @@ impl PlayerDb {
                 if let Ok(json) = serde_json::to_vec(&index)
                     && let Err(error) = table.insert(index.public_id.as_str(), json.as_slice())
                 {
-                    error!("Failed to persist public profile index {}: {error}", account.id);
+                    error!(
+                        "Failed to persist public profile index {}: {error}",
+                        account.id
+                    );
                 }
             }
             if let Err(error) = write_txn.commit() {
@@ -559,7 +557,11 @@ impl PlayerDb {
             } else {
                 "Provisional".to_string()
             };
-            rating.division = if rating.placements_complete { division } else { None };
+            rating.division = if rating.placements_complete {
+                division
+            } else {
+                None
+            };
             rating.peak_score = rating.peak_score.max(rating.score);
             rating.updated_at = now;
             participant.rating_delta = Some(rating.score as i16 - old_score as i16);
@@ -644,28 +646,24 @@ impl PlayerDb {
         let mut skipped = 0usize;
         let mut records = Vec::with_capacity(limit.min(match_ids.len().saturating_sub(offset)));
         for match_id in match_ids {
-            if let Some(record) = self.load_match_record(&match_id)? {
-                if queue.is_none_or(|value| value == record.queue)
-                    && mode.is_none_or(|value| value == record.mode)
-                {
-                    if skipped < offset {
-                        skipped += 1;
-                        continue;
-                    }
-                    records.push(record);
-                    if records.len() >= limit {
-                        break;
-                    }
+            if let Some(record) = self.load_match_record(&match_id)?
+                && queue.is_none_or(|value| value == record.queue)
+                && mode.is_none_or(|value| value == record.mode)
+            {
+                if skipped < offset {
+                    skipped += 1;
+                    continue;
+                }
+                records.push(record);
+                if records.len() >= limit {
+                    break;
                 }
             }
         }
         Ok(records)
     }
 
-    fn public_match_summary(
-        account_id: &str,
-        record: &MatchRecord,
-    ) -> Option<PublicMatchSummary> {
+    fn public_match_summary(account_id: &str, record: &MatchRecord) -> Option<PublicMatchSummary> {
         let participant = record
             .participants
             .iter()
@@ -727,10 +725,12 @@ impl PlayerDb {
         }
         let mut leader_stats = account.profile.leader_stats.clone();
         for (leader, xp) in &account.profile.leader_xp {
-            leader_stats.entry(leader.clone()).or_insert_with(|| LeaderCareerStats {
-                xp: *xp,
-                ..Default::default()
-            });
+            leader_stats
+                .entry(leader.clone())
+                .or_insert_with(|| LeaderCareerStats {
+                    xp: *xp,
+                    ..Default::default()
+                });
         }
         let mut leaders = leader_stats
             .into_iter()
@@ -745,7 +745,7 @@ impl PlayerDb {
                 xp: stats.xp,
             })
             .collect::<Vec<_>>();
-        leaders.sort_by(|left, right| right.xp.cmp(&left.xp));
+        leaders.sort_by_key(|left| std::cmp::Reverse(left.xp));
         let recent_matches = self
             .match_history_for_account(&account.id, 0, 10, None, None)?
             .iter()
@@ -844,9 +844,9 @@ impl PlayerDb {
                 queue,
                 mode,
             )?
-                .iter()
-                .filter_map(|record| Self::public_match_summary(&account.id, record))
-                .collect(),
+            .iter()
+            .filter_map(|record| Self::public_match_summary(&account.id, record))
+            .collect(),
         ))
     }
 
@@ -898,9 +898,7 @@ impl PlayerDb {
         }))
     }
 
-    pub fn ensure_current_season(
-        &self,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub fn ensure_current_season(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let Some(db) = &self.metadata_db else {
             return Err("profile metadata database unavailable".into());
         };
@@ -926,9 +924,7 @@ impl PlayerDb {
         Ok(())
     }
 
-    pub fn seasons(
-        &self,
-    ) -> Result<Vec<SeasonRecord>, Box<dyn std::error::Error + Send + Sync>> {
+    pub fn seasons(&self) -> Result<Vec<SeasonRecord>, Box<dyn std::error::Error + Send + Sync>> {
         let Some(db) = &self.metadata_db else {
             return Ok(Vec::new());
         };
@@ -1041,23 +1037,25 @@ impl PlayerDb {
             };
             entries.push((rating, public_id, account.display_name));
         }
-        entries.sort_by(|left, right| right.0.score.cmp(&left.0.score));
+        entries.sort_by_key(|left| std::cmp::Reverse(left.0.score));
         Ok(entries
             .into_iter()
             .take(limit)
             .enumerate()
-            .map(|(index, (rating, public_id, display_name))| PublicLeaderboardEntry {
-                rank: index as u32 + 1,
-                public_id: public_id.clone(),
-                handle: public_handle(&display_name, &public_id),
-                queue: rating.queue,
-                mode: rating.mode,
-                score: rating.score,
-                tier: rating.tier,
-                division: rating.division,
-                games_played: rating.games_played,
-                wins: rating.wins,
-            })
+            .map(
+                |(index, (rating, public_id, display_name))| PublicLeaderboardEntry {
+                    rank: index as u32 + 1,
+                    public_id: public_id.clone(),
+                    handle: public_handle(&display_name, &public_id),
+                    queue: rating.queue,
+                    mode: rating.mode,
+                    score: rating.score,
+                    tier: rating.tier,
+                    division: rating.division,
+                    games_played: rating.games_played,
+                    wins: rating.wins,
+                },
+            )
             .collect())
     }
 
@@ -1092,10 +1090,8 @@ impl PlayerDb {
         }
         let public_id = public_profile_id(&account.id);
         let mut con = self.get_connection().await?;
-        let updated = Self::update_account_atomic(
-            &mut con,
-            &Self::account_key(&account.id),
-            |account| {
+        let updated =
+            Self::update_account_atomic(&mut con, &Self::account_key(&account.id), |account| {
                 if account.public_id.is_empty() {
                     account.public_id = public_id.clone();
                     account.updated_at = std::time::SystemTime::now()
@@ -1103,9 +1099,8 @@ impl PlayerDb {
                         .unwrap_or_default()
                         .as_secs();
                 }
-            },
-        )
-        .await?;
+            })
+            .await?;
         self.save_player_account_to_redb(&updated);
         Ok(updated)
     }
@@ -1117,16 +1112,15 @@ impl PlayerDb {
         if account.profile.preferred_leader.is_some() {
             return Ok(account);
         }
-        let assigned = crate::commerce::leader_wire_id(crate::commerce::assigned_leader_for_account(
-            &account.id,
-            crate::commerce::current_rotation_period(),
-        ))
-        .to_string();
+        let assigned =
+            crate::commerce::leader_wire_id(crate::commerce::assigned_leader_for_account(
+                &account.id,
+                crate::commerce::current_rotation_period(),
+            ))
+            .to_string();
         let mut con = self.get_connection().await?;
-        let updated = Self::update_account_atomic(
-            &mut con,
-            &Self::account_key(&account.id),
-            |account| {
+        let updated =
+            Self::update_account_atomic(&mut con, &Self::account_key(&account.id), |account| {
                 if account.profile.preferred_leader.is_none() {
                     account.profile.preferred_leader = Some(assigned.clone());
                     account.updated_at = std::time::SystemTime::now()
@@ -1134,9 +1128,8 @@ impl PlayerDb {
                         .unwrap_or_default()
                         .as_secs();
                 }
-            },
-        )
-        .await?;
+            })
+            .await?;
         self.save_player_account_to_redb(&updated);
         Ok(updated)
     }
@@ -1189,7 +1182,9 @@ impl PlayerDb {
             // The HyperLogLog is a probabilistic counter with no per-member
             // removal, so it must stay bounded by the same 90-day retention
             // window as every other analytics key (see Privacy Policy).
-            let _: () = con.expire(ANALYTICS_UNIQUE, ANALYTICS_RETENTION_TTL_SECS).await?;
+            let _: () = con
+                .expire(ANALYTICS_UNIQUE, ANALYTICS_RETENTION_TTL_SECS)
+                .await?;
         }
         let day_key = format!("{ANALYTICS_ACTIVE_PREFIX}{}", utc_date_string());
         let _: () = con.pfadd(&day_key, account_id).await?;
@@ -1206,9 +1201,7 @@ impl PlayerDb {
         date: &str,
     ) -> Result<(), redis::RedisError> {
         let activated_key = format!("{ANALYTICS_ACTIVATED_PREFIX}{account_id}");
-        let first_match: bool = con
-            .set_nx(&activated_key, date)
-            .await?;
+        let first_match: bool = con.set_nx(&activated_key, date).await?;
         if first_match {
             let cohort_key = format!("{ANALYTICS_COHORT_PREFIX}{date}");
             let _: () = redis::pipe()
@@ -1449,7 +1442,8 @@ impl PlayerDb {
         let mut d1_returned = 0_u64;
         let mut d7_returned = 0_u64;
         for offset in 7..days {
-            let cohort_date = crate::events::shift_date(&today, -offset).ok_or("invalid cohort date")?;
+            let cohort_date =
+                crate::events::shift_date(&today, -offset).ok_or("invalid cohort date")?;
             let members: Vec<String> = con
                 .smembers(format!("{ANALYTICS_COHORT_PREFIX}{cohort_date}"))
                 .await?;
@@ -1541,9 +1535,7 @@ impl PlayerDb {
         match_id: &str,
     ) -> Result<(Vec<String>, Vec<String>), Box<dyn std::error::Error + Send + Sync>> {
         let mut con = self.get_connection().await?;
-        let players_json: Option<String> = con
-            .get(format!("sow:match:{match_id}:players"))
-            .await?;
+        let players_json: Option<String> = con.get(format!("sow:match:{match_id}:players")).await?;
         let exits: Vec<String> = con
             .lrange(format!("sow:match:{match_id}:exits"), 0, -1)
             .await?;
@@ -1662,7 +1654,9 @@ impl PlayerDb {
                 let account: PlayerAccount = match serde_json::from_str(&json) {
                     Ok(account) => account,
                     Err(error) => {
-                        error!("Skipping malformed account during profile migration {key}: {error}");
+                        error!(
+                            "Skipping malformed account during profile migration {key}: {error}"
+                        );
                         continue;
                     }
                 };
@@ -1733,7 +1727,9 @@ impl PlayerDb {
             {
                 return Err("invalid secret".into());
             }
-            let account = self.ensure_starting_leader(self.ensure_public_id(account).await?).await?;
+            let account = self
+                .ensure_starting_leader(self.ensure_public_id(account).await?)
+                .await?;
             if account.display_name.trim().is_empty() || account.display_name == "ANON" {
                 let migrated_name = requested_display_name
                     .map(normalize_display_name)
@@ -1805,7 +1801,11 @@ impl PlayerDb {
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         let mut con = self.get_connection().await?;
         let acc_key = Self::account_key(account_id);
-        let plain = format!("{:032x}{:032x}", rand::random::<u128>(), rand::random::<u128>());
+        let plain = format!(
+            "{:032x}{:032x}",
+            rand::random::<u128>(),
+            rand::random::<u128>()
+        );
         let hash = blake3::hash(plain.as_bytes()).to_hex().to_string();
         let mut revealed: Option<String> = None;
         let account = Self::update_account_atomic(&mut con, &acc_key, |account| {
@@ -1880,8 +1880,7 @@ impl PlayerDb {
         requested_leader: &str,
         currency: &str,
     ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
-        let leader = crate::commerce::leader_from_id(requested_leader)
-            .ok_or("unknown leader")?;
+        let leader = crate::commerce::leader_from_id(requested_leader).ok_or("unknown leader")?;
         let leader_id = crate::commerce::leader_id(leader).to_string();
         let (cost, use_gems) = match currency {
             "gems" => (crate::commerce::LEADER_UNLOCK_COST_GEMS, true),
@@ -1891,10 +1890,8 @@ impl PlayerDb {
         let period = crate::commerce::current_rotation_period();
         let mut con = self.get_connection().await?;
         let mut failure = None;
-        let account = Self::update_account_atomic(
-            &mut con,
-            &Self::account_key(account_id),
-            |account| {
+        let account =
+            Self::update_account_atomic(&mut con, &Self::account_key(account_id), |account| {
                 if account.profile.owned_leaders.contains(&leader_id) {
                     failure = Some("leader already owned");
                 } else if crate::commerce::leader_available(
@@ -1907,8 +1904,13 @@ impl PlayerDb {
                     account.profile.gems
                 } else {
                     account.profile.laurels
-                }) < cost {
-                    failure = Some(if use_gems { "insufficient gems" } else { "insufficient laurels" });
+                }) < cost
+                {
+                    failure = Some(if use_gems {
+                        "insufficient gems"
+                    } else {
+                        "insufficient laurels"
+                    });
                 } else {
                     if use_gems {
                         account.profile.gems -= cost;
@@ -1921,9 +1923,8 @@ impl PlayerDb {
                         .unwrap_or_default()
                         .as_secs();
                 }
-            },
-        )
-        .await?;
+            })
+            .await?;
         if let Some(error) = failure {
             return Err(error.into());
         }
@@ -1939,10 +1940,8 @@ impl PlayerDb {
         let skin = crate::commerce::skin_by_id(requested_skin).ok_or("unknown skin")?;
         let mut failure = None;
         let mut con = self.get_connection().await?;
-        let account = Self::update_account_atomic(
-            &mut con,
-            &Self::account_key(account_id),
-            |account| {
+        let account =
+            Self::update_account_atomic(&mut con, &Self::account_key(account_id), |account| {
                 if account.profile.owned_skins.contains(&skin.id) {
                     failure = Some("skin already owned");
                 } else if account.profile.gems < skin.cost_gems {
@@ -1955,9 +1954,8 @@ impl PlayerDb {
                         .unwrap_or_default()
                         .as_secs();
                 }
-            },
-        )
-        .await?;
+            })
+            .await?;
         if let Some(error) = failure {
             return Err(error.into());
         }
@@ -1971,17 +1969,15 @@ impl PlayerDb {
         requested_skin: Option<&str>,
     ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
         let requested_skin = requested_skin.map(str::trim).filter(|id| !id.is_empty());
-        if let Some(skin_id) = requested_skin {
-            if crate::commerce::skin_by_id(skin_id).is_none() {
-                return Err("unknown skin".into());
-            }
+        if let Some(skin_id) = requested_skin
+            && crate::commerce::skin_by_id(skin_id).is_none()
+        {
+            return Err("unknown skin".into());
         }
         let mut failure = None;
         let mut con = self.get_connection().await?;
-        let account = Self::update_account_atomic(
-            &mut con,
-            &Self::account_key(account_id),
-            |account| {
+        let account =
+            Self::update_account_atomic(&mut con, &Self::account_key(account_id), |account| {
                 if let Some(skin_id) = requested_skin {
                     if !account.profile.owned_skins.contains(skin_id) {
                         failure = Some("skin is not owned");
@@ -1995,9 +1991,8 @@ impl PlayerDb {
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_secs();
-            },
-        )
-        .await?;
+            })
+            .await?;
         if let Some(error) = failure {
             return Err(error.into());
         }
@@ -2026,10 +2021,8 @@ impl PlayerDb {
             .ok_or("unknown RevenueCat product")?;
         let mut con = self.get_connection().await?;
         let mut granted = false;
-        let account = Self::update_account_atomic(
-            &mut con,
-            &Self::account_key(&account_id),
-            |account| {
+        let account =
+            Self::update_account_atomic(&mut con, &Self::account_key(&account_id), |account| {
                 if account
                     .profile
                     .processed_revenuecat_events
@@ -2047,9 +2040,8 @@ impl PlayerDb {
                     .unwrap_or_default()
                     .as_secs();
                 granted = true;
-            },
-        )
-        .await?;
+            })
+            .await?;
         if granted {
             self.save_player_account_to_redb(&account);
         }
@@ -2084,10 +2076,8 @@ impl PlayerDb {
             .ok_or("unknown RevenueCat product")?;
         let mut con = self.get_connection().await?;
         let mut revoked = false;
-        let account = Self::update_account_atomic(
-            &mut con,
-            &Self::account_key(&account_id),
-            |account| {
+        let account =
+            Self::update_account_atomic(&mut con, &Self::account_key(&account_id), |account| {
                 if account
                     .profile
                     .processed_revenuecat_events
@@ -2105,9 +2095,8 @@ impl PlayerDb {
                     .unwrap_or_default()
                     .as_secs();
                 revoked = true;
-            },
-        )
-        .await?;
+            })
+            .await?;
         if revoked {
             self.save_player_account_to_redb(&account);
         }
@@ -2256,9 +2245,7 @@ impl PlayerDb {
 
         if con.exists(&acc_key).await? {
             let account = Self::update_account_atomic(&mut con, &acc_key, |account| {
-                let leader = preferred_leader
-                    .clone()
-                    .or_else(|| kda.leader.clone());
+                let leader = preferred_leader.clone().or_else(|| kda.leader.clone());
                 account.profile.record_match_with_leader(
                     won,
                     kda.defeats,
@@ -2613,7 +2600,10 @@ impl PlayerDb {
             }
         }
 
-        let human_count = participant_records.iter().filter(|player| !player.is_bot).count();
+        let human_count = participant_records
+            .iter()
+            .filter(|player| !player.is_bot)
+            .count();
         let rating_is_hvn = mode == "HumansVsNations";
         let mut record = MatchRecord {
             schema_version: 1,
@@ -2690,8 +2680,7 @@ fn is_valid_account_id(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        DISPLAY_NAME_MAX_CHARS, generated_display_name, is_valid_account_id,
-        normalize_display_name,
+        DISPLAY_NAME_MAX_CHARS, generated_display_name, is_valid_account_id, normalize_display_name,
     };
 
     #[test]

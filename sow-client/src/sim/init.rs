@@ -11,10 +11,7 @@ pub(crate) struct SimInitOpts {
 }
 
 impl SowApp {
-    pub(crate) fn handle_sim_init(
-        &mut self,
-        opts: SimInitOpts,
-    ) {
+    pub(crate) fn handle_sim_init(&mut self, opts: SimInitOpts) {
         let config = opts.config;
         let seed = opts.seed;
         let map_bytes = opts.map_bytes;
@@ -57,7 +54,15 @@ impl SowApp {
 
         for p in players {
             if p.player_type == sow_core::player::PlayerType::Human {
-                new_engine.spawn_human(p.id, p.name, p.color, p.team, p.civilization, p.leader, p.is_ai_controlled);
+                new_engine.spawn_human(sow_core::engine::HumanSpawn {
+                    player_id: p.id,
+                    name: p.name,
+                    color: p.color,
+                    team: p.team,
+                    civilization: p.civilization,
+                    leader: p.leader,
+                    is_ai_controlled: p.is_ai_controlled,
+                });
             }
         }
 

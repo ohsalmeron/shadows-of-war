@@ -1,20 +1,19 @@
 pub(crate) fn compute_visibility(
-    map_w: u32,
-    map_h: u32,
+    map_size: (u32, u32),
     my_id: u16,
     owners: &[u16],
     snap: &sow_core::protocol::SimSnapshot,
-    _terrain: &[u8],
     fog_explored: &mut sow_core::bitset::DenseBitSet,
     fog_visible: &mut sow_core::bitset::DenseBitSet,
     fog_of_war_enabled: bool,
 ) {
+    let (map_w, map_h) = map_size;
     if map_w == 0 || map_h == 0 {
         return;
     }
 
     let my_player = snap.players.iter().find(|p| p.id == my_id);
-    let is_alive = my_player.map_or(false, |p| p.alive);
+    let is_alive = my_player.is_some_and(|p| p.alive);
     let game_over = matches!(snap.phase, sow_core::game::GamePhase::GameOver);
 
     if !fog_of_war_enabled || my_id == 0 || game_over || !is_alive {
@@ -59,7 +58,7 @@ pub(crate) fn compute_visibility(
             ally_or_self[pid as usize] = true;
             continue;
         }
-        let is_allied = my_player.map_or(false, |mp| mp.alliances.contains(&pid));
+        let is_allied = my_player.is_some_and(|mp| mp.alliances.contains(&pid));
         let is_teammate = {
             let my_team = my_player.and_then(|mp| mp.team);
             let other_team = p.team;
@@ -102,8 +101,8 @@ pub(crate) fn compute_visibility(
     };
 
     thread_local! {
-        static TEMP_OWNERS_CACHE: std::cell::RefCell<Vec<u16>> = std::cell::RefCell::new(Vec::new());
-        static PLAYER_TILE_COUNTS_CACHE: std::cell::RefCell<Vec<usize>> = std::cell::RefCell::new(Vec::new());
+        static TEMP_OWNERS_CACHE: std::cell::RefCell<Vec<u16>> = const { std::cell::RefCell::new(Vec::new()) };
+        static PLAYER_TILE_COUNTS_CACHE: std::cell::RefCell<Vec<usize>> = const { std::cell::RefCell::new(Vec::new()) };
     }
 
     // Pre-apply snapshot's dirty tiles to a temporary copy of owners to ensure

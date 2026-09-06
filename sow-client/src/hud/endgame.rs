@@ -48,34 +48,35 @@ impl SowApp {
                         text_subtitle = strings.winner_emerged.replace("{}", &winner_name);
                     }
                 }
-            } else if let Some(me) = snap.players.iter().find(|p| p.id == my_id) {
-                if !me.alive && me.has_spawned && !self.ui.is_spectating {
-                    endgame_active = true;
-                    is_player_defeat = true;
-                    is_victory = false;
-                    text_title = strings.defeat_title.clone();
-                    text_subtitle = strings.defeat_subtitle.clone();
-                }
+            } else if let Some(me) = snap.players.iter().find(|p| p.id == my_id)
+                && !me.alive
+                && me.has_spawned
+                && !self.ui.is_spectating
+            {
+                endgame_active = true;
+                is_player_defeat = true;
+                is_victory = false;
+                text_title = strings.defeat_title.clone();
+                text_subtitle = strings.defeat_subtitle.clone();
             }
         }
 
         if endgame_active {
-            if self.ui.reward_cache.is_none() {
-                if let Some(snap) = &self.sim.current_snapshot
-                    && let Some(me) = snap.players.iter().find(|p| p.id == my_id)
-                {
-                    self.ui.reward_cache = Some(sow_data::rewards::calculate(
-                        sow_data::rewards::RewardInput {
-                            won: is_victory,
-                            players_defeated: self.progress_session_defeats.players,
-                            empires_defeated: self.progress_session_defeats.empires,
-                            tribes_defeated: self.progress_session_defeats.tribes,
-                            kills: me.kills,
-                            assists: me.assists,
-                            ..Default::default()
-                        },
-                    ));
-                }
+            if self.ui.reward_cache.is_none()
+                && let Some(snap) = &self.sim.current_snapshot
+                && let Some(me) = snap.players.iter().find(|p| p.id == my_id)
+            {
+                self.ui.reward_cache = Some(sow_data::rewards::calculate(
+                    sow_data::rewards::RewardInput {
+                        won: is_victory,
+                        players_defeated: self.progress_session_defeats.players,
+                        empires_defeated: self.progress_session_defeats.empires,
+                        tribes_defeated: self.progress_session_defeats.tribes,
+                        kills: me.kills,
+                        assists: me.assists,
+                        ..Default::default()
+                    },
+                ));
             }
             if self.ui.endgame_cache.is_none() {
                 if is_victory {
@@ -243,25 +244,18 @@ impl SowApp {
                             .font(FontId::proportional(subtitle_size)),
                     );
 
-                    if let Some(snap) = &self.sim.current_snapshot {
-                        if let Some(me) = snap.players.iter().find(|p| p.id == my_id) {
-                            if me.kills > 0 || me.deaths > 0 || me.assists > 0 {
-                                ui.add_space(space_mid);
-                                let kda_text = format!(
-                                    "K / D / A:  {} / {} / {}",
-                                    me.kills, me.deaths, me.assists
-                                );
-                                ui.label(
-                                    RichText::new(kda_text)
-                                        .color(Color32::WHITE.linear_multiply(alpha))
-                                        .font(FontId::monospace(if is_mobile {
-                                            14.0
-                                        } else {
-                                            18.0
-                                        })),
-                                );
-                            }
-                        }
+                    if let Some(snap) = &self.sim.current_snapshot
+                        && let Some(me) = snap.players.iter().find(|p| p.id == my_id)
+                        && (me.kills > 0 || me.deaths > 0 || me.assists > 0)
+                    {
+                        ui.add_space(space_mid);
+                        let kda_text =
+                            format!("K / D / A:  {} / {} / {}", me.kills, me.deaths, me.assists);
+                        ui.label(
+                            RichText::new(kda_text)
+                                .color(Color32::WHITE.linear_multiply(alpha))
+                                .font(FontId::monospace(if is_mobile { 14.0 } else { 18.0 })),
+                        );
                     }
 
                     if let Some(reward) = self.ui.reward_cache {
@@ -272,13 +266,21 @@ impl SowApp {
                                 ui.label(
                                     RichText::new("MATCH REWARDS")
                                         .color(Color32::GRAY.linear_multiply(alpha))
-                                        .font(FontId::monospace(if is_mobile { 12.0 } else { 14.0 })),
+                                        .font(FontId::monospace(if is_mobile {
+                                            12.0
+                                        } else {
+                                            14.0
+                                        })),
                                 );
                                 ui.horizontal_wrapped(|ui| {
                                     ui.label(
                                         RichText::new(format!("+{} XP", reward.xp))
                                             .color(Color32::WHITE.linear_multiply(alpha))
-                                            .font(FontId::monospace(if is_mobile { 14.0 } else { 17.0 })),
+                                            .font(FontId::monospace(if is_mobile {
+                                                14.0
+                                            } else {
+                                                17.0
+                                            })),
                                     );
                                     ui.separator();
                                     ui.label(
@@ -287,20 +289,35 @@ impl SowApp {
                                             reward.leader_xp,
                                             self.ui.app.main_menu_state.selected_leader.name()
                                         ))
-                                        .color(Color32::from_rgb(255, 190, 80).linear_multiply(alpha))
-                                        .font(FontId::monospace(if is_mobile { 14.0 } else { 17.0 })),
+                                        .color(
+                                            Color32::from_rgb(255, 190, 80).linear_multiply(alpha),
+                                        )
+                                        .font(
+                                            FontId::monospace(if is_mobile { 14.0 } else { 17.0 }),
+                                        ),
                                     );
                                     ui.separator();
                                     ui.label(
                                         RichText::new(format!("+{} Laurels", reward.laurels))
-                                            .color(Color32::from_rgb(220, 180, 90).linear_multiply(alpha))
-                                            .font(FontId::monospace(if is_mobile { 14.0 } else { 17.0 })),
+                                            .color(
+                                                Color32::from_rgb(220, 180, 90)
+                                                    .linear_multiply(alpha),
+                                            )
+                                            .font(FontId::monospace(if is_mobile {
+                                                14.0
+                                            } else {
+                                                17.0
+                                            })),
                                     );
                                 });
                                 ui.label(
                                     RichText::new(format!("ACCOUNT LEVEL {}", self.progress.level))
                                         .color(Color32::LIGHT_GRAY.linear_multiply(alpha))
-                                        .font(FontId::monospace(if is_mobile { 11.0 } else { 13.0 })),
+                                        .font(FontId::monospace(if is_mobile {
+                                            11.0
+                                        } else {
+                                            13.0
+                                        })),
                                 );
                             });
                         });
@@ -331,10 +348,10 @@ impl SowApp {
                             let req = sow_core::protocol::ClientMessage::RematchRequest {
                                 lobby_id: self.sim.my_lobby_id.unwrap_or(0),
                             };
-                            if let Ok(json) = bincode::serialize(&req) {
-                                if let Some(c) = self.net.client.as_ref() {
-                                    c.send(json);
-                                }
+                            if let Ok(json) = bincode::serialize(&req)
+                                && let Some(c) = self.net.client.as_ref()
+                            {
+                                c.send(json);
                             }
                         } else {
                             self.net.client = None;

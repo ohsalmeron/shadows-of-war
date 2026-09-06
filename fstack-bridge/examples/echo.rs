@@ -10,11 +10,11 @@
 //!
 //! `--proc-id` selects this process's RSS queue/core (see config.ini `lcore_mask`).
 
+use fstack_bridge::ffi::{ff_zc_mbuf, EVFILT_READ, EV_ADD, EV_EOF, EV_ERROR};
 use fstack_bridge::{ev_set, kevent};
-use fstack_bridge::ffi::{ff_zc_mbuf, EV_ADD, EV_EOF, EV_ERROR, EVFILT_READ};
 use libc::{
-    c_int, c_void, sockaddr_in, socklen_t, AF_INET, INADDR_ANY, SOCK_STREAM, SOL_SOCKET,
-    SO_REUSEADDR, FIONBIO,
+    c_int, c_void, sockaddr_in, socklen_t, AF_INET, FIONBIO, INADDR_ANY, SOCK_STREAM, SOL_SOCKET,
+    SO_REUSEADDR,
 };
 use std::ffi::CString;
 use std::mem;
@@ -93,11 +93,7 @@ fn main() {
         addr.sin_family = AF_INET as u16;
         addr.sin_port = LISTEN_PORT.to_be();
         addr.sin_addr.s_addr = INADDR_ANY;
-        if fstack_bridge::ff_bind(
-            LISTEN_FD,
-            &addr,
-            mem::size_of::<sockaddr_in>() as socklen_t,
-        ) < 0
+        if fstack_bridge::ff_bind(LISTEN_FD, &addr, mem::size_of::<sockaddr_in>() as socklen_t) < 0
         {
             eprintln!("[echo] ff_bind :{} failed", LISTEN_PORT);
             std::process::exit(1);
@@ -108,7 +104,15 @@ fn main() {
         }
 
         let mut kev: kevent = mem::zeroed();
-        ev_set(&mut kev, LISTEN_FD as usize, EVFILT_READ, EV_ADD, 0, MAX_EVENTS as i64, ptr::null_mut());
+        ev_set(
+            &mut kev,
+            LISTEN_FD as usize,
+            EVFILT_READ,
+            EV_ADD,
+            0,
+            MAX_EVENTS as i64,
+            ptr::null_mut(),
+        );
         fstack_bridge::ff_kevent(KQ, &kev, 1, ptr::null_mut(), 0, ptr::null());
 
         eprintln!("[BOOT] listening on :{}, entering ff_run", LISTEN_PORT);
@@ -130,8 +134,7 @@ unsafe extern "C" fn loop_cb(_arg: *mut c_void) -> c_int {
         return -1;
     }
 
-    for i in 0..nevents as usize {
-        let ev = &events[i];
+    for ev in events.iter().take(nevents as usize) {
         if ev.flags & EV_ERROR != 0 {
             continue;
         }
@@ -156,7 +159,15 @@ unsafe extern "C" fn loop_cb(_arg: *mut c_void) -> c_int {
                 fstack_bridge::ff_ioctl(nfd, FIONBIO as libc::c_ulong, &on);
                 ACCEPTS += 1;
                 let mut kev: kevent = mem::zeroed();
-                ev_set(&mut kev, nfd as usize, EVFILT_READ, EV_ADD, 0, 0, ptr::null_mut());
+                ev_set(
+                    &mut kev,
+                    nfd as usize,
+                    EVFILT_READ,
+                    EV_ADD,
+                    0,
+                    0,
+                    ptr::null_mut(),
+                );
                 fstack_bridge::ff_kevent(KQ, &kev, 1, ptr::null_mut(), 0, ptr::null());
                 available -= 1;
             }
@@ -184,7 +195,11 @@ unsafe fn echo_zero_copy(fd: c_int) {
             let mut seg_len: c_int = 0;
             while fstack_bridge::ff_zc_mbuf_segment(&mut zm, &mut seg_ptr, &mut seg_len) > 0 {
                 if seg_len > 0 && !seg_ptr.is_null() {
-                    fstack_bridge::ff_zc_mbuf_write(&mut sendbuf, seg_ptr as *const libc::c_char, seg_len);
+                    fstack_bridge::ff_zc_mbuf_write(
+                        &mut sendbuf,
+                        seg_ptr as *const libc::c_char,
+                        seg_len,
+                    );
                 }
             }
             fstack_bridge::ff_zc_send(fd, sendbuf.bsd_mbuf, total as libc::size_t);
@@ -201,9 +216,12 @@ unsafe fn echo_zero_copy(fd: c_int) {
 unsafe fn maybe_stats() {
     if ACCEPTS.saturating_sub(LAST_STATS_AT) >= 25 {
         LAST_STATS_AT = ACCEPTS;
+        let accepts = ACCEPTS;
+        let echoes = ECHOES;
+        let recv_bytes = RECV_BYTES;
         eprintln!(
             "[stats] accepts={} echoes={} recv_bytes={}",
-            ACCEPTS, ECHOES, RECV_BYTES
+            accepts, echoes, recv_bytes
         );
     }
 }

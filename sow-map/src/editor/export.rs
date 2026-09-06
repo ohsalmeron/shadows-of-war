@@ -30,14 +30,15 @@ impl MapEditorSession {
             pixels[i] = [0, 0, blue, 255];
         }
 
-        let thumb_pixels = pixels.clone();
-        let args = crate::generator::GeneratorArgs {
-            width: self.width,
-            height: self.height,
-            pixels,
-            remove_small: true,
-        };
-        let result = crate::generator::generate_map(args)?;
+        use image::{DynamicImage, RgbaImage};
+        let rgba = RgbaImage::from_raw(
+            self.width,
+            self.height,
+            pixels.iter().flat_map(|p| p.iter().copied()).collect(),
+        )
+        .ok_or_else(|| "map pixel buffer size mismatch".to_string())?;
+        let result =
+            crate::image_pipeline::generate_from_rgba(&rgba, Some((self.width, self.height)))?;
 
         let spawns: Vec<sow_core::map_file::MapSpawn> = self
             .editor_ui
@@ -68,16 +69,6 @@ impl MapEditorSession {
             writer.flush().map_err(|e| e.to_string())?;
         }
 
-        use image::{DynamicImage, RgbaImage};
-        let rgba = RgbaImage::from_raw(
-            self.width,
-            self.height,
-            thumb_pixels
-                .iter()
-                .flat_map(|p| p.iter().copied())
-                .collect(),
-        )
-        .ok_or_else(|| "thumbnail pixel buffer size mismatch".to_string())?;
         let thumb_webp =
             crate::thumbnail::encode_square_thumbnail_webp(&DynamicImage::ImageRgba8(rgba))?;
 

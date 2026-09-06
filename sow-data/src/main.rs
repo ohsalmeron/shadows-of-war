@@ -223,11 +223,7 @@ async fn handle_unlock_leader(
         .verify_anonymous_secret(&account_id, &payload.auth_secret)
         .await
     {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse { error }),
-        )
-            .into_response();
+        return (StatusCode::UNAUTHORIZED, Json(ErrorResponse { error })).into_response();
     }
     match state
         .db
@@ -254,7 +250,9 @@ async fn handle_unlock_skin(
         Ok(None) => {
             return (
                 StatusCode::NOT_FOUND,
-                Json(ErrorResponse { error: "profile not found".to_string() }),
+                Json(ErrorResponse {
+                    error: "profile not found".to_string(),
+                }),
             )
                 .into_response();
         }
@@ -262,7 +260,9 @@ async fn handle_unlock_skin(
             error!("skin unlock profile lookup failed: {error}");
             return (
                 StatusCode::SERVICE_UNAVAILABLE,
-                Json(ErrorResponse { error: "profile unavailable".to_string() }),
+                Json(ErrorResponse {
+                    error: "profile unavailable".to_string(),
+                }),
             )
                 .into_response();
         }
@@ -274,11 +274,17 @@ async fn handle_unlock_skin(
     {
         return (StatusCode::UNAUTHORIZED, Json(ErrorResponse { error })).into_response();
     }
-    match state.db.unlock_skin_with_gems(&account_id, &payload.skin_id).await {
+    match state
+        .db
+        .unlock_skin_with_gems(&account_id, &payload.skin_id)
+        .await
+    {
         Ok(account) => (StatusCode::OK, Json(account.without_auth_secret())).into_response(),
         Err(error) => (
             StatusCode::CONFLICT,
-            Json(ErrorResponse { error: error.to_string() }),
+            Json(ErrorResponse {
+                error: error.to_string(),
+            }),
         )
             .into_response(),
     }
@@ -293,7 +299,9 @@ async fn handle_equip_skin(
         Ok(None) => {
             return (
                 StatusCode::NOT_FOUND,
-                Json(ErrorResponse { error: "profile not found".to_string() }),
+                Json(ErrorResponse {
+                    error: "profile not found".to_string(),
+                }),
             )
                 .into_response();
         }
@@ -301,7 +309,9 @@ async fn handle_equip_skin(
             error!("skin equip profile lookup failed: {error}");
             return (
                 StatusCode::SERVICE_UNAVAILABLE,
-                Json(ErrorResponse { error: "profile unavailable".to_string() }),
+                Json(ErrorResponse {
+                    error: "profile unavailable".to_string(),
+                }),
             )
                 .into_response();
         }
@@ -321,7 +331,9 @@ async fn handle_equip_skin(
         Ok(account) => (StatusCode::OK, Json(account.without_auth_secret())).into_response(),
         Err(error) => (
             StatusCode::CONFLICT,
-            Json(ErrorResponse { error: error.to_string() }),
+            Json(ErrorResponse {
+                error: error.to_string(),
+            }),
         )
             .into_response(),
     }
@@ -407,7 +419,7 @@ async fn handle_revenuecat_webhook(
                 )
                     .into_response()
             }
-            Ok((_account, false)) => (
+            Ok((_, false)) => (
                 StatusCode::OK,
                 Json(serde_json::json!({ "status": "duplicate" })),
             )
@@ -442,7 +454,7 @@ async fn handle_revenuecat_webhook(
             )
                 .into_response()
         }
-        Ok((_account, false)) => (
+        Ok((_, false)) => (
             StatusCode::OK,
             Json(serde_json::json!({ "status": "duplicate" })),
         )
@@ -615,11 +627,7 @@ async fn handle_blocks(
             .into_response();
     }
     match sow_data::moderation::blocked_ids(&state.db, account_id).await {
-        Ok(blocked_ids) => (
-            StatusCode::OK,
-            Json(BlocksResponse { blocked_ids }),
-        )
-            .into_response(),
+        Ok(blocked_ids) => (StatusCode::OK, Json(BlocksResponse { blocked_ids })).into_response(),
         Err(error) => {
             error!("[moderation] blocks read failed: {error}");
             (
@@ -786,11 +794,7 @@ async fn handle_internal_verify(
         }
         Err(e) => {
             warn!("[identity] verify failed provider={provider}: {e}");
-            (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse { error: e }),
-            )
-                .into_response()
+            (StatusCode::UNAUTHORIZED, Json(ErrorResponse { error: e })).into_response()
         }
     }
 }
@@ -1069,7 +1073,11 @@ async fn handle_public_profile_search(
     let limit = query.limit.unwrap_or(20).clamp(1, 20);
     let cursor = query.cursor.unwrap_or(0).min(10_000);
     let query_text = query.q.as_deref().unwrap_or("");
-    match state.db.search_public_profiles(query_text, cursor.saturating_add(limit)).await {
+    match state
+        .db
+        .search_public_profiles(query_text, cursor.saturating_add(limit))
+        .await
+    {
         Ok(mut profiles) => {
             if cursor < profiles.len() {
                 profiles.drain(..cursor);
@@ -1079,16 +1087,22 @@ async fn handle_public_profile_search(
             profiles.truncate(limit);
             let has_next = profiles.len() == limit;
             let next_cursor = has_next.then_some(cursor.saturating_add(limit));
-            (StatusCode::OK, Json(serde_json::json!({
-                "items": profiles,
-                "next_cursor": next_cursor
-            }))).into_response()
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "items": profiles,
+                    "next_cursor": next_cursor
+                })),
+            )
+                .into_response()
         }
         Err(error) => {
             error!("public profile search failed: {error}");
             (
                 StatusCode::SERVICE_UNAVAILABLE,
-                Json(ErrorResponse { error: "profiles unavailable".to_string() }),
+                Json(ErrorResponse {
+                    error: "profiles unavailable".to_string(),
+                }),
             )
                 .into_response()
         }
@@ -1103,14 +1117,18 @@ async fn handle_public_profile(
         Ok(Some(profile)) => (StatusCode::OK, Json(profile)).into_response(),
         Ok(None) => (
             StatusCode::NOT_FOUND,
-            Json(ErrorResponse { error: "profile not found".to_string() }),
+            Json(ErrorResponse {
+                error: "profile not found".to_string(),
+            }),
         )
             .into_response(),
         Err(error) => {
             error!("public profile lookup failed: {error}");
             (
                 StatusCode::SERVICE_UNAVAILABLE,
-                Json(ErrorResponse { error: "profiles unavailable".to_string() }),
+                Json(ErrorResponse {
+                    error: "profiles unavailable".to_string(),
+                }),
             )
                 .into_response()
         }
@@ -1139,22 +1157,29 @@ async fn handle_public_match_history(
                 None
             };
             let items = history.into_iter().take(limit).collect::<Vec<_>>();
-            (StatusCode::OK, Json(serde_json::json!({
-                "items": items,
-                "next_cursor": next_cursor,
-            })))
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "items": items,
+                    "next_cursor": next_cursor,
+                })),
+            )
                 .into_response()
         }
         Ok(None) => (
             StatusCode::NOT_FOUND,
-            Json(ErrorResponse { error: "profile not found".to_string() }),
+            Json(ErrorResponse {
+                error: "profile not found".to_string(),
+            }),
         )
             .into_response(),
         Err(error) => {
             error!("public match history failed: {error}");
             (
                 StatusCode::SERVICE_UNAVAILABLE,
-                Json(ErrorResponse { error: "match history unavailable".to_string() }),
+                Json(ErrorResponse {
+                    error: "match history unavailable".to_string(),
+                }),
             )
                 .into_response()
         }
@@ -1169,14 +1194,18 @@ async fn handle_public_match_detail(
         Ok(Some(detail)) => (StatusCode::OK, Json(detail)).into_response(),
         Ok(None) => (
             StatusCode::NOT_FOUND,
-            Json(ErrorResponse { error: "match not found".to_string() }),
+            Json(ErrorResponse {
+                error: "match not found".to_string(),
+            }),
         )
             .into_response(),
         Err(error) => {
             error!("public match detail failed: {error}");
             (
                 StatusCode::SERVICE_UNAVAILABLE,
-                Json(ErrorResponse { error: "match unavailable".to_string() }),
+                Json(ErrorResponse {
+                    error: "match unavailable".to_string(),
+                }),
             )
                 .into_response()
         }
@@ -1188,17 +1217,25 @@ async fn handle_public_profile_seasons(
     Path(public_id): Path<String>,
 ) -> impl IntoResponse {
     match state.db.public_ratings(&public_id).await {
-        Ok(Some(ratings)) => (StatusCode::OK, Json(serde_json::json!({ "items": ratings }))).into_response(),
+        Ok(Some(ratings)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "items": ratings })),
+        )
+            .into_response(),
         Ok(None) => (
             StatusCode::NOT_FOUND,
-            Json(ErrorResponse { error: "profile not found".to_string() }),
+            Json(ErrorResponse {
+                error: "profile not found".to_string(),
+            }),
         )
             .into_response(),
         Err(error) => {
             error!("public profile seasons failed: {error}");
             (
                 StatusCode::SERVICE_UNAVAILABLE,
-                Json(ErrorResponse { error: "seasons unavailable".to_string() }),
+                Json(ErrorResponse {
+                    error: "seasons unavailable".to_string(),
+                }),
             )
                 .into_response()
         }
@@ -1212,17 +1249,22 @@ async fn handle_current_season(State(state): State<Arc<AppState>>) -> impl IntoR
                 .iter()
                 .find(|season| season.id == sow_data::profile::CURRENT_SEASON_ID)
                 .cloned();
-            (StatusCode::OK, Json(serde_json::json!({
-                "season": current,
-                "items": seasons,
-            })))
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "season": current,
+                    "items": seasons,
+                })),
+            )
                 .into_response()
         }
         Err(error) => {
             error!("current season lookup failed: {error}");
             (
                 StatusCode::SERVICE_UNAVAILABLE,
-                Json(ErrorResponse { error: "seasons unavailable".to_string() }),
+                Json(ErrorResponse {
+                    error: "seasons unavailable".to_string(),
+                }),
             )
                 .into_response()
         }
@@ -1237,7 +1279,9 @@ async fn handle_public_leaderboard(
     if season_id != sow_data::profile::CURRENT_SEASON_ID {
         return (
             StatusCode::NOT_FOUND,
-            Json(ErrorResponse { error: "season not found".to_string() }),
+            Json(ErrorResponse {
+                error: "season not found".to_string(),
+            }),
         )
             .into_response();
     }
@@ -1245,7 +1289,11 @@ async fn handle_public_leaderboard(
     let mode = query.mode.as_deref().unwrap_or("FFA");
     let limit = query.limit.unwrap_or(100).clamp(1, 100);
     let cursor = query.cursor.unwrap_or(0).min(10_000);
-    match state.db.public_leaderboard(queue, mode, cursor.saturating_add(limit)).await {
+    match state
+        .db
+        .public_leaderboard(queue, mode, cursor.saturating_add(limit))
+        .await
+    {
         Ok(mut items) => {
             if cursor < items.len() {
                 items.drain(..cursor);
@@ -1255,20 +1303,25 @@ async fn handle_public_leaderboard(
             items.truncate(limit);
             let has_next = items.len() == limit;
             let next_cursor = has_next.then_some(cursor.saturating_add(limit));
-            (StatusCode::OK, Json(serde_json::json!({
-                "season_id": season_id,
-                "queue": queue,
-                "mode": mode,
-                "items": items,
-                "next_cursor": next_cursor,
-            })))
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "season_id": season_id,
+                    "queue": queue,
+                    "mode": mode,
+                    "items": items,
+                    "next_cursor": next_cursor,
+                })),
+            )
                 .into_response()
         }
         Err(error) => {
             error!("public leaderboard lookup failed: {error}");
             (
                 StatusCode::SERVICE_UNAVAILABLE,
-                Json(ErrorResponse { error: "leaderboard unavailable".to_string() }),
+                Json(ErrorResponse {
+                    error: "leaderboard unavailable".to_string(),
+                }),
             )
                 .into_response()
         }
@@ -1455,7 +1508,10 @@ async fn handle_anonymous_profile(
                 .ensure_auth_secret(&account.id)
                 .await
                 .map_err(|e| {
-                    warn!("[identity] secret mint failed for {}: {e}", account_hint(Some(&account.id)));
+                    warn!(
+                        "[identity] secret mint failed for {}: {e}",
+                        account_hint(Some(&account.id))
+                    );
                 })
                 .ok()
                 .flatten();
@@ -1526,8 +1582,7 @@ async fn handle_anonymous_display_name(
             let message = error.to_string();
             let status = if message.contains("invalid secret") {
                 StatusCode::UNAUTHORIZED
-            } else if message.contains("account_id must") || message.contains("display_name")
-            {
+            } else if message.contains("account_id must") || message.contains("display_name") {
                 StatusCode::BAD_REQUEST
             } else {
                 StatusCode::NOT_FOUND
@@ -1562,11 +1617,7 @@ async fn handle_anonymous_tutorial_complete(
                 "[tutorial] completion rejected id={request_id} account={} error={error}",
                 account_hint(Some(&payload.account_id))
             );
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(ErrorResponse { error }),
-            )
-                .into_response();
+            return (StatusCode::UNAUTHORIZED, Json(ErrorResponse { error })).into_response();
         }
     };
 
@@ -1607,7 +1658,8 @@ async fn resolve_external_id(
         let Some(token) = auth_token else {
             return Err("WOU-ID requests require X-Platform-Auth token".into());
         };
-        let wou_url = std::env::var("WOU_ID_URL").unwrap_or_else(|_| "http://127.0.0.1:25570".into());
+        let wou_url =
+            std::env::var("WOU_ID_URL").unwrap_or_else(|_| "http://127.0.0.1:25570".into());
         let client = if let Ok(resolve_ip) = std::env::var("WOU_ID_RESOLVE_IP") {
             let host = reqwest::Url::parse(&wou_url)
                 .ok()
@@ -1632,7 +1684,10 @@ async fn resolve_external_id(
         // middleware and returns the canonical account id without sharing the
         // signing secret with Shadows of War.
         let res = client
-            .get(format!("{}/api/v1/inventory/me", wou_url.trim_end_matches('/')))
+            .get(format!(
+                "{}/api/v1/inventory/me",
+                wou_url.trim_end_matches('/')
+            ))
             .header("Authorization", format!("Bearer {token}"))
             .timeout(std::time::Duration::from_secs(3))
             .send()

@@ -31,13 +31,15 @@ sow-map = { workspace = true, features = ["generator", "osm"] }
 serde = { workspace = true }
 image = { workspace = true }
 serde_json = { workspace = true }
+sha2.workspace = true
+toml.workspace = true
 log = { workspace = true }
 tokio = { workspace = true, features = ["net"] }
 reqwest = { workspace = true, features = ["blocking"] }
 bincode.workspace = true
 clap = { workspace = true }
 env_logger = { workspace = true }
-tokio-tungstenite = { workspace = true }
+tokio-tungstenite = { workspace = true, features = ["connect", "native-tls"] }
 futures-util = { workspace = true }
 rand = { workspace = true }
 brotli = { workspace = true }

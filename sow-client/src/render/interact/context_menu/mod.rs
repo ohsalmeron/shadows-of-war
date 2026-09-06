@@ -79,14 +79,12 @@ impl SowApp {
             };
 
             let mut alliance_timer = 0;
-            if is_allied {
-                if let Some(my_snap) = my_snapshot {
-                    alliance_timer = my_snap
-                        .alliance_timers
-                        .get(&owner_id)
-                        .copied()
-                        .unwrap_or(2400);
-                }
+            if is_allied && let Some(my_snap) = my_snapshot {
+                alliance_timer = my_snap
+                    .alliance_timers
+                    .get(&owner_id)
+                    .copied()
+                    .unwrap_or(2400);
             }
             let is_in_renewal_window = is_allied && alliance_timer <= 300;
 
@@ -365,8 +363,8 @@ impl SowApp {
                         .map(|t| t.elapsed().as_secs_f32())
                         .unwrap_or(0.0);
 
-                    if is_open_target && scale > 0.3 && opened_duration > 0.1 && ui.input(|i| i.pointer.primary_clicked()) {
-                        if let Some(click_pos) = ui.input(|i| i.pointer.press_origin().or(i.pointer.interact_pos())) {
+                    if is_open_target && scale > 0.3 && opened_duration > 0.1 && ui.input(|i| i.pointer.primary_clicked())
+                        && let Some(click_pos) = ui.input(|i| i.pointer.press_origin().or(i.pointer.interact_pos())) {
                             let (clicked_center, clicked_sector) = get_zone_at(click_pos);
                             if clicked_center {
                                 // Clicked Center (Spawn / Attack)
@@ -533,7 +531,6 @@ impl SowApp {
                                 self.input.map_context_menu = None;
                             }
                         }
-                    }
 
                     self.draw_context_menu_popovers(
                         ui,
@@ -580,35 +577,31 @@ impl SowApp {
                 && progress > 0.15
                 && opened_duration > 0.1
                 && ctx.input(|i| i.pointer.primary_clicked())
-            {
-                if let Some(pos) =
+                && let Some(pos) =
                     ctx.input(|i| i.pointer.press_origin().or(i.pointer.interact_pos()))
+            {
+                let mut click_absorbed = false;
+                if radial_build_active
+                    && is_own_territory
+                    && let Some(r) =
+                        ctx.data(|d| d.get_temp::<egui::Rect>(egui::Id::new("build_popover_rect")))
+                    && r.contains(pos)
                 {
-                    let mut click_absorbed = false;
-                    if radial_build_active && is_own_territory {
-                        if let Some(r) = ctx
-                            .data(|d| d.get_temp::<egui::Rect>(egui::Id::new("build_popover_rect")))
-                        {
-                            if r.contains(pos) {
-                                click_absorbed = true;
-                            }
-                        }
-                    }
-                    if radial_missile_active && !is_own_territory {
-                        if let Some(r) = ctx.data(|d| {
-                            d.get_temp::<egui::Rect>(egui::Id::new("missile_popover_rect"))
-                        }) {
-                            if r.contains(pos) {
-                                click_absorbed = true;
-                            }
-                        }
-                    }
+                    click_absorbed = true;
+                }
+                if radial_missile_active
+                    && !is_own_territory
+                    && let Some(r) = ctx
+                        .data(|d| d.get_temp::<egui::Rect>(egui::Id::new("missile_popover_rect")))
+                    && r.contains(pos)
+                {
+                    click_absorbed = true;
+                }
 
-                    if !click_absorbed && pos.distance(center) > 115.0 * scale.max(0.3) {
-                        ctx.data_mut(|d| d.insert_temp(build_active_id, false));
-                        ctx.data_mut(|d| d.insert_temp(missile_active_id, false));
-                        self.input.map_context_menu = None;
-                    }
+                if !click_absorbed && pos.distance(center) > 115.0 * scale.max(0.3) {
+                    ctx.data_mut(|d| d.insert_temp(build_active_id, false));
+                    ctx.data_mut(|d| d.insert_temp(missile_active_id, false));
+                    self.input.map_context_menu = None;
                 }
             }
 

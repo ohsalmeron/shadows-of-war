@@ -119,7 +119,7 @@ pub struct MoverScene {
     map_w: u32,
 }
 
-pub struct MoverPackParams<'a> {
+pub struct MoverPackParams {
     pub camera_x: f32,
     pub camera_y: f32,
     pub camera_zoom: f32,
@@ -127,7 +127,6 @@ pub struct MoverPackParams<'a> {
     pub screen_h: f32,
     pub alpha: f32,
     pub linear_alpha: f32,
-    pub selected_warships: &'a [u64],
 }
 
 impl MoverScene {
@@ -232,10 +231,7 @@ impl MoverScene {
         let rgb = players
             .iter()
             .find(|p| p.id == fleet.owner_id)
-            .map(|p| {
-                p.team
-                    .map_or(p.color, sow_core::player::team_territory_rgb)
-            })
+            .map(|p| p.team.map_or(p.color, sow_core::player::team_territory_rgb))
             .unwrap_or([0.5, 0.5, 0.5]);
         let color = [rgb[0], rgb[1], rgb[2], 1.0];
         let trail_color = [
@@ -388,7 +384,7 @@ impl MoverScene {
         &self,
         points: &[[f32; 2]],
         head: [f32; 2],
-        params: &MoverPackParams<'_>,
+        params: &MoverPackParams,
         bounds: (f32, f32, f32, f32),
     ) -> bool {
         let (min_sx, min_sy, max_sx, max_sy) = bounds;
@@ -406,7 +402,7 @@ impl MoverScene {
 
     pub fn pack_gpu(
         &self,
-        params: &MoverPackParams<'_>,
+        params: &MoverPackParams,
         renderer: &mut crate::render::gpu::MoverRenderer,
     ) {
         renderer.begin_frame();
@@ -488,17 +484,15 @@ impl MoverScene {
                     && max_sy >= -margin
                     && min_sy <= params.screen_h + margin;
 
-                if arc_visible {
-                    if let Some(path) = self.arc_paths.get(id) {
-                        sample_nuke_arc(path, self.map_w, progress, &mut arc_scratch);
-                        self.push_trail_segments(
-                            renderer,
-                            &arc_scratch,
-                            world_pos,
-                            trail_width,
-                            slot.trail_color,
-                        );
-                    }
+                if arc_visible && let Some(path) = self.arc_paths.get(id) {
+                    sample_nuke_arc(path, self.map_w, progress, &mut arc_scratch);
+                    self.push_trail_segments(
+                        renderer,
+                        &arc_scratch,
+                        world_pos,
+                        trail_width,
+                        slot.trail_color,
+                    );
                 }
             } else if slot.trail_len > 0 {
                 let start = slot.trail_start as usize;
@@ -574,8 +568,6 @@ impl MoverScene {
                 uv_rect: slot.sprite.uv_rect(),
                 height: height * NUKE_ARC_LIFT,
             });
-
-            let _ = params.selected_warships.contains(id);
         }
     }
 }
@@ -584,20 +576,6 @@ impl Default for MoverScene {
     fn default() -> Self {
         Self::new()
     }
-}
-
-pub fn update_and_pack(
-    scene: &mut MoverScene,
-    snap: &SimSnapshot,
-    map_w: u32,
-    renderer: &mut crate::render::gpu::MoverRenderer,
-    params: MoverPackParams<'_>,
-    fog_of_war_enabled: bool,
-    my_id: u16,
-    fog_visible: &sow_core::bitset::DenseBitSet,
-) {
-    scene.on_snapshot(snap, map_w, fog_of_war_enabled, my_id, fog_visible);
-    scene.pack_gpu(&params, renderer);
 }
 
 pub fn interp_alpha(time: &crate::app::TimeState, now: Instant) -> f32 {

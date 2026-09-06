@@ -43,7 +43,7 @@ pub(super) fn paint_bunker_effects(
     {
         let radius_world = config.bunker_range as f32;
         let elapsed = time.start_time.elapsed().as_secs_f32();
-        let laser_opts = bunker_laser_vfx_opts(painter.ctx());
+        let laser_opts = bunker_laser_vfx_opts();
         let low_detail = input.screen_w < 900.0 || sf > 1.5 || zoom_scaled < 1.0;
 
         let player_color = if b.owner_id != 0 {
@@ -231,32 +231,32 @@ pub(super) fn paint_bunker_effects(
         let wave_t = (elapsed * 0.8) % 1.0;
         let wave_range = current_range * wave_t;
         let wave_alpha = ((1.0 - wave_t) * 140.0) as u8;
-        if wave_range > 0.5 {
-            if let Some(t_idx) = b.tile_idx {
-                let map_w = sim.map_w as i32;
-                let b_col = (t_idx as i32) % map_w;
-                let b_row = (t_idx as i32) / map_w;
-                let wave_stroke = egui::Color32::from_rgba_unmultiplied(
-                    player_color.r(),
-                    player_color.g(),
-                    player_color.b(),
-                    wave_alpha,
-                );
-                paint_bunker_hex_range(
-                    painter,
-                    b_col,
-                    b_row,
-                    wave_range,
-                    WorldPaintCamera {
-                        camera_x: input.camera_x,
-                        camera_y: input.camera_y,
-                        camera_zoom: input.camera_zoom,
-                        sf,
-                    },
-                    egui::Color32::TRANSPARENT,
-                    wave_stroke,
-                );
-            }
+        if wave_range > 0.5
+            && let Some(t_idx) = b.tile_idx
+        {
+            let map_w = sim.map_w as i32;
+            let b_col = (t_idx as i32) % map_w;
+            let b_row = (t_idx as i32) / map_w;
+            let wave_stroke = egui::Color32::from_rgba_unmultiplied(
+                player_color.r(),
+                player_color.g(),
+                player_color.b(),
+                wave_alpha,
+            );
+            paint_bunker_hex_range(
+                painter,
+                b_col,
+                b_row,
+                wave_range,
+                WorldPaintCamera {
+                    camera_x: input.camera_x,
+                    camera_y: input.camera_y,
+                    camera_zoom: input.camera_zoom,
+                    sf,
+                },
+                egui::Color32::TRANSPARENT,
+                wave_stroke,
+            );
         }
 
         // 2. Draw solid glowing square outline around the Bunker itself for visual confirmation
@@ -298,23 +298,6 @@ pub(super) fn paint_bunker_effects(
                 .map(|mr| mr.owners.as_slice())
                 .unwrap_or(&[]);
             let terrain = ctx.terrain;
-
-            let _get_owner = |col: i32, row: i32| -> u16 {
-                if col >= 0 && row >= 0 && col < map_w && row < map_h {
-                    owners[(row as usize * map_w as usize) + col as usize]
-                } else {
-                    0
-                }
-            };
-
-            let _get_is_land = |col: i32, row: i32| -> bool {
-                if col >= 0 && row >= 0 && col < map_w && row < map_h {
-                    let t_byte = terrain[(row as usize * map_w as usize) + col as usize];
-                    (t_byte & 0x80) != 0
-                } else {
-                    false
-                }
-            };
 
             let hex_dist = |c1: i32, r1: i32, c2: i32, r2: i32| -> i32 {
                 sow_core::building::hex_distance(c1, r1, c2, r2)

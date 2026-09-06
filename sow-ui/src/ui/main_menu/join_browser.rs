@@ -78,7 +78,11 @@ fn paint_lock_icon(painter: &egui::Painter, rect: egui::Rect, color: Color32) {
         ],
         stroke,
     );
-    painter.circle_filled(egui::pos2(rect.center().x, rect.center().y + 3.0), 1.2, color);
+    painter.circle_filled(
+        egui::pos2(rect.center().x, rect.center().y + 3.0),
+        1.2,
+        color,
+    );
 }
 
 /// Inline Public Games list — FFA + Teams sections filtered by [`MainMenuState::join_mode_filter`],

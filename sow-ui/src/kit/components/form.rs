@@ -9,7 +9,11 @@ pub fn checkbox(ui: &mut Ui, value: &mut bool, label: &str) -> Response {
     let galley = ui.painter().layout_no_wrap(
         label.to_owned(),
         font_id,
-        if *value { Color32::WHITE } else { palette::text_muted() },
+        if *value {
+            Color32::WHITE
+        } else {
+            palette::text_muted()
+        },
     );
 
     let total_w = box_size + 8.0 + galley.size().x;
@@ -29,11 +33,20 @@ pub fn checkbox(ui: &mut Ui, value: &mut bool, label: &str) -> Response {
         );
 
         let (fill, stroke) = if *value {
-            (palette::neon_cyan(), Stroke::new(1.0_f32, palette::neon_cyan_hover()))
+            (
+                palette::neon_cyan(),
+                Stroke::new(1.0_f32, palette::neon_cyan_hover()),
+            )
         } else if response.hovered() {
-            (palette::button_hovered(), Stroke::new(1.0_f32, palette::neon_cyan_glow()))
+            (
+                palette::button_hovered(),
+                Stroke::new(1.0_f32, palette::neon_cyan_glow()),
+            )
         } else {
-            (palette::field_bg(), Stroke::new(1.0_f32, palette::field_border()))
+            (
+                palette::field_bg(),
+                Stroke::new(1.0_f32, palette::field_border()),
+            )
         };
 
         ui.painter().rect(
@@ -48,11 +61,16 @@ pub fn checkbox(ui: &mut Ui, value: &mut bool, label: &str) -> Response {
             let p1 = box_rect.min + vec2(4.0, 9.0);
             let p2 = box_rect.min + vec2(7.0, 13.0);
             let p3 = box_rect.min + vec2(14.0, 5.0);
-            ui.painter().line_segment([p1, p2], Stroke::new(2.0_f32, Color32::BLACK));
-            ui.painter().line_segment([p2, p3], Stroke::new(2.0_f32, Color32::BLACK));
+            ui.painter()
+                .line_segment([p1, p2], Stroke::new(2.0_f32, Color32::BLACK));
+            ui.painter()
+                .line_segment([p2, p3], Stroke::new(2.0_f32, Color32::BLACK));
         }
 
-        let text_pos = egui::pos2(box_rect.max.x + 8.0, rect.top() + (total_h - galley.size().y) * 0.5);
+        let text_pos = egui::pos2(
+            box_rect.max.x + 8.0,
+            rect.top() + (total_h - galley.size().y) * 0.5,
+        );
         if *value {
             sow_ui_kit::theme::paint_premium_glow_galley(
                 ui.painter(),
@@ -69,12 +87,7 @@ pub fn checkbox(ui: &mut Ui, value: &mut bool, label: &str) -> Response {
     response
 }
 
-pub fn slider(
-    ui: &mut Ui,
-    value: &mut f32,
-    range: RangeInclusive<f32>,
-    label: &str,
-) -> Response {
+pub fn slider(ui: &mut Ui, value: &mut f32, range: RangeInclusive<f32>, label: &str) -> Response {
     ui.horizontal(|ui| {
         ui.label(label);
         ui.add(egui::Slider::new(value, range).show_value(true))

@@ -60,8 +60,14 @@ mod tests {
 
     #[test]
     fn routes_dynamic_port_by_modulo() {
-        assert_eq!(tcp_destination_queue(&packet(1024, false), 4, 1024), Some(0));
-        assert_eq!(tcp_destination_queue(&packet(65535, false), 4, 1024), Some(3));
+        assert_eq!(
+            tcp_destination_queue(&packet(1024, false), 4, 1024),
+            Some(0)
+        );
+        assert_eq!(
+            tcp_destination_queue(&packet(65535, false), 4, 1024),
+            Some(3)
+        );
         assert_eq!(tcp_destination_queue(&packet(1023, false), 4, 1024), None);
     }
 

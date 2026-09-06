@@ -3,8 +3,7 @@ use sow_i18n::Language;
 
 use super::super::state::HudState;
 
-pub(in crate::ui::hud) fn draw_troop_bar(
-    ui: &mut egui::Ui,
+struct TroopBar {
     rect: egui::Rect,
     troops: f64,
     max_troops: f64,
@@ -12,7 +11,18 @@ pub(in crate::ui::hud) fn draw_troop_bar(
     compact: bool,
     is_increasing: bool,
     radius: egui::CornerRadius,
-) {
+}
+
+fn draw_troop_bar(ui: &mut egui::Ui, bar: TroopBar) {
+    let TroopBar {
+        rect,
+        troops,
+        max_troops,
+        troop_rate,
+        compact,
+        is_increasing,
+        radius,
+    } = bar;
     let base = max_troops.max(1.0);
     let green_pct = (troops / base).clamp(0.0, 1.0) as f32;
 
@@ -264,13 +274,15 @@ pub(in crate::ui::hud) fn draw_persistent_header(
         let (rect, _) = ui.allocate_exact_size(vec2(bar_w, bar_h), egui::Sense::hover());
         draw_troop_bar(
             ui,
-            rect,
-            state.troops,
-            state.max_troops,
-            troop_rate,
-            compact,
-            is_increasing,
-            sow_ui_kit::theme::radius::inline(),
+            TroopBar {
+                rect,
+                troops: state.troops,
+                max_troops: state.max_troops,
+                troop_rate,
+                compact,
+                is_increasing,
+                radius: sow_ui_kit::theme::radius::inline(),
+            },
         );
 
         // Gold frame

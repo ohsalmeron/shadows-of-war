@@ -20,7 +20,7 @@
 //!   the next incoming packet).
 
 use crate::ffi::{
-    ev_set, ff_zc_mbuf, kevent, EV_ADD, EV_DELETE, EV_ERROR, EV_EOF, EVFILT_READ, EVFILT_WRITE,
+    ev_set, ff_zc_mbuf, kevent, EVFILT_READ, EVFILT_WRITE, EV_ADD, EV_DELETE, EV_EOF, EV_ERROR,
 };
 use bytes::{Buf, BytesMut};
 use crossbeam_queue::ArrayQueue;
@@ -68,8 +68,13 @@ pub enum Ev {
         /// Monotonic timestamp captured immediately after ff_accept returned.
         accepted_at: std::time::Instant,
     },
-    Data { fd: c_int, guard: ZcRxGuard },
-    Closed { fd: c_int },
+    Data {
+        fd: c_int,
+        guard: ZcRxGuard,
+    },
+    Closed {
+        fd: c_int,
+    },
 }
 
 /// TX ring item: tokio -> ff_run.
@@ -98,7 +103,9 @@ pub enum Cmd {
         generation: u64,
     },
     /// Return a received mbuf for freeing on the ff_run thread (ff_zc_recv_free).
-    Recycle { zm: ff_zc_mbuf },
+    Recycle {
+        zm: ff_zc_mbuf,
+    },
 }
 
 // Sound: the mbuf pointer is only ever dereferenced on the ff_run thread; the
@@ -235,8 +242,17 @@ impl ZcRxGuard {
         self.zm.len as usize
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Segments aliasing the DPDK receive buffer. Must be consumed before the
     /// guard is dropped (the mbuf is recycled on drop).
+    ///
+    /// # Safety
+    ///
+    /// The returned slices borrow the receive buffer owned by this guard and
+    /// must not outlive it or be used after the guard is dropped.
     pub unsafe fn segments(&mut self) -> Vec<&[u8]> {
         let mut out = Vec::new();
         let mut p: *mut c_void = ptr::null_mut();
@@ -455,7 +471,9 @@ static CLOSE_HOOK: OnceLock<CloseHook> = OnceLock::new();
 static mut PEERS: Option<HashMap<c_int, SocketAddr>> = None;
 
 pub fn set_accept_filter(filter: AcceptFilter) -> Result<(), &'static str> {
-    ACCEPT_FILTER.set(filter).map_err(|_| "accept filter already set")
+    ACCEPT_FILTER
+        .set(filter)
+        .map_err(|_| "accept filter already set")
 }
 
 pub fn set_close_hook(hook: CloseHook) -> Result<(), &'static str> {
@@ -714,7 +732,12 @@ impl AsyncWrite for Conn {
         let mut b = take_buf_with_capacity(buf.len());
         b.extend_from_slice(buf);
         let len = b.len();
-        match try_enqueue_send(self.fd, self.generation, b, Some(Arc::clone(&self.tx_pending))) {
+        match try_enqueue_send(
+            self.fd,
+            self.generation,
+            b,
+            Some(Arc::clone(&self.tx_pending)),
+        ) {
             Ok(()) => {
                 self.tx_pending.fetch_add(len, Ordering::AcqRel);
                 Poll::Ready(Ok(buf.len()))
@@ -755,6 +778,11 @@ impl AsyncWrite for Conn {
 // ---- driver (ff_run loop callback — the only ff_* caller) ------------------
 
 /// Loop callback passed to `ff_run`. Do NOT call from tokio.
+///
+/// # Safety
+///
+/// Must be called only by the dedicated `ff_run` thread while the bridge
+/// globals and DPDK runtime are initialized.
 pub unsafe extern "C" fn driver_cb(_arg: *mut c_void) -> c_int {
     // 1. Service worker commands first (send/close/recycle) and actively flush pending sends.
     drain_tx();
@@ -779,8 +807,7 @@ pub unsafe extern "C" fn driver_cb(_arg: *mut c_void) -> c_int {
         return -1;
     }
 
-    for i in 0..nevents as usize {
-        let ev = &events[i];
+    for ev in events.iter().take(nevents as usize) {
         if ev.flags & EV_ERROR != 0 {
             continue;
         }
@@ -862,7 +889,15 @@ unsafe fn accept_pending(listener_fd: c_int) {
         fd_gen().insert(nfd, ACCEPTS);
         peers().insert(nfd, peer);
         let mut kev: kevent = mem::zeroed();
-        ev_set(&mut kev, nfd as usize, EVFILT_READ, EV_ADD, 0, 0, ptr::null_mut());
+        ev_set(
+            &mut kev,
+            nfd as usize,
+            EVFILT_READ,
+            EV_ADD,
+            0,
+            0,
+            ptr::null_mut(),
+        );
         crate::ffi::ff_kevent(KQ, &kev, 1, ptr::null_mut(), 0, ptr::null());
         push_rx(Ev::Accept {
             fd: nfd,
@@ -901,7 +936,15 @@ unsafe fn close_listener_fd(fd: c_int) {
         return;
     }
     let mut kev: kevent = mem::zeroed();
-    ev_set(&mut kev, fd as usize, EVFILT_READ, EV_DELETE, 0, 0, ptr::null_mut());
+    ev_set(
+        &mut kev,
+        fd as usize,
+        EVFILT_READ,
+        EV_DELETE,
+        0,
+        0,
+        ptr::null_mut(),
+    );
     crate::ffi::ff_kevent(KQ, &kev, 1, ptr::null_mut(), 0, ptr::null());
     crate::ffi::ff_close(fd);
     if let Some(listeners) = LISTENERS.as_mut() {
@@ -931,7 +974,9 @@ unsafe fn bind_listener(port: u16) -> Result<bool, String> {
     );
     if crate::ffi::ff_ioctl(fd, FIONBIO as libc::c_ulong, &on) < 0 {
         crate::ffi::ff_close(fd);
-        return Err(format!("ff_ioctl nonblocking failed for listener port {port}"));
+        return Err(format!(
+            "ff_ioctl nonblocking failed for listener port {port}"
+        ));
     }
 
     let mut addr: sockaddr_in = mem::zeroed();
@@ -948,7 +993,15 @@ unsafe fn bind_listener(port: u16) -> Result<bool, String> {
     }
 
     let mut kev: kevent = mem::zeroed();
-    ev_set(&mut kev, fd as usize, EVFILT_READ, EV_ADD, 0, 512, ptr::null_mut());
+    ev_set(
+        &mut kev,
+        fd as usize,
+        EVFILT_READ,
+        EV_ADD,
+        0,
+        512,
+        ptr::null_mut(),
+    );
     if crate::ffi::ff_kevent(KQ, &kev, 1, ptr::null_mut(), 0, ptr::null()) < 0 {
         crate::ffi::ff_close(fd);
         return Err(format!("ff_kevent failed for listener port {port}"));
@@ -1035,7 +1088,9 @@ unsafe fn push_rx(ev: Ev) {
                             reject_accepted_fd(fd);
                         }
                         Ev::Closed { fd } => {
-                            eprintln!("[bridge] RX delivery budget exhausted; dropping close fd={fd}");
+                            eprintln!(
+                                "[bridge] RX delivery budget exhausted; dropping close fd={fd}"
+                            );
                         }
                     }
                 } else {
@@ -1091,9 +1146,7 @@ unsafe fn drain_tx() {
                     if has_pending_send(fd) {
                         // Already backlogged: preserve FIFO order by pushing to the back of the queue
                         if !park_send(fd, generation, buf, tx_pending) {
-                            eprintln!(
-                                "[bridge] pending TX byte budget exhausted; closing fd={fd}"
-                            );
+                            eprintln!("[bridge] pending TX byte budget exhausted; closing fd={fd}");
                             close_fd(fd);
                         }
                     } else {
@@ -1228,13 +1281,29 @@ unsafe fn flush_write(fd: c_int) {
 
 unsafe fn ensure_write_event(fd: c_int) {
     let mut kev: kevent = mem::zeroed();
-    ev_set(&mut kev, fd as usize, EVFILT_WRITE, EV_ADD, 0, 0, ptr::null_mut());
+    ev_set(
+        &mut kev,
+        fd as usize,
+        EVFILT_WRITE,
+        EV_ADD,
+        0,
+        0,
+        ptr::null_mut(),
+    );
     crate::ffi::ff_kevent(KQ, &kev, 1, ptr::null_mut(), 0, ptr::null());
 }
 
 unsafe fn remove_write_event(fd: c_int) {
     let mut kev: kevent = mem::zeroed();
-    ev_set(&mut kev, fd as usize, EVFILT_WRITE, EV_DELETE, 0, 0, ptr::null_mut());
+    ev_set(
+        &mut kev,
+        fd as usize,
+        EVFILT_WRITE,
+        EV_DELETE,
+        0,
+        0,
+        ptr::null_mut(),
+    );
     crate::ffi::ff_kevent(KQ, &kev, 1, ptr::null_mut(), 0, ptr::null());
 }
 
@@ -1249,7 +1318,12 @@ unsafe fn maybe_stats(_idle: bool) {
         None => true,
         _ => false,
     };
-    if should_log && (ECHOES != LAST_ECHOES || RECV_BYTES != LAST_RECV_BYTES || PENDING_SEND_BYTES > 0 || ACCEPTS != LAST_STATS_AT) {
+    if should_log
+        && (ECHOES != LAST_ECHOES
+            || RECV_BYTES != LAST_RECV_BYTES
+            || PENDING_SEND_BYTES > 0
+            || ACCEPTS != LAST_STATS_AT)
+    {
         LAST_STATS_INSTANT = Some(now);
         LAST_STATS_AT = ACCEPTS;
         let echo_delta = ECHOES.saturating_sub(LAST_ECHOES);

@@ -319,20 +319,6 @@ impl Default for GameConfig {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Poka-yoke: the tutorial firewall defaults **closed**. Every match that does not explicitly
-    /// opt in — solo skirmishes and all server-sent multiplayer configs — is non-tutorial, so the
-    /// tutorial UI can never derive itself onto a normal game. Flip this default and the build goes
-    /// red, on purpose.
-    #[test]
-    fn tutorial_firewall_defaults_closed() {
-        assert!(!GameConfig::default().tutorial);
-    }
-}
-
 /// Per-attack tile cap before momentum: doubles each 10× troops above `reference_troops`,
 /// anchored at `at_reference` for stacks at or below that troop count (see field docs).
 pub fn max_tiles_cap_for_troops(troops: f64, cfg: &GameConfig) -> f64 {
@@ -370,4 +356,18 @@ pub fn max_tiles_cap_for_troops(troops: f64, cfg: &GameConfig) -> f64 {
         sane_ceiling
     };
     curve.min(sane_ceiling).max(1.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Poka-yoke: the tutorial firewall defaults **closed**. Every match that does not explicitly
+    /// opt in — solo skirmishes and all server-sent multiplayer configs — is non-tutorial, so the
+    /// tutorial UI can never derive itself onto a normal game. Flip this default and the build goes
+    /// red, on purpose.
+    #[test]
+    fn tutorial_firewall_defaults_closed() {
+        assert!(!GameConfig::default().tutorial);
+    }
 }
