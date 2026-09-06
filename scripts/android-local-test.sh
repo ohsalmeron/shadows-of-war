@@ -15,7 +15,7 @@ if [[ -f "$ROOT/sow-dist/.env" ]]; then
 fi
 
 VARIANT="${SOW_ANDROID_TEST_VARIANT:-debug}"
-ACTIVITY="com.google.androidbrowserhelper.trusted.LauncherActivity"
+ACTIVITY="com.shadowsofwar.PlayGamesLauncherActivity"
 OUT="$ROOT/dist/android/local-test"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 LOG="$OUT/logcat-$STAMP.txt"
@@ -32,7 +32,31 @@ die() {
 
 [[ "${SOW_REVENUECAT_ANDROID_PUBLIC_KEY:-}" == goog_* ]] \
     || die "SOW_REVENUECAT_ANDROID_PUBLIC_KEY must be a Google Play public key"
+missing_play_games=()
+for key in \
+    SOW_PLAY_GAMES_APP_ID \
+    SOW_PLAY_GAMES_WEB_CLIENT_ID \
+    SOW_PLAY_GAMES_WEB_CLIENT_SECRET \
+    SOW_PLAY_GAMES_MATCH_EVENT_ID \
+    SOW_PLAY_GAMES_FIRST_VICTORY_ACHIEVEMENT_ID \
+    SOW_PLAY_GAMES_BATTLE_HARDENED_ACHIEVEMENT_ID \
+    SOW_PLAY_GAMES_VICTORY_MARCH_ACHIEVEMENT_ID \
+    SOW_PLAY_GAMES_LAUREL_HOARD_ACHIEVEMENT_ID \
+    SOW_PLAY_GAMES_FIRST_COMMAND_ACHIEVEMENT_ID \
+    SOW_PLAY_GAMES_COMMANDER_VICTORIOUS_ACHIEVEMENT_ID \
+    SOW_PLAY_GAMES_VETERAN_COMMANDER_ACHIEVEMENT_ID \
+    SOW_PLAY_GAMES_BANNER_COLLECTOR_ACHIEVEMENT_ID \
+    SOW_PLAY_GAMES_LEADER_PATH_ACHIEVEMENT_ID \
+    SOW_PLAY_GAMES_VICTORIES_LEADERBOARD_ID; do
+    [[ -n "${!key:-}" ]] || missing_play_games+=("$key")
+done
+if ((${#missing_play_games[@]} > 0)); then
+    die "missing Play Games configuration in sow-dist/.env: ${missing_play_games[*]}"
+fi
 REVENUECAT_KEY_ARG="-PrevenueCatAndroidPublicKey=$SOW_REVENUECAT_ANDROID_PUBLIC_KEY"
+PLAY_GAMES_APP_ID_ARG="-PsowPlayGamesAppId=$SOW_PLAY_GAMES_APP_ID"
+PLAY_GAMES_CLIENT_ID_ARG="-PsowPlayGamesWebClientId=$SOW_PLAY_GAMES_WEB_CLIENT_ID"
+PLAY_GAMES_AUTH_URL_ARG="-PsowPlayGamesAuthUrl=${SOW_PLAY_GAMES_AUTH_URL:-https://shadowsofwar.io/api}"
 
 case "$VARIANT" in
     release)
@@ -75,7 +99,8 @@ if [[ "$SKIP_BUILD" != "1" ]]; then
         cd "$PROJECT"
         ./gradlew --warning-mode fail --no-daemon --no-configuration-cache "$TASK" \
             "-PsowVersionName=$VERSION_NAME" "-PsowVersionCode=$VERSION_CODE" \
-            "-PsowWebCacheBust=$WEB_CACHE_BUST" "$REVENUECAT_KEY_ARG"
+            "-PsowWebCacheBust=$WEB_CACHE_BUST" "$REVENUECAT_KEY_ARG" \
+            "$PLAY_GAMES_APP_ID_ARG" "$PLAY_GAMES_CLIENT_ID_ARG" "$PLAY_GAMES_AUTH_URL_ARG"
     )
 fi
 
@@ -117,6 +142,11 @@ if [ -n "$APP_PID" ]; then
     awk -v pid="$APP_PID" '$3 == pid {print}' "$LOG" >"$APP_LOG"
     # These are Android/Samsung graphics-runtime diagnostics, not app code.
     awk -v pid="$APP_PID" '$3 == pid && $5 ~ /^[WE]$/ && $6 !~ /^(Zygote|Gralloc3|libEGL):?$/ && $0 !~ /Not starting debugger since process cannot load the jdwp agent/ && $0 !~ /Unknown bits set in runtime_flags/ {print}' "$LOG" >"$APP_WARNINGS"
+fi
+
+if ! rg -q 'SOW_PGS' "$APP_LOG"; then
+    echo "FAIL: Play Games startup produced no SOW_PGS diagnostic lines. Log: $APP_LOG" >&2
+    exit 1
 fi
 
 if [ -s "$APP_WARNINGS" ]; then

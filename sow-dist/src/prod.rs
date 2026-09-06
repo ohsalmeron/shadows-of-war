@@ -78,6 +78,20 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
     require_secret("SOW_DB_SECRET")?;
     require_secret("SOW_RELAY_CONTROL_SECRET")?;
     require_secret("SOW_REVENUECAT_WEBHOOK_SECRET")?;
+    require_config("SOW_PLAY_GAMES_APP_ID")?;
+    require_config("SOW_PLAY_GAMES_WEB_CLIENT_ID")?;
+    require_config("SOW_PLAY_GAMES_MATCH_EVENT_ID")?;
+    require_config("SOW_PLAY_GAMES_FIRST_VICTORY_ACHIEVEMENT_ID")?;
+    require_config("SOW_PLAY_GAMES_BATTLE_HARDENED_ACHIEVEMENT_ID")?;
+    require_config("SOW_PLAY_GAMES_VICTORY_MARCH_ACHIEVEMENT_ID")?;
+    require_config("SOW_PLAY_GAMES_LAUREL_HOARD_ACHIEVEMENT_ID")?;
+    require_config("SOW_PLAY_GAMES_FIRST_COMMAND_ACHIEVEMENT_ID")?;
+    require_config("SOW_PLAY_GAMES_COMMANDER_VICTORIOUS_ACHIEVEMENT_ID")?;
+    require_config("SOW_PLAY_GAMES_VETERAN_COMMANDER_ACHIEVEMENT_ID")?;
+    require_config("SOW_PLAY_GAMES_BANNER_COLLECTOR_ACHIEVEMENT_ID")?;
+    require_config("SOW_PLAY_GAMES_LEADER_PATH_ACHIEVEMENT_ID")?;
+    require_config("SOW_PLAY_GAMES_VICTORIES_LEADERBOARD_ID")?;
+    require_secret("SOW_PLAY_GAMES_WEB_CLIENT_SECRET")?;
     println!("==> 1/8 Preflight (read-only)");
     preflight(paths, &config)?;
     let version = version(paths, bump)?;
@@ -120,6 +134,10 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
     }
     if wou_id_config_drift(&config)? {
         println!("  runtime env drift: WOU_ID_URL/WOU_ID_RESOLVE_IP");
+        plan.database = true;
+    }
+    if play_games_config_drift(&config)? {
+        println!("  runtime env drift: Play Games Services configuration");
         plan.database = true;
     }
     println!("  plan: {plan:?}");
@@ -173,7 +191,10 @@ pub(super) fn execute(paths: &Paths, bump: bool) -> Result<()> {
 pub(super) fn execute_android(paths: &Paths) -> Result<()> {
     println!("==> 1/3 Preflight (read-only)");
     preflight_android(paths)?;
-    let version = version(paths, false)?;
+    // Every Android publication is a user-visible release. Keep the marketing
+    // version moving together with the Play versionCode instead of publishing
+    // a new AAB forever as the same versionName.
+    let version = version(paths, true)?;
     println!("==> Android {version}");
     let android_code = android_version_code(paths, &version, false)?;
 
@@ -188,6 +209,15 @@ pub(super) fn execute_android(paths: &Paths) -> Result<()> {
 }
 
 fn require_secret(key: &str) -> Result<()> {
+    let value =
+        env::var(key).with_context(|| format!("{key} must be provided via sow-dist/.env"))?;
+    if value.trim().is_empty() {
+        bail!("{key} must not be empty");
+    }
+    Ok(())
+}
+
+fn require_config(key: &str) -> Result<()> {
     let value =
         env::var(key).with_context(|| format!("{key} must be provided via sow-dist/.env"))?;
     if value.trim().is_empty() {
@@ -264,6 +294,19 @@ fn android_play_key_path() -> Option<PathBuf> {
     })
 }
 
+fn fastlane_bin() -> String {
+    if let Some(path) = env::var_os("SOW_FASTLANE") {
+        return PathBuf::from(path).to_string_lossy().into_owned();
+    }
+    if let Some(home) = env::var_os("HOME") {
+        let path = PathBuf::from(home).join(".local/share/gem/ruby/3.4.0/bin/fastlane");
+        if path.is_file() {
+            return path.to_string_lossy().into_owned();
+        }
+    }
+    "fastlane".to_string()
+}
+
 fn play_highest_android_version_code() -> Result<u32> {
     let Some(play_key) = android_play_key_path() else {
         return Ok(0);
@@ -274,12 +317,13 @@ fn play_highest_android_version_code() -> Result<u32> {
     let play_key = play_key
         .to_str()
         .context("SOW_PLAY_KEY path is not UTF-8")?;
+    let fastlane = fastlane_bin();
     let mut highest = 0;
     for track in ["internal", "alpha", "beta", "open", "production"] {
         let track_arg = format!("track:{track}");
         let key_arg = format!("json_key:{play_key}");
         let output = output(
-            "fastlane",
+            &fastlane,
             &[
                 "run",
                 "google_play_track_version_codes",
@@ -350,6 +394,12 @@ fn build_android(paths: &Paths, version: &str, version_code: u32) -> Result<()> 
         bail!("SOW_REVENUECAT_ANDROID_PUBLIC_KEY must be a Google Play public key");
     }
     let revenuecat_key_arg = format!("-PrevenueCatAndroidPublicKey={revenuecat_key}");
+    let play_games_app_id = env::var("SOW_PLAY_GAMES_APP_ID")
+        .context("SOW_PLAY_GAMES_APP_ID must be provided via sow-dist/.env")?;
+    let play_games_client_id = env::var("SOW_PLAY_GAMES_WEB_CLIENT_ID")
+        .context("SOW_PLAY_GAMES_WEB_CLIENT_ID must be provided via sow-dist/.env")?;
+    let play_games_app_id_arg = format!("-PsowPlayGamesAppId={play_games_app_id}");
+    let play_games_client_id_arg = format!("-PsowPlayGamesWebClientId={play_games_client_id}");
     run(
         "./gradlew",
         &[
@@ -362,6 +412,8 @@ fn build_android(paths: &Paths, version: &str, version_code: u32) -> Result<()> 
             &version_name_arg,
             &version_code_arg,
             &revenuecat_key_arg,
+            &play_games_app_id_arg,
+            &play_games_client_id_arg,
         ],
         Some(&project),
     )?;
@@ -555,7 +607,7 @@ fn preflight_android(paths: &Paths) -> Result<()> {
             dirty_files.len()
         );
     }
-    for command in ["adb", "fastlane", "java"] {
+    for command in ["adb", "java"] {
         if !Command::new("/bin/sh")
             .args(["-c", &format!("command -v {command} >/dev/null")])
             .status()?
@@ -563,6 +615,10 @@ fn preflight_android(paths: &Paths) -> Result<()> {
         {
             bail!("{command} is required for Android release");
         }
+    }
+    let fastlane = fastlane_bin();
+    if !Command::new(&fastlane).arg("--version").status()?.success() {
+        bail!("fastlane 2.238.0 is required for Android release");
     }
     require_file(
         &paths.root.join(ANDROID_PROJECT).join("gradlew"),
@@ -580,6 +636,8 @@ fn preflight_android(paths: &Paths) -> Result<()> {
     if !env::var("SOW_REVENUECAT_ANDROID_PUBLIC_KEY")?.starts_with("goog_") {
         bail!("SOW_REVENUECAT_ANDROID_PUBLIC_KEY must be a Google Play public key");
     }
+    require_config("SOW_PLAY_GAMES_APP_ID")?;
+    require_config("SOW_PLAY_GAMES_WEB_CLIENT_ID")?;
     validate_android_release_inputs(paths)
 }
 
@@ -1899,6 +1957,41 @@ fn wou_id_config_drift(config: &Config) -> Result<bool> {
     Ok(actual != expected)
 }
 
+fn play_games_config_drift(config: &Config) -> Result<bool> {
+    let expected_app_id = env::var("SOW_PLAY_GAMES_APP_ID")?;
+    let expected_client_id = env::var("SOW_PLAY_GAMES_WEB_CLIENT_ID")?;
+    let expected_event_id = env::var("SOW_PLAY_GAMES_MATCH_EVENT_ID").unwrap_or_default();
+    let expected_achievements = [
+        "SOW_PLAY_GAMES_FIRST_VICTORY_ACHIEVEMENT_ID",
+        "SOW_PLAY_GAMES_BATTLE_HARDENED_ACHIEVEMENT_ID",
+        "SOW_PLAY_GAMES_VICTORY_MARCH_ACHIEVEMENT_ID",
+        "SOW_PLAY_GAMES_LAUREL_HOARD_ACHIEVEMENT_ID",
+        "SOW_PLAY_GAMES_FIRST_COMMAND_ACHIEVEMENT_ID",
+        "SOW_PLAY_GAMES_COMMANDER_VICTORIOUS_ACHIEVEMENT_ID",
+        "SOW_PLAY_GAMES_VETERAN_COMMANDER_ACHIEVEMENT_ID",
+        "SOW_PLAY_GAMES_BANNER_COLLECTOR_ACHIEVEMENT_ID",
+        "SOW_PLAY_GAMES_LEADER_PATH_ACHIEVEMENT_ID",
+    ]
+    .into_iter()
+    .map(env::var)
+    .collect::<Result<Vec<_>, _>>()?;
+    let expected_leaderboard_id = env::var("SOW_PLAY_GAMES_VICTORIES_LEADERBOARD_ID")?;
+    let remote = output(
+        "ssh",
+        &[
+            &config.control_host,
+            r#"for f in /usr/local/etc/sow/sow.env /zroot/jails/sow-server/usr/local/etc/sow/sow.env /zroot/jails/sow-database/usr/local/etc/sow/sow.env; do if sudo test -f "$f"; then app=$(sudo awk -F= '$1=="SOW_PLAY_GAMES_APP_ID"{print $2}' "$f"); client=$(sudo awk -F= '$1=="SOW_PLAY_GAMES_WEB_CLIENT_ID"{print $2}' "$f"); event=$(sudo awk -F= '$1=="SOW_PLAY_GAMES_MATCH_EVENT_ID"{print $2}' "$f"); first=$(sudo awk -F= '$1=="SOW_PLAY_GAMES_FIRST_VICTORY_ACHIEVEMENT_ID"{print $2}' "$f"); battle=$(sudo awk -F= '$1=="SOW_PLAY_GAMES_BATTLE_HARDENED_ACHIEVEMENT_ID"{print $2}' "$f"); victory=$(sudo awk -F= '$1=="SOW_PLAY_GAMES_VICTORY_MARCH_ACHIEVEMENT_ID"{print $2}' "$f"); laurel=$(sudo awk -F= '$1=="SOW_PLAY_GAMES_LAUREL_HOARD_ACHIEVEMENT_ID"{print $2}' "$f"); command=$(sudo awk -F= '$1=="SOW_PLAY_GAMES_FIRST_COMMAND_ACHIEVEMENT_ID"{print $2}' "$f"); commander=$(sudo awk -F= '$1=="SOW_PLAY_GAMES_COMMANDER_VICTORIOUS_ACHIEVEMENT_ID"{print $2}' "$f"); veteran=$(sudo awk -F= '$1=="SOW_PLAY_GAMES_VETERAN_COMMANDER_ACHIEVEMENT_ID"{print $2}' "$f"); banner=$(sudo awk -F= '$1=="SOW_PLAY_GAMES_BANNER_COLLECTOR_ACHIEVEMENT_ID"{print $2}' "$f"); leader=$(sudo awk -F= '$1=="SOW_PLAY_GAMES_LEADER_PATH_ACHIEVEMENT_ID"{print $2}' "$f"); leaderboard=$(sudo awk -F= '$1=="SOW_PLAY_GAMES_VICTORIES_LEADERBOARD_ID"{print $2}' "$f"); secret=$(sudo awk -F= '$1=="SOW_PLAY_GAMES_WEB_CLIENT_SECRET" && length($2)>0{print "set"}' "$f"); printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' "$app" "$client" "$event" "$first" "$battle" "$victory" "$laurel" "$command" "$commander" "$veteran" "$banner" "$leader" "$leaderboard" "$secret"; fi; done"#,
+        ],
+    )?;
+    let mut expected_fields = vec![expected_app_id, expected_client_id, expected_event_id];
+    expected_fields.extend(expected_achievements);
+    expected_fields.push(expected_leaderboard_id);
+    expected_fields.push("set".to_string());
+    let expected_line = expected_fields.join("|");
+    let expected = (0..3).map(|_| expected_line.clone()).collect::<Vec<_>>();
+    Ok(remote.lines().map(str::trim).collect::<Vec<_>>() != expected)
+}
+
 fn parse_components(text: &str) -> BTreeMap<String, String> {
     text.lines()
         .filter_map(|line| line.split_once('='))
@@ -1957,6 +2050,14 @@ fn activate_control_host(
     } else {
         None
     };
+    let play_games_web_client_secret_file = if runtime_env {
+        let secret = env::var("SOW_PLAY_GAMES_WEB_CLIENT_SECRET")?;
+        let path = format!("/tmp/sow-play-games-client-secret-{}", std::process::id());
+        stage_secret(&config.control_host, &secret, &path)?;
+        Some(path)
+    } else {
+        None
+    };
     let relay_host = env_or("SOW_RELAY_HOST", "relay.shadowsofwar.io");
     let relay_workers = env::var("SOW_RELAY_WORKERS").unwrap_or_default();
     let relay_worker_count = env_or("SOW_RELAY_WORKER_COUNT", "4");
@@ -1968,9 +2069,25 @@ fn activate_control_host(
     let maps_catalog_path = env_or("SOW_MAPS_CATALOG_PATH", "/var/db/sow/server/catalog.bin");
     let wou_id_url = env_or("WOU_ID_URL", "https://id.worldofunreal.com");
     let wou_id_resolve_ip = env_or("WOU_ID_RESOLVE_IP", "104.21.87.220");
+    let play_games_app_id = env::var("SOW_PLAY_GAMES_APP_ID")?;
+    let play_games_client_id = env::var("SOW_PLAY_GAMES_WEB_CLIENT_ID")?;
+    let play_games_match_event_id = env::var("SOW_PLAY_GAMES_MATCH_EVENT_ID").unwrap_or_default();
+    let play_games_achievement_id = env::var("SOW_PLAY_GAMES_FIRST_VICTORY_ACHIEVEMENT_ID")?;
+    let play_games_battle_hardened_id = env::var("SOW_PLAY_GAMES_BATTLE_HARDENED_ACHIEVEMENT_ID")?;
+    let play_games_victory_march_id = env::var("SOW_PLAY_GAMES_VICTORY_MARCH_ACHIEVEMENT_ID")?;
+    let play_games_laurel_hoard_id = env::var("SOW_PLAY_GAMES_LAUREL_HOARD_ACHIEVEMENT_ID")?;
+    let play_games_first_command_id = env::var("SOW_PLAY_GAMES_FIRST_COMMAND_ACHIEVEMENT_ID")?;
+    let play_games_commander_victorious_id =
+        env::var("SOW_PLAY_GAMES_COMMANDER_VICTORIOUS_ACHIEVEMENT_ID")?;
+    let play_games_veteran_commander_id =
+        env::var("SOW_PLAY_GAMES_VETERAN_COMMANDER_ACHIEVEMENT_ID")?;
+    let play_games_banner_collector_id =
+        env::var("SOW_PLAY_GAMES_BANNER_COLLECTOR_ACHIEVEMENT_ID")?;
+    let play_games_leader_path_id = env::var("SOW_PLAY_GAMES_LEADER_PATH_ACHIEVEMENT_ID")?;
+    let play_games_leaderboard_id = env::var("SOW_PLAY_GAMES_VICTORIES_LEADERBOARD_ID")?;
     let env_update = if runtime_env {
         format!(
-            "mkdir -p /tmp/sow-env-update; for f in /usr/local/etc/sow/sow.env /zroot/jails/sow-server/usr/local/etc/sow/sow.env /zroot/jails/sow-database/usr/local/etc/sow/sow.env; do t=$(mktemp /tmp/sow.env.XXXXXX); if sudo test -f \"$f\"; then sudo grep -v -E '^(SOW_MAPS_ROOT|SOW_MAPS_CATALOG_PATH|SOW_DB_SECRET|SOW_RELAY_CONTROL_SECRET|SOW_RELAY_HOST|SOW_RELAY_WORKERS|SOW_RELAY_WORKER_COUNT|SOW_RELAY_MGMT_URL|SOW_RELAY_MGMT_SCHEME|SOW_RELAY_MGMT_RESOLVE_IP|SOW_RELAY_TICKETS_REQUIRED|WOU_ID_URL|WOU_ID_RESOLVE_IP)=|^[0-9a-fA-F]{{64}}$' \"$f\" > \"$t\" || true; else : > \"$t\"; fi; printf '%s\\n' SOW_MAPS_ROOT={maps_root} SOW_MAPS_CATALOG_PATH={maps_catalog_path} SOW_RELAY_HOST={relay_host} SOW_RELAY_WORKERS={relay_workers} SOW_RELAY_WORKER_COUNT={relay_worker_count} SOW_RELAY_MGMT_URL={relay_mgmt_url} SOW_RELAY_MGMT_SCHEME={relay_mgmt_scheme} SOW_RELAY_MGMT_RESOLVE_IP={relay_mgmt_resolve_ip} SOW_RELAY_TICKETS_REQUIRED={relay_tickets_required} WOU_ID_URL={wou_id_url} WOU_ID_RESOLVE_IP={wou_id_resolve_ip} | sudo tee -a \"$t\" >/dev/null; printf '%s' 'SOW_DB_SECRET=' | sudo tee -a \"$t\" >/dev/null; sudo cat {db_secret} | sudo tee -a \"$t\" >/dev/null; printf '\\n' | sudo tee -a \"$t\" >/dev/null; printf '%s' 'SOW_RELAY_CONTROL_SECRET=' | sudo tee -a \"$t\" >/dev/null; sudo cat {control_secret} | sudo tee -a \"$t\" >/dev/null; printf '\\n' | sudo tee -a \"$t\" >/dev/null; sudo install -o root -g wheel -m 0600 \"$t\" \"$f\"; rm -f \"$t\"; done; rm -rf /tmp/sow-env-update",
+            "mkdir -p /tmp/sow-env-update; for f in /usr/local/etc/sow/sow.env /zroot/jails/sow-server/usr/local/etc/sow/sow.env /zroot/jails/sow-database/usr/local/etc/sow/sow.env; do t=$(mktemp /tmp/sow.env.XXXXXX); if sudo test -f \"$f\"; then sudo grep -v -E '^(SOW_MAPS_ROOT|SOW_MAPS_CATALOG_PATH|SOW_DB_SECRET|SOW_RELAY_CONTROL_SECRET|SOW_RELAY_HOST|SOW_RELAY_WORKERS|SOW_RELAY_WORKER_COUNT|SOW_RELAY_MGMT_URL|SOW_RELAY_MGMT_SCHEME|SOW_RELAY_MGMT_RESOLVE_IP|SOW_RELAY_TICKETS_REQUIRED|WOU_ID_URL|WOU_ID_RESOLVE_IP|SOW_PLAY_GAMES_APP_ID|SOW_PLAY_GAMES_WEB_CLIENT_ID|SOW_PLAY_GAMES_MATCH_EVENT_ID|SOW_PLAY_GAMES_FIRST_VICTORY_ACHIEVEMENT_ID|SOW_PLAY_GAMES_BATTLE_HARDENED_ACHIEVEMENT_ID|SOW_PLAY_GAMES_VICTORY_MARCH_ACHIEVEMENT_ID|SOW_PLAY_GAMES_LAUREL_HOARD_ACHIEVEMENT_ID|SOW_PLAY_GAMES_FIRST_COMMAND_ACHIEVEMENT_ID|SOW_PLAY_GAMES_COMMANDER_VICTORIOUS_ACHIEVEMENT_ID|SOW_PLAY_GAMES_VETERAN_COMMANDER_ACHIEVEMENT_ID|SOW_PLAY_GAMES_BANNER_COLLECTOR_ACHIEVEMENT_ID|SOW_PLAY_GAMES_LEADER_PATH_ACHIEVEMENT_ID|SOW_PLAY_GAMES_VICTORIES_LEADERBOARD_ID|SOW_PLAY_GAMES_WEB_CLIENT_SECRET)=|^[0-9a-fA-F]{{64}}$' \"$f\" > \"$t\" || true; else : > \"$t\"; fi; printf '%s\\n' SOW_MAPS_ROOT={maps_root} SOW_MAPS_CATALOG_PATH={maps_catalog_path} SOW_RELAY_HOST={relay_host} SOW_RELAY_WORKERS={relay_workers} SOW_RELAY_WORKER_COUNT={relay_worker_count} SOW_RELAY_MGMT_URL={relay_mgmt_url} SOW_RELAY_MGMT_SCHEME={relay_mgmt_scheme} SOW_RELAY_MGMT_RESOLVE_IP={relay_mgmt_resolve_ip} SOW_RELAY_TICKETS_REQUIRED={relay_tickets_required} WOU_ID_URL={wou_id_url} WOU_ID_RESOLVE_IP={wou_id_resolve_ip} SOW_PLAY_GAMES_APP_ID={play_games_app_id} SOW_PLAY_GAMES_WEB_CLIENT_ID={play_games_client_id} SOW_PLAY_GAMES_MATCH_EVENT_ID={play_games_match_event_id} SOW_PLAY_GAMES_FIRST_VICTORY_ACHIEVEMENT_ID={play_games_achievement_id} SOW_PLAY_GAMES_BATTLE_HARDENED_ACHIEVEMENT_ID={play_games_battle_hardened_id} SOW_PLAY_GAMES_VICTORY_MARCH_ACHIEVEMENT_ID={play_games_victory_march_id} SOW_PLAY_GAMES_LAUREL_HOARD_ACHIEVEMENT_ID={play_games_laurel_hoard_id} SOW_PLAY_GAMES_FIRST_COMMAND_ACHIEVEMENT_ID={play_games_first_command_id} SOW_PLAY_GAMES_COMMANDER_VICTORIOUS_ACHIEVEMENT_ID={play_games_commander_victorious_id} SOW_PLAY_GAMES_VETERAN_COMMANDER_ACHIEVEMENT_ID={play_games_veteran_commander_id} SOW_PLAY_GAMES_BANNER_COLLECTOR_ACHIEVEMENT_ID={play_games_banner_collector_id} SOW_PLAY_GAMES_LEADER_PATH_ACHIEVEMENT_ID={play_games_leader_path_id} SOW_PLAY_GAMES_VICTORIES_LEADERBOARD_ID={play_games_leaderboard_id} | sudo tee -a \"$t\" >/dev/null; printf '%s' 'SOW_DB_SECRET=' | sudo tee -a \"$t\" >/dev/null; sudo cat {db_secret} | sudo tee -a \"$t\" >/dev/null; printf '\\n' | sudo tee -a \"$t\" >/dev/null; printf '%s' 'SOW_RELAY_CONTROL_SECRET=' | sudo tee -a \"$t\" >/dev/null; sudo cat {control_secret} | sudo tee -a \"$t\" >/dev/null; printf '\\n' | sudo tee -a \"$t\" >/dev/null; printf '%s' 'SOW_PLAY_GAMES_WEB_CLIENT_SECRET=' | sudo tee -a \"$t\" >/dev/null; sudo cat {play_games_secret} | sudo tee -a \"$t\" >/dev/null; printf '\\n' | sudo tee -a \"$t\" >/dev/null; sudo install -o root -g wheel -m 0600 \"$t\" \"$f\"; rm -f \"$t\"; done; rm -rf /tmp/sow-env-update",
             maps_root = shell_quote(&maps_root),
             maps_catalog_path = shell_quote(&maps_catalog_path),
             relay_host = shell_quote(&relay_host),
@@ -1982,8 +2099,22 @@ fn activate_control_host(
             relay_tickets_required = shell_quote(&relay_tickets_required),
             wou_id_url = shell_quote(&wou_id_url),
             wou_id_resolve_ip = shell_quote(&wou_id_resolve_ip),
+            play_games_app_id = shell_quote(&play_games_app_id),
+            play_games_client_id = shell_quote(&play_games_client_id),
+            play_games_match_event_id = shell_quote(&play_games_match_event_id),
+            play_games_achievement_id = shell_quote(&play_games_achievement_id),
+            play_games_battle_hardened_id = shell_quote(&play_games_battle_hardened_id),
+            play_games_victory_march_id = shell_quote(&play_games_victory_march_id),
+            play_games_laurel_hoard_id = shell_quote(&play_games_laurel_hoard_id),
+            play_games_first_command_id = shell_quote(&play_games_first_command_id),
+            play_games_commander_victorious_id = shell_quote(&play_games_commander_victorious_id),
+            play_games_veteran_commander_id = shell_quote(&play_games_veteran_commander_id),
+            play_games_banner_collector_id = shell_quote(&play_games_banner_collector_id),
+            play_games_leader_path_id = shell_quote(&play_games_leader_path_id),
+            play_games_leaderboard_id = shell_quote(&play_games_leaderboard_id),
             db_secret = shell_quote(db_secret_file.as_deref().unwrap()),
             control_secret = shell_quote(control_secret_file.as_deref().unwrap()),
+            play_games_secret = shell_quote(play_games_web_client_secret_file.as_deref().unwrap()),
         )
     } else {
         ":".to_string()
@@ -2000,6 +2131,7 @@ fn activate_control_host(
         db_secret_file.as_deref(),
         control_secret_file.as_deref(),
         revenuecat_webhook_file.as_deref(),
+        play_games_web_client_secret_file.as_deref(),
     ]
     .into_iter()
     .flatten()

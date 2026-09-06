@@ -1,85 +1,83 @@
-# AI Bots — diseño, parámetros y la saga de los 24h (ago 2026)
+# AI Bots — design, parameters, and the 24-hour saga (August 2026)
 
-Doc de referencia para todo trabajo futuro en los bots. La moraleja operativa primero:
+Reference for future bot work. Operational lessons first:
 
-> **Tres lecciones caras (cada una costó un deploy fallido):**
-> 1. Copiar reglas de OpenFront sin su ecología produce lo contrario. El "2× bar" de OF funciona
->    porque sus bots son zero-brain y se quedan chiquitos; las tribus de SoW crecen sin límite.
-> 2. Cualquier barra basada en ratio de tropas favorece estructuralmente a la tribu: las tribus
->    viven pegadas a su `max_troops` (nunca gastan), las naciones viven al 30-60% del suyo
->    (las sweep drenan tropas y cada conquista agranda el tope).
-> 3. Validar en el Lab ANTES de deploy, y verificar en cuál path de código corre el cambio
->    (el mapa mundo usa `random_spawn=false` → fase Spawning de `tick.rs`, no `spawn_human`).
+> **Three expensive lessons — each cost a failed deployment:**
+> 1. Copying OpenFront rules without its ecosystem produces the opposite result. OpenFront's
+>    2× bar works because its bots stay small; Shadows of War tribes grow without a cap.
+> 2. Any troop-ratio gate structurally favors tribes: tribes stay near `max_troops` because they
+>    rarely spend, while nations sit at 30–60% after sweeps drain troops and conquests raise the cap.
+> 3. Run the Lab before deployment and verify the live code path. World maps use
+>    `random_spawn=false`, so spawning runs through the Spawning phase in `tick.rs`, not `spawn_human`.
 
-## La cadena causal de la saga (26-28 ago 2026)
+## Causal chain (August 26–28, 2026)
 
-Cada fix destapó la pared siguiente. Orden cronológico:
+Each fix exposed the next failure:
 
-1. **Bancarrota de iq_points** (causa raíz del "nunca avanzan"): la guerra cobraba 5-10 pts/acción;
-   un ghost gastaba 5-10/s ganando ~1.7/s → quebraba → su candado congelaba TODAS las acciones,
-   incluso crecer. Fix: expandir a neutral es GRATIS (crecimiento, no guerra), deducciones de
-   guerra con `.max(0.0)`, candado de bancarrota eliminado (`combat.rs`).
-2. **Trigger imposible**: el gate clásico `troops ≥ max_troops × trigger_ratio` era inalcanzable
-   a mitad de partida (el max explota con territorio, las tropas van detrás). Fix: una decisión
-   de odds comprometida **es** el trigger (`odds_committed ||` trigger gate).
-3. **Odds discipline vs jugadores** (paridad OF `isAttackTooWeak` + `weakest`): en FFA no iniciar
-   con menos del 20% de las tropas del objetivo ni contra quien supera tus tropas. Bloqueado +
-   neutral libre → expandir (OF: expansión antes que guerra). Bloqueado y encerrado → bankear.
-   **Defensa/retaliación siempre exentas. Team games exentos** (en OF `troopSendCap`/
-   `isAttackTooWeak` son FFA-only — portarlo a todos los modos fue un bug).
-4. **Atrición vs tribus**: se probó OF-parity 2× → matemáticamente insatisfacible (tribu max = ÷1.5
-   handicap; nación al cap llega a affordable 1.2× tribe_max < 2×). Luego 1× → el lab volvió a
-   congelarse. Final: **sin piso** vs tribus — se ataca siempre la tribu fronteriza con golpe
+1. **`iq_points` bankruptcy** caused the original “never advance” behavior. War cost 5–10 points
+   per action while a ghost earned about 1.7 points per second; bankruptcy froze every action,
+   including growth. Neutral expansion is now free, war deductions clamp at `.max(0.0)`, and the
+   bankruptcy lock is gone (`combat.rs`).
+2. **Impossible attack trigger.** `troops ≥ max_troops × trigger_ratio` became unreachable as
+   territory increased the cap faster than troops. A committed odds decision now triggers the attack
+   path (`odds_committed || trigger gate`).
+3. **Player odds discipline.** In FFA, do not start below 20% of the target's troops or attack a
+   stronger player. If blocked with a neutral border, expand; if enclosed, bank. Defense,
+   retaliation, and team games remain exempt; OpenFront's FFA-only rules must not leak into other modes.
+4. **Attrition versus tribes.** OpenFront parity at 2× was mathematically unsatisfiable; 1× still
+   stalled the Lab. The final rule has no floor against tribes: attack the frontier tribe with
    `min(4× tribe_troops, affordable)`.
-5. **Swing anti-stall**: si el objetivo elegido (más débil) está bloqueado por odds y hay tribu en
-   la frontera, se ataca la tribu en vez de bankear (lab W1: IAs con contacto tribal y 0 ataques).
-6. **Movilidad**: D1 = sin neutral en frontera → bote a orilla neutral aleatoria (`try_expansion_boat`,
-   gratis, todos los tiers). D2 = cercado sin puerto puede lanzar flota (`enclosed && tier != Tribe`).
-7. **Cascade (a)**: tribus Vanilla no capturan tiles de jugadores en la cascada de cercado
-   (`set_tile_owner`, guard `capturer_is_passive_tribe`).
-8. **Spawn por zonas** (OF `teamSpawnArea`): `Team {Red, Blue}` → Rojo mitad izquierda, Azul mitad
-   derecha del mapa. Todos los miembros del equipo (incl. el primero y humanos rezagados) caen
-   dentro de su zona; piso de 14 tiles entre hogares contra todos; fallback anillo 12..36 → random.
-   **El path vivo del mapa mundo es la fase Spawning de `tick.rs`** (world maps: `random_spawn=false`
-   → `spawn_human` registra sin posición y regresa). S17/S18 existen para que esto no se vuelva a
-   perder.
+5. **Anti-stall swing.** If the weakest target is blocked by odds and a tribe borders the bot,
+   attack the tribe instead of banking. Lab W1 caught the zero-attack failure.
+6. **Mobility.** D1: if no neutral tile borders the bot, launch a free boat to a random neutral shore
+   (`try_expansion_boat`, all tiers). D2: an enclosed non-tribe can launch a fleet.
+7. **Cascade.** Vanilla tribes cannot capture player tiles during enclosure cascades
+   (`set_tile_owner`, guarded by `capturer_is_passive_tribe`).
+8. **Zone spawning.** `Team::Red` uses the left half of the map and `Team::Blue` the right half.
+   All team members, including the first player and late human joins, spawn inside their team zone.
+   The cross-team home-distance floor is 14 tiles. Fallback is ring 12..36, then random.
+   World maps take this path through the Spawning phase in `tick.rs`; `spawn_human` only records
+   the player and returns when `random_spawn=false`.
 
-## Parámetros actuales (fuente: código; actualizar este doc al cambiarlos)
+## Current parameters
 
-| Parámetro | Ghost | Nation | Tribe (Vanilla) |
-|---|---|---|---|
-| IQ band | 160-181 | 130-160 | 50-86 |
-| Cadencia base (ticks) | 5 | 30 | 100 |
-| trigger_ratio | 0.05 | 0.45 | (ignorado, attacks_players=false) |
-| reserve_ratio | 0.02 | 0.20 | 0.50 |
-| expand_ratio | 0.02 | 0.15 | 0.10 |
-| Costos iq (war/build/alliance/send) | 5/5/5/5 | 5/5/5/999 | 10/10/10/999 |
-| Contadores reales | ~83-118 | 128 | 420 |
+Source of truth is code. Update this table when behavior changes.
 
-- Neutral expansion: **gratis**; guerra cuesta `attack_cost` con clamp ≥0.
-- `max_troops = 10 + tiles^0.625 × 350 + 5000×city_levels`; tribus ÷1.5.
-- Ingreso tropas = 250 base + 25×cities + tiles/16 por segundo (tribus ×0.75).
-- Ghost fill: 65-92% de `max_players` (`SOW_BOT_FILL_MIN/MAX`).
-- Rostros: `spawn_ai(nation_count=128, bot_count=420)` + spawn_scripted (mapa).
-- Tierras: tribus nunca inician contra no-tribus; tribu-vs-tribu sí pelean (troops/4).
+| Parameter | Ghost | Nation | Tribe (Vanilla) |
+|---|---:|---:|---:|
+| IQ band | 160–181 | 130–160 | 50–86 |
+| Base cadence (ticks) | 5 | 30 | 100 |
+| `trigger_ratio` | 0.05 | 0.45 | ignored (`attacks_players=false`) |
+| `reserve_ratio` | 0.02 | 0.20 | 0.50 |
+| `expand_ratio` | 0.02 | 0.15 | 0.10 |
+| IQ costs (war/build/alliance/send) | 5/5/5/5 | 5/5/5/999 | 10/10/10/999 |
+| Real counts | ~83–118 | 128 | 420 |
 
-## El Lab (regresión de comportamiento)
+- Neutral expansion is free; war costs `attack_cost`, clamped at zero.
+- `max_troops = 10 + tiles^0.625 × 350 + 5000×city_levels`; tribes divide it by 1.5.
+- Troop income is `250 + 25×cities + tiles/16` per second; tribes receive 0.75× that value.
+- Ghost fill is 65–92% of `max_players` (`SOW_BOT_FILL_MIN/MAX`).
+- Faces: `spawn_ai(nation_count=128, bot_count=420)` plus scripted map spawns.
+- Tribes never initiate against non-tribes; tribe-versus-tribe combat is allowed at `troops/4`.
 
-`sow-core/src/intent/nation/bot_lab.rs` — S1-S18 bajo `#[cfg(test)]`:
-S1 ghost expande · S2 ghost presiona · S3 tribu Vanilla pasiva-creciente · S4 nación defiende ·
-S5 (ignorado, harness de agua) · S7 alguien gana · S9 cluster · S10 mapa mundo real midgame ·
-S11 mundo particionado sigue en guerra · S12 bote-TN de isla · S13 zonas de equipo (spawn_human) ·
-S14 caza decisiva de tribus · S15 no-suicidio FFA · S16 ecosistema largo (firma de freeze) ·
-S17 zonas en fase Spawning (el path vivo) · S18 mapa mundo real + zonas (geografía real).
+## Behavior regression Lab
 
-Regla de oro: **cambios de IA sin Lab verde no se despliegan.** El lab usa el mapa mundo real
-(`WORLD_MAP_BYTES`) — geografía, no cajas planas.
+Location: `sow-core/src/intent/nation/bot_lab.rs`, scenarios S1–S18 under `#[cfg(test)]`.
 
-## Lección de proceso (por qué falló dos veces)
+S1 ghost expands · S2 ghost pressures · S3 passive-growing Vanilla tribe · S4 nation defends ·
+S5 water harness (ignored) · S7 someone wins · S9 cluster · S10 real-world midgame ·
+S11 partitioned world still fights · S12 island boat · S13 team zones · S14 decisive tribe hunt ·
+S15 FFA no-suicide · S16 long ecosystem freeze signature · S17 Spawning-phase zones ·
+S18 real-world geography plus zones.
 
-- Fix sin commit + refactor de hermano = fix perdido (pasó con avatares y con spawn-zones).
-- Verificar EN QUÉ path corre el cambio antes de shipearlo: grep del flag (`random_spawn`) y de
-  todos los call sites del helper compartido.
-- Lab verde contradiciendo prod = condiciones del sim equivocadas (o entidad de tier equivocado —
-  `build_lab` mintió naciones como Bot-type una vez; `ai_tier` se resuelve por
-  `(player_type, is_ai_controlled)`).
+**Rule:** Do not deploy an AI change without a green Lab. The Lab uses `WORLD_MAP_BYTES`, so it
+tests real geography rather than flat boxes.
+
+## Process lessons
+
+- A fix without a commit can disappear during a sibling refactor.
+- Verify the path that runs in production before shipping: grep `random_spawn` and every caller of
+  shared helpers.
+- A green Lab that disagrees with production means the simulation conditions are wrong, or the
+  wrong entity tier was created. `build_lab` once mislabeled nations as Bot-type; `ai_tier` resolves
+  from `(player_type, is_ai_controlled)`.

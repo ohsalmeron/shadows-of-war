@@ -170,12 +170,17 @@ impl SowApp {
         }
         let identity = crate::store_portals::load_identity("Player");
         let provider = identity.provider.to_string();
+        let android_twa = crate::store_portals::is_android_twa();
         let Some(ext_id) = identity
             .external_id
             .clone()
             .filter(|id| !id.is_empty())
-            .filter(|_| provider == "crazygames")
+            .filter(|_| matches!(provider.as_str(), "crazygames" | "wou" | "playgames"))
         else {
+            if android_twa {
+                log::error!("[identity] Play Games identity required on Android");
+                return;
+            }
             self.fetch_anonymous_progress();
             return;
         };

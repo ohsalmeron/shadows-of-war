@@ -15,7 +15,12 @@ def sowVersionCode = sowVersionCodeProperty.toString().toInteger()
 def sowVersionName = (project.findProperty("sowVersionName") ?: "0.2.0").toString()
 def sowWebCacheBust = (project.findProperty("sowWebCacheBust") ?: sowVersionCode.toString()).toString()
 def revenueCatPublicKey = (project.findProperty("revenueCatAndroidPublicKey") ?: "").toString()
+def playGamesAppId = (project.findProperty("sowPlayGamesAppId") ?: System.getenv("SOW_PLAY_GAMES_APP_ID") ?: "").toString()
+def playGamesWebClientId = (project.findProperty("sowPlayGamesWebClientId") ?: System.getenv("SOW_PLAY_GAMES_WEB_CLIENT_ID") ?: "").toString()
+def playGamesAuthUrl = (project.findProperty("sowPlayGamesAuthUrl") ?: System.getenv("SOW_PLAY_GAMES_AUTH_URL") ?: "https://shadowsofwar.io/api").toString()
 def escapedRevenueCatPublicKey = revenueCatPublicKey.replace("\\", "\\\\").replace('"', '\\"')
+def escapedPlayGamesWebClientId = playGamesWebClientId.replace("\\", "\\\\").replace('"', '\\"')
+def escapedPlayGamesAuthUrl = playGamesAuthUrl.replace("\\", "\\\\").replace('"', '\\"')
 
 android {
     namespace = 'com.shadowsofwar'
@@ -23,11 +28,13 @@ android {
 
     defaultConfig {
         applicationId "com.shadowsofwar"
-        minSdk 23
+        minSdk 24
         targetSdk 36
         versionCode sowVersionCode
         versionName sowVersionName
         buildConfigField "String", "REVENUECAT_ANDROID_PUBLIC_KEY", "\"${escapedRevenueCatPublicKey}\""
+        buildConfigField "String", "PLAY_GAMES_WEB_CLIENT_ID", "\"${escapedPlayGamesWebClientId}\""
+        buildConfigField "String", "PLAY_GAMES_AUTH_URL", "\"${escapedPlayGamesAuthUrl}\""
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -35,7 +42,8 @@ android {
             hostName: "shadowsofwar.io",
             defaultUrl: "https://shadowsofwar.io/play/?sow_platform=android&sow_build=${sowWebCacheBust}",
             launcherName: "Shadows of War",
-            enableNotification: "false"
+            enableNotification: "false",
+            playGamesAppId: playGamesAppId
         ]
     }
 
@@ -78,6 +86,7 @@ android {
 
 dependencies {
     implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+    implementation 'com.google.android.gms:play-services-games-v2:22.0.0'
     implementation 'com.revenuecat.purchases:purchases:10.19.1'
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'

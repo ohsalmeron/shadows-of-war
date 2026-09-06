@@ -1,171 +1,142 @@
-# Google Play Console — takeover de Shadows of War
+# Google Play Console — Shadows of War takeover
 
-**Última auditoría:** 2026-09-02  
-**Paquete:** `com.shadowsofwar`  
-**Proyecto Google Cloud:** `worldofunreal`  
-**Cuenta de servicio:** `play-deploy@worldofunreal.iam.gserviceaccount.com`
+**Last audited:** September 6, 2026
+**Package:** `com.shadowsofwar`
+**Google Cloud project:** `worldofunreal`
+**Service account:** `play-deploy@worldofunreal.iam.gserviceaccount.com`
 
-## Objetivo
+This guide lets another agent continue Play Console and release work without repeating the audit.
+Never store passwords, private keys, service-account JSON, or tokens here.
 
-Este documento permite que otro agente continúe la operación de Google Play Console y la automatización de releases sin volver a pedir autorizaciones ni repetir investigación.
+## Operating rules
 
-La regla operativa es simple:
+- Use an API or CLI whenever Google supports the operation.
+- Use the browser only when the public API does not expose the write operation or Google requires
+  an owner confirmation.
+- `./sow p` is the Web/backend/infra pipeline.
+- `./sow a` is the Android/Play pipeline.
+- Never replace either pipeline with manual `scp`, `rsync`, SSH activation, symlink swaps, or service
+  restarts.
 
-- El agente inspecciona y automatiza todo lo que tenga una API o CLI soportada.
-- El navegador se usa únicamente cuando Google no expone esa operación por API o exige una decisión/confirmación del propietario.
-- Para cambios de Shadows of War, `./sow p` es el pipeline oficial de web/backend/infra y `./sow a` el pipeline explícito de Android/Play. No se reemplazan con `scp`, `rsync`, SSH manual, symlinks ni reinicios manuales.
+## Tester countries
 
-## Respuesta inmediata: países de los testers
+The relevant Play country codes are:
 
-Los cinco países son mercados normales de Google Play y no hay una prohibición general para usarlos en testing o producción:
-
-| País | Código Play |
+| Country | Code |
 |---|---|
 | Indonesia | `ID` |
 | Kenya | `KE` |
 | Nigeria | `NG` |
-| Filipinas | `PH` |
+| Philippines | `PH` |
 | Vietnam | `VN` |
 
-La causa más probable de **“This app isn’t available in your region”** es una de estas:
+When a tester sees “This app isn’t available in your region”, check in this order:
 
-1. El track **Closed testing — Alpha** no incluye el país del tester.
-2. El tester está inscrito en **Internal testing**, no en Alpha. Internal puede funcionar desde cualquier país, pero no cuenta para el requisito de producción.
-3. El tester está incluido en la lista, pero todavía no hizo el **opt-in** en Alpha.
-4. El país de Google Play de su cuenta no es el país físico donde está conectado. Google usa el país de Play de la cuenta.
-5. El primer release o un cambio reciente todavía está propagándose. Google advierte que puede tardar varias horas.
+1. The Alpha track targets the tester's Play country.
+2. The exact Google account is in the Alpha tester list.
+3. The tester opted in through the Alpha link.
+4. The tester is not relying on Internal testing instead of Alpha.
+5. The Google Play account country matches the intended market.
+6. Only then wait for propagation.
 
-## Único paso manual que probablemente falta ahora
-
-En Play Console:
-
-```text
-Shadows of War
-→ Test and release
-→ Testing
-→ Closed testing
-→ Alpha
-→ Manage track
-→ Countries / regions
-```
-
-Si aparece sincronizado con producción:
-
-```text
-Unsync countries/regions
-→ Edit countries
-→ agregar Indonesia, Kenya, Nigeria, Philippines y Vietnam
-→ Save / Confirm
-```
-
-Después se comparte el enlace de Alpha:
+The opt-in link is:
 
 ```text
 https://play.google.com/apps/testing/com.shadowsofwar
 ```
 
-Cada tester debe abrirlo con la cuenta que está en la lista y pulsar **Join the test**. Si esa cuenta está en Internal, primero debe salir de Internal y luego entrar a Alpha. Una vez inscrito en Alpha, las versiones nuevas del mismo track se actualizan sin repetir el opt-in.
+Being in the email list is not the same as opting in. The tester must open the link with the listed
+account and select **Join the test**. Later releases on the same track do not normally require a new
+opt-in.
 
-El cambio de países de un **closed testing track** no está expuesto como una operación de escritura en la API REST pública de Google Play. La API sí permite leer la disponibilidad. Por eso este paso concreto se hace en el navegador, salvo que Google cambie la API.
+Country targeting for a closed track may require the Play Console UI; the public Publisher API is
+primarily useful for reading release and availability state. Do not claim a country change succeeded
+until Play Console or the API confirms it.
 
-## Estado verificado de Play Console
+## Current Android release evidence
 
-Estado observado en las últimas capturas/auditorías; debe revalidarse antes de afirmar que cambió:
+Re-read these values before every release; do not copy them from an old screenshot:
 
-- Package name: `com.shadowsofwar`.
-- Track closed activo: `Alpha`.
-- Último release observado: `0.1.2`, version code `24`, actualizado el 31 de agosto de 2026.
-- Alpha mostraba 31 países/regiones.
-- Lista de testers de Alpha: `Alpha testers`, 26 usuarios observados.
-- En una captura anterior: 0 testers opted-in. El número actual debe leerse en Play Console; no se debe asumir.
-- Internal testing está activo, pero sus testers no cuentan para el requisito del closed test.
-- Production todavía no estaba habilitado en la última evidencia.
-- El requisito mostrado por Play Console era: release de closed testing publicado, al menos 12 testers opted-in y al menos 14 días de prueba cerrada.
+- Alpha: `0.1.2`, versionCode `38`.
+- Internal: versionCode `3`.
+- Beta, open, and production: no release verified in the last audit.
+- Source and installed app target API 36.
+- The old Alpha release still carries Play's edge-to-edge warning. A new AAB must be uploaded before
+  Play can re-evaluate it.
+- The next local Android pipeline run is expected to advance `.version` from `0.1.2` to `0.1.3` and
+  choose the next unused Play versionCode after the device smoke test passes.
 
-## Cómo funciona el requisito de 12 testers y 14 días
+## Play product catalog
 
-No son 12 instalaciones aisladas ni 12 cuentas autorizadas. Para que cuenten:
+These one-time consumable products are active in Google Play and attached to the Android RevenueCat
+offering:
 
-1. La cuenta debe estar en la lista de Alpha.
-2. Debe abrir el enlace de Alpha con esa cuenta.
-3. Debe pulsar **Join the test / Opt in**.
-4. Debe permanecer inscrita durante el periodo requerido.
+| Product | ID | Price | Grant |
+|---|---|---:|---:|
+| Scout’s Cache | `sow_gems_500` | $1.99 | 500 gems |
+| War Chest | `sow_gems_1200` | $4.99 | 1,200 gems |
+| Kingdom Vault | `sow_gems_2600` | $9.99 | 2,600 gems |
 
-Una actualización de version code dentro del mismo Alpha no reinicia por sí sola el opt-in. Los testers permanecen en el track y reciben la actualización cuando está disponible.
+The authoritative check is a successful Google Play Publisher API `GET` for each product under
+`com.shadowsofwar`. RevenueCat cannot create a missing Play product.
 
-Internal testing sirve para pruebas rápidas en cualquier país, pero esos opt-ins no satisfacen el requisito de producción. Open testing tampoco sustituye el requisito de closed testing que muestra esta cuenta.
+## RevenueCat state
 
-## Qué puede automatizar otro agente
+- Project: `projf6bc119d`.
+- Play app: `appc659dd11dd`, package `com.shadowsofwar`.
+- Apple app: `app44fef55941`, bundle `games.shadowsofwar.app`.
+- Stripe Web app: `app5ab74d80c4`.
+- Current offering: `default`, active.
+- Android products: `sow_gems_500`, `sow_gems_1200`, `sow_gems_2600`.
+- Production Web Purchase Link: `https://pay.rev.cat/dplwcwropdytvyzt/`.
 
-### Lectura y verificación de Play Console
+RevenueCat package keys `$rc_monthly`, `$rc_annual`, and `$rc_lifetime` are legacy package names;
+the products are consumable gem bundles, not subscriptions. Do not create a `pro` entitlement for
+these bundles. The server grants gems from the purchase event and must remain idempotent.
 
-Con la cuenta de servicio ya activa, el agente puede:
+The web link uses the existing Stripe-backed RevenueCat configuration. Do not create another Stripe
+account, RevenueCat project, product set, or checkout flow.
 
-- Leer tracks, releases y version codes.
-- Verificar qué release está activo en Alpha.
-- Leer la disponibilidad de países del track.
-- Verificar que el AAB tenga package name y version code correctos.
-- Detectar si un version code ya fue usado.
-- Crear/validar releases mediante el pipeline existente cuando el pipeline lo soporte.
-- Ejecutar verificaciones post-release sin tocar servidores manualmente.
-- Preparar la solicitud de acceso a producción y registrar qué requisito falta.
+## What can be automated
 
-### Lo que no debe automatizar a ciegas
+With the existing service account, an agent can read:
 
-- Cambiar países del closed track si la API pública no lo soporta.
-- Aplicar a producción sin que Play Console muestre el botón habilitado.
-- Crear productos Play ignorando el estado del payments profile.
-- Reusar un version code.
-- Subir archivos `.json` junto con el `.aab`. El JSON de service account nunca es un artefacto de la app.
-- Imprimir claves, tokens o el contenido del service-account JSON.
+- tracks, releases, and version codes;
+- country availability;
+- product existence and state;
+- AAB package name, version, and Play validation results;
+- post-release health and public verification through the official pipeline.
 
-## API oficial de Google Play
+An agent must not:
 
-La API relevante es **Google Play Android Publisher API v3**, no una API secreta de la interfaz web.
+- print secrets or service-account contents;
+- reuse a versionCode;
+- upload a service-account JSON with an AAB;
+- apply for Production while Play keeps the button disabled;
+- claim a tester is opted in merely because the email is on a list;
+- edit country targeting through an undocumented API path.
 
-Scope OAuth requerido:
+## Official API and read-only tooling
+
+OAuth scope:
 
 ```text
 https://www.googleapis.com/auth/androidpublisher
 ```
 
-La clave local existente es:
+Local credential path (never copy it into the repository):
 
 ```text
 /home/bizkit/.config/shadows-of-war/google-play-service-account.json
 ```
 
-No copiarla al repositorio, no pegar su contenido en chat y no incluirla en un release.
-
-### Endpoints útiles de lectura
-
-La API trabaja con un `editId` temporal. Crear un edit tiene efecto en Play Console; un agente debe crear uno solo cuando vaya a ejecutar una operación concreta y debe cerrarlo correctamente.
-
-```text
-POST /androidpublisher/v3/applications/com.shadowsofwar/edits
-GET  /androidpublisher/v3/applications/com.shadowsofwar/edits/{editId}/tracks
-GET  /androidpublisher/v3/applications/com.shadowsofwar/edits/{editId}/countryAvailability/alpha
-```
-
-El resultado de `countryAvailability` contiene, entre otros:
-
-```text
-syncWithProduction
-countries[].countryCode
-restOfWorld
-```
-
-La API de tracks conoce releases y `countryTargeting`, pero Google documenta ese campo para releases **inProgress de production**; no es una vía documentada para editar los países de un closed testing track.
-
-### Validación segura de version codes
-
-El repo ya tiene soporte para revisar tracks con Fastlane. La ruta de Fastlane existente es:
+Fastlane path used by the repository:
 
 ```text
 /home/bizkit/.local/share/gem/ruby/3.4.0/bin/fastlane
 ```
 
-Ejemplo de lectura, no de deploy:
+Read a track without deploying:
 
 ```sh
 /home/bizkit/.local/share/gem/ruby/3.4.0/bin/fastlane \
@@ -175,177 +146,90 @@ Ejemplo de lectura, no de deploy:
   json_key:"/home/bizkit/.config/shadows-of-war/google-play-service-account.json"
 ```
 
-El script del repo es:
-
-```text
-/home/bizkit/Github/shadows-of-war/scripts/android-release.sh
-```
-
-Para producción Web/backend/infra de Shadows of War se usa:
+Use the official pipelines for changes:
 
 ```sh
-cd /home/bizkit/Github/shadows-of-war
-./sow p
+./sow p       # Web/backend/infra
+./sow a       # Android/Google Play
+./sow l       # local Web/WASM preview
+./sow native  # native desktop client
 ```
 
-Para Android/Google Play se usa únicamente `./sow a` (o `./sow android`).
-La interfaz completa es `./sow p` para Web/backend/infra, `./sow a` para
-Android/Play, `./sow l`/`./sow local` para preview y `./sow native` para el
-cliente nativo.
+## Opt-in procedure
 
-## Reglas para hacer opt-in sin confusión
+For each final tester:
 
-Para cada tester finalista:
+1. Add the exact Google account to Alpha testers.
+2. Share the opt-in link.
+3. The tester opens it with that same account.
+4. The tester selects **Join the test**.
+5. The tester installs Shadows of War from Google Play.
+6. Confirm the account under Alpha → Testers or tester statistics.
+
+Internal opt-in does not satisfy a closed-test requirement. Open testing is not a substitute for a
+closed test when Play explicitly requires one.
+
+## Safe takeover checklist
 
 ```text
-1. Agregar su correo a Alpha testers.
-2. Compartir https://play.google.com/apps/testing/com.shadowsofwar
-3. El tester abre el enlace con esa misma cuenta de Google Play.
-4. Pulsa Join the test.
-5. Instala Shadows of War desde Google Play.
-6. Confirmar el opt-in desde Alpha → Testers / estadísticas de testers.
+[ ] Read this document completely.
+[ ] Confirm repository, branch, and git status before touching files.
+[ ] Read Alpha release, versionCode, countries, and tester state.
+[ ] Separate “on the list” from “opted in”.
+[ ] Verify ID, KE, NG, PH, and VN if a tester reports a region error.
+[ ] Do not ask for RevenueCat login again while the authenticated profile is valid.
+[ ] Use ./sow p for Web/backend/infra changes.
+[ ] Use ./sow a for Android/Play changes.
+[ ] Verify the live result and record the date, track, and versionCode.
 ```
 
-No se necesita una invitación automática por correo si el tester ya está en la lista; el enlace manual es suficiente. Sí se necesita que la cuenta esté en la lista y que el tester pulse opt-in.
-
-## Diagnóstico específico de “no disponible en mi región”
-
-El agente debe comprobar en este orden:
+## Evidence log
 
 ```text
-1. Alpha → Countries / regions: confirmar ID, KE, NG, PH y VN.
-2. Alpha → Testers: confirmar que el correo exacto está en Alpha testers.
-3. Confirmar que el tester no sigue inscrito en Internal.
-4. Confirmar que abrió el enlace con la cuenta correcta.
-5. Confirmar el país de Google Play de esa cuenta.
-6. Esperar propagación solo después de que los puntos 1–5 sean correctos.
+Play Console app URL:
+Account type:
+Account creation date:
+Current Alpha version/versionCode:
+Current opted-in testers:
+Continuous closed-test period complete:
+Apply for production enabled:
+Production access approved:
+First Production release date/time:
+Production versionCode:
+United States available in Production:
+
+RevenueCat project:
+RevenueCat Android app/package:
+Active offering:
+Android product IDs:
+Android purchase verified:
+Server grant verified:
+Restore verified:
+Web checkout verified:
+
+Public video URL:
+Devpost URL:
+Submission date/time:
 ```
 
-No usar VPN como supuesto de corrección: el país de Play de la cuenta es el dato principal.
+## Sources
 
-## Monetización: relación entre Play, RevenueCat y el pipeline
-
-### Google Play
-
-Los productos de compra única se crean en Google Play y luego se registran/vinculan en RevenueCat. RevenueCat no puede inventar un producto que todavía no existe en Play.
-
-La API antigua `inappproducts` está deprecada para este caso. La API actual usa `oneTimeProducts:batchUpdate`, pero la cuenta tuvo este bloqueo documentado:
-
-```text
-FAILED_PRECONDITION:
-Cannot manage a one-time product without first registering a payments profile
-for the developer account.
-```
-
-El payments profile ya fue iniciado/enrolado, pero la captura del 1 de septiembre mostraba **Verification pending**. Hasta que Google termine esa verificación, un intento de crear productos Play puede seguir fallando. No es un problema de RevenueCat ni de versionado.
-
-### RevenueCat
-
-CLI ya autenticado; no pedir login otra vez:
-
-```text
-profile: default
-project: projf6bc119d
-```
-
-Apps existentes:
-
-- Test Store: `app5cbcb3e77b`.
-- App Store: `app44fef55941`, bundle `games.shadowsofwar.app`.
-- Play Store: `appc659dd11dd`, package `com.shadowsofwar`.
-- Stripe Web Billing: `app5ab74d80c4`, configurada para el Stripe de Shadows of War.
-
-Productos Play registrados actualmente en RevenueCat:
-
-```text
-sow_gems_500
-sow_gems_1200
-sow_gems_2600
-```
-
-Offering `default` existente:
-
-```text
-$rc_monthly  → sow_gems_500
-$rc_annual   → sow_gems_1200
-$rc_lifetime → sow_gems_2600
-```
-
-Los nombres `$rc_monthly`, `$rc_annual` y `$rc_lifetime` son IDs de package heredados; el catálogo real son bundles consumibles de gems, no suscripciones.
-
-No hay un entitlement asociado al offering de lanzamiento. No se debe crear ni
-adjuntar `shadows_of_war_pro` a estos productos: son bundles consumibles de
-gemas y el backend los entrega mediante el webhook de compra única.
-
-Comandos de lectura del CLI:
-
-```sh
-npx --yes @revenuecat/cli apps list \
-  --project-id projf6bc119d --json
-
-npx --yes @revenuecat/cli products list \
-  --project-id projf6bc119d --json
-
-npx --yes @revenuecat/cli offerings list \
-  --project-id projf6bc119d --json
-```
-
-Si una orden del CLI cambia entre versiones, descubrir el schema en vez de adivinar flags:
-
-```sh
-npx --yes @revenuecat/cli commands --schemas --json
-```
-
-RevenueCat CLI puede administrar la configuración de RevenueCat, pero no sustituye Play Console para habilitar países, completar verificaciones financieras ni publicar la app.
-
-### Web
-
-RevenueCat Web Billing está configurado mediante el Purchase Link de producción y Stripe; el cliente Web debe usar ese enlace. Eso es independiente del release Android.
-
-## Checklist de takeover para otro agente
-
-```text
-[ ] Leer este documento completo.
-[ ] Confirmar repo, branch y git status sin modificar trabajo ajeno.
-[ ] Verificar que la autenticación existente funciona sin imprimir secretos.
-[ ] Leer tracks, release activo, version code y country availability.
-[ ] Leer testers de Alpha y separar “en lista” de “opted in”.
-[ ] Confirmar ID/KE/NG/PH/VN en Alpha.
-[ ] Si faltan, indicar al propietario el único paso manual de Countries / regions.
-[ ] No pedir re-login de RevenueCat si el perfil default sigue autenticado.
-[ ] No crear productos Play hasta que payments profile esté verificado.
-[ ] Para cambios del cliente Web/backend/infra usar `./sow p`; para Android/Play usar `./sow a`.
-[ ] Verificar el resultado en Play Console/API y documentar fecha, track y version code.
-```
-
-## Registro de evidencia
-
-Actualizar esta tabla en cada takeover:
-
-| Fecha/hora | Track | Version code | Países relevantes | Usuarios en lista | Opted-in | Estado |
-|---|---|---:|---|---:|---:|---|
-| 2026-09-02 | Alpha | 24 observado | 31 observados; ID/KE/NG/PH/VN por confirmar | 26 observado | Releer en Console | Requiere verificación |
-
-## Fuentes oficiales
-
-- [Google Play: distribuir releases a países específicos](https://support.google.com/googleplay/android-developer/answer/7550024?hl=en)
-- [Google Play: configurar testing abierto, cerrado o interno](https://support.google.com/googleplay/android-developer/answer/9845334?hl=en)
-- [Android Publisher API: leer disponibilidad por país](https://developers.google.com/android-publisher/api-ref/rest/v3/edits.countryavailability/get)
-- [Android Publisher API: tracks y releases](https://developers.google.com/android-publisher/api-ref/rest/v3/edits.tracks)
+- [Google Play testing tracks](https://support.google.com/googleplay/android-developer/answer/9845334?hl=en)
+- [Google Play country distribution](https://support.google.com/googleplay/android-developer/answer/7550024?hl=en)
+- [Android Publisher API: country availability](https://developers.google.com/android-publisher/api-ref/rest/v3/edits.countryavailability/get)
+- [Android Publisher API: tracks](https://developers.google.com/android-publisher/api-ref/rest/v3/edits.tracks)
 - [RevenueCat Web Billing](https://www.revenuecat.com/docs/web/web-billing/overview)
 - [RevenueCat Web Purchase Links](https://www.revenuecat.com/docs/web/web-billing/web-purchase-links)
 
-## Prompt corto para entregar a otro agente
+## Handoff prompt
 
 ```text
-Toma el takeover de Google Play Console para Shadows of War.
-Lee primero docs/play-console-takeover.md.
-Package: com.shadowsofwar.
-Track de requisito: closed testing / Alpha.
-Investiga y reporta primero: disponibilidad de ID, KE, NG, PH y VN; testers en lista versus opted-in; release y version code activos.
-Usa la API/CLI existente y no vuelvas a pedir autenticación.
-No imprimas secretos.
-El cambio de países de Alpha probablemente requiere Play Console web porque la API pública solo expone lectura.
-No hagas deploy manual: para cambios del repo usa únicamente ./sow p (web/backend) y ./sow a (Android/Play).
-Reporta exactamente qué puede hacer el agente y qué único paso manual queda.
+Take over Google Play Console for Shadows of War.
+Read docs/play-console-takeover.md first.
+Package: com.shadowsofwar. Track: Closed testing / Alpha.
+First report: release/versionCode, country targeting, tester-list count versus opted-in count,
+and the exact remaining Production requirement.
+Use the existing API/CLI authentication without printing secrets.
+Use ./sow p for Web/backend changes and ./sow a for Android/Play changes.
+Do not deploy manually or create duplicate products/projects.
 ```

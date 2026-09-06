@@ -251,6 +251,18 @@
             var isPortal = window.SOW_RUNTIME && window.SOW_RUNTIME.portal_embed === true
                 || window.SOW_isPortalEmbed === true;
 
+            if (typeof window.SOW_initAndroidAuth === "function") {
+                try {
+                    await window.SOW_initAndroidAuth();
+                } catch (error) {
+                    console.error("Play Games authentication failed:", error);
+                    if (typeof window.SOW_showAndroidAuthFailure === "function") {
+                        window.SOW_showAndroidAuthFailure(error.message);
+                    }
+                    return;
+                }
+            }
+
             if (typeof window.SOW_initPortalSdk === "function") {
                 await window.SOW_initPortalSdk();
             }

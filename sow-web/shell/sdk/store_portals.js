@@ -221,6 +221,103 @@
   window.SOW_DISABLE_CHAT = false;
   window.SOW_PORTAL_LOCALE = null;
 
+  function isAndroidTwa() {
+    var referrer = String(document.referrer || "");
+    if (/^android-app:\/\/com\.shadowsofwar(?:\/|$)/i.test(referrer)) {
+      return true;
+    }
+    try {
+      return new URLSearchParams(window.location.search).get("sow_platform") === "android" &&
+        /Android/i.test(navigator.userAgent || "");
+    } catch (e) {
+      return false;
+    }
+  }
+
+  window.SOW_isAndroidTwa = isAndroidTwa;
+
+  window.SOW_openAndroidPlayGames = function (section) {
+    if (!isAndroidTwa()) {
+      return false;
+    }
+    var allowed = { achievements: true, leaderboards: true };
+    if (!allowed[section]) {
+      return false;
+    }
+    window.location.href = "sow://playgames/" + section;
+    return true;
+  };
+
+  window.SOW_initAndroidAuth = async function () {
+    if (!isAndroidTwa()) {
+      return;
+    }
+
+    var params = new URLSearchParams(window.location.search);
+    var handoff = params.get("sow_playgames_handoff");
+    var saved = null;
+    try {
+      saved = sessionStorage.getItem("sow_playgames_identity");
+    } catch (e) {}
+
+    if (handoff) {
+      var base = String(window.SOW_DATABASE_URL || "/api").replace(/\/$/, "");
+      var response = await fetch(base + "/auth/playgames/consume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify({ handoff_token: handoff }),
+      });
+      if (!response.ok) {
+        throw new Error("Play Games handoff rejected");
+      }
+      var serverIdentity = await response.json();
+      if (!serverIdentity || serverIdentity.provider !== "playgames" ||
+          !serverIdentity.external_id || !serverIdentity.token) {
+        throw new Error("Play Games identity response is invalid");
+      }
+      var identity = {
+        provider: "playgames",
+        externalId: serverIdentity.external_id,
+        displayName: serverIdentity.display_name || "Player",
+        avatarUrl: serverIdentity.avatar_url || null,
+        nameLocked: serverIdentity.name_locked === true,
+        token: serverIdentity.token,
+      };
+      window.SOW_PLATFORM_IDENTITY = identity;
+      try { sessionStorage.setItem("sow_playgames_identity", JSON.stringify(identity)); } catch (e) {}
+      params.delete("sow_playgames_handoff");
+      var cleanUrl = window.location.pathname + (params.toString() ? "?" + params.toString() : "") + window.location.hash;
+      window.history.replaceState({}, document.title, cleanUrl);
+      console.info("Play Games authentication complete");
+      return;
+    }
+
+    if (saved) {
+      try {
+        var cachedIdentity = JSON.parse(saved);
+        if (cachedIdentity && cachedIdentity.provider === "playgames" &&
+            cachedIdentity.externalId && cachedIdentity.token) {
+          window.SOW_PLATFORM_IDENTITY = cachedIdentity;
+          return;
+        }
+      } catch (e) {}
+    }
+
+    throw new Error("Play Games authentication is required");
+  };
+
+  window.SOW_showAndroidAuthFailure = function (message) {
+    var loader = document.getElementById("web-loader");
+    if (!loader) {
+      return;
+    }
+    loader.hidden = false;
+    loader.innerHTML =
+      "<div style=\"display:flex;align-items:center;justify-content:center;height:100%;padding:24px;box-sizing:border-box;background:#0a0a0f;color:#fff;text-align:center;font:600 18px system-ui\"><div>" +
+      String(message || "Play Games authentication is required") +
+      "<br><button onclick=\"location.reload()\" style=\"margin-top:20px;padding:12px 18px\">RETRY</button></div></div>";
+  };
+
   function refreshPortalFlags() {
     var portal = isPortalEmbed();
     var site = isSiteEmbed();
@@ -373,6 +470,10 @@
   }
 
   window.SOW_portalShowAuthPrompt = async function () {
+    if (isAndroidTwa()) {
+      console.info("Android identity is managed by Play Games Services");
+      return;
+    }
     if (crazyGamesSdkReady() && window.CrazyGames.SDK.user && window.CrazyGames.SDK.user.showAuthPrompt) {
       try {
         var user = await window.CrazyGames.SDK.user.showAuthPrompt();

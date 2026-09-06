@@ -409,6 +409,10 @@
             var active = profileTab === tab;
             return "<button type='button' role='tab' id='sow-profile-tab-" + tab + "' class='sow-profile__tab" + (active ? " is-active" : "") + "' aria-selected='" + active + "' aria-controls='sow-profile-panel-" + tab + "' data-command='profile_tab' data-profile-tab='" + tab + "'>" + tab.charAt(0).toUpperCase() + tab.slice(1) + "</button>";
         }).join("");
+        var playGamesActions = "";
+        if (typeof window.SOW_isAndroidTwa === "function" && window.SOW_isAndroidTwa()) {
+            playGamesActions = "<section class='sow-profile__section' aria-label='Google Play Games'><div class='sow-profile__section-head'><h2>Google Play Games</h2><span class='sow-profile__section-note'>Android</span></div><div class='sow-profile__actions'><button type='button' class='sow-menu__ghost-button' data-command='open_play_games' data-play-games-section='achievements'>Achievements</button><button type='button' class='sow-menu__ghost-button' data-command='open_play_games' data-play-games-section='leaderboards'>Leaderboards</button></div></section>";
+        }
         var content = "";
         if (data && profileTab === "overview") {
             content = "<div id='sow-profile-panel-overview' class='sow-profile__panel-content' role='tabpanel' aria-labelledby='sow-profile-tab-overview'><div class='sow-profile__stats'>" +
@@ -455,7 +459,7 @@
         return "<div class='sow-menu__backdrop'></div><div class='sow-menu__shell sow-profile'>" +
             renderTopbar() +
             "<main class='sow-menu__main sow-profile__main'><section class='sow-profile__page'>" + header +
-            "<nav class='sow-profile__tabs' role='tablist' aria-label='Profile sections'>" + tabs + "</nav>" + content + renderModeration(own) + search + searchResults +
+            "<nav class='sow-profile__tabs' role='tablist' aria-label='Profile sections'>" + tabs + "</nav>" + playGamesActions + content + renderModeration(own) + search + searchResults +
             "</section></main>" +
             renderFooter("PROFILE") + renderMobileNav("profile") + detail + "</div>";
     }
@@ -1074,6 +1078,12 @@
                 loadProfileRatings();
             } else {
                 render();
+            }
+            return;
+        }
+        if (command === "open_play_games") {
+            if (typeof window.SOW_openAndroidPlayGames === "function") {
+                window.SOW_openAndroidPlayGames(target.dataset.playGamesSection || "");
             }
             return;
         }

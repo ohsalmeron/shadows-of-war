@@ -112,7 +112,7 @@ The project uses `./sow` as single entrypoint:
 ./sow native        # desktop client (connects to prod by default)
 ./sow p             # production deploy (WASM + FreeBSD + relay)
 ./sow p -v          # also bump public patch version
-./sow a             # Android AAB + Google Play alpha upload
+./sow a             # Android AAB + Play Alpha; bumps versionName and versionCode
 ```
 
 **Native:**

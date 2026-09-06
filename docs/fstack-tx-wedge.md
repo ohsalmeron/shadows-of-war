@@ -1,58 +1,53 @@
-# F-Stack TX Wedge — el bug silencioso (ago 2026)
+# F-Stack TX wedge — the silent bug (August 2026)
 
-Historia, causa raíz y instrumental del wedge de TX del relay. Doc de referencia para
-cualquier trabajo futuro en `fstack-bridge/` o el relay.
+Root cause and instrumentation for the relay TX wedge. Reference for future work in
+`fstack-bridge/` and the relay.
 
-## El bug en una frase
+## The bug in one sentence
 
-Dentro de f-stack (stack TCP en userspace sobre DPDK), la función que arma el timer de
-**retransmisión** — `callout_when` — era un **stub no-op** en el árbol desplegado: TCP
-asume que un paquete perdido se retransmite vía timer; sin timer armado, **un solo paquete
-perdido = conexión congelada para siempre** (`so_snd` full, writes en EAGAIN eterno) y
-**cero errores en ningún log**.
+In f-stack, the user-space TCP stack over DPDK, `callout_when` — the retransmission-timer
+function — was a no-op stub in the deployed tree. TCP expects lost packets to be retransmitted;
+without the timer, one lost packet froze the connection forever (`so_snd` full, writes stuck in
+`EAGAIN`) with no log error.
 
-## Timeline (fechas locales del supervisor, UTC-6)
+## Timeline (supervisor local time, UTC-6)
 
-| Fecha | Evento |
+| Date | Event |
 |---|---|
-| ~1 ago | `libfstack.a` compilado/desplegado en Azure — ya traía el stub (viene del port) |
-| 18 ago | Primer reporte de freezes del supervisor; atribuido (mal) a bundle viejo |
-| 20 ago | Freezes persisten; logs del relay sanos → la capa WS era **ciega** al wedge (sin contadores) |
-| 21 ago | **Causa raíz confirmada en host**: `nm` sobre el `libfstack.a` desplegado mostró `callout_when` como stub (un símbolo; desensamblado verificado). El knob del supervisor (timer de envío) cambiaba la duración del freeze, no su existencia — validó que la falla vivía en la cadena de drenaje TCP |
-| 21-22 ago | **Fix real**: `callout_when` implementado en el fork (commit `52fa8f9ae`), `libfstack.a` recompilado en Azure, relay recompilado. Prueba viva: `[BOOT] fstack=52fa8f9ae666` |
-| 22-23 ago | Knob de write-timeout a 15000ms, TCP_NODELAY, e instrumental del bridge (commit `e3fa033`) |
-| 26 ago | TCP_NODELAY verificado vivo (ed/txd 1:1) |
+| ~August 1 | Azure built and deployed `libfstack.a` containing the port's stub. |
+| August 18 | First supervisor freeze report; incorrectly attributed to an old bundle. |
+| August 20 | Freezes persisted while relay logs stayed healthy; the WS layer had no counters. |
+| August 21 | Host evidence confirmed the root cause: `nm` showed `callout_when` as a stub in the deployed archive; disassembly confirmed it. The supervisor send-timer knob changed freeze duration, not existence. |
+| August 21–22 | Implemented `callout_when` in the fork (`52fa8f9ae`), rebuilt `libfstack.a`, and rebuilt the relay. Live proof: `[BOOT] fstack=52fa8f9ae666`. |
+| August 22–23 | Set the write timeout to 15000 ms, enabled TCP_NODELAY, and added bridge instrumentation (`e3fa033`). |
+| August 26 | Verified TCP_NODELAY live (`ed/txd 1:1`). |
 
-## El instrumental del bridge (por qué existe)
+## Bridge instrumentation
 
-Un wedge silencioso es indetectable sin contadores. `fstack-bridge/src/bridge.rs`:
+A silent wedge is invisible without counters. `fstack-bridge/src/bridge.rs` provides:
 
-- `Cmd::Send { fd, generation, buf, tx_pending }` — el comando carga un contador compartido
-  (`Arc<AtomicUsize>`) que la capa WS puede leer.
-- `PendingSend` — cola por conexión de bytes no enviados: `bytes`, `first_stalled_at`
-  (Instant del stall), y actualización del contador para la capa de arriba.
-- `TX_STALL_TIMEOUT_SECS = 10` — un stall que supera esto es un wedge candidate.
-- `MAX_CONN_PENDING_BYTES = 128 * 1024` — tope de bytes pendientes por conexión.
-- Knob en prod: `SOW_WS_WRITE_TIMEOUT_MS=15000` (registrado en el manifest del relay).
+- `Cmd::Send { fd, generation, buf, tx_pending }`: shared pending-byte counter readable by WS.
+- `PendingSend`: unsent bytes, first stall time, and the counter update for the upper layer.
+- `TX_STALL_TIMEOUT_SECS = 10`: a stall beyond this is a wedge candidate.
+- `MAX_CONN_PENDING_BYTES = 128 * 1024`: per-connection pending-byte cap.
+- Production knob: `SOW_WS_WRITE_TIMEOUT_MS=15000`, recorded in the relay manifest.
 
-Esta instrumentación es la que convirtió "se congela y no hay nada en los logs" en datos
-(bytes pendientes, duración de stall) — sin ella el wedge era indetectable por diseño.
+This converts “the game freezes and logs show nothing” into measurable pending bytes and stall
+duration.
 
-## Lecciones
+## Lessons
 
-1. **Los stubs deben paniquear, no devolver 0.** El stub de `callout_when` existió meses
-   callado. Un stub que paniquea al usarse se detecta el día uno.
-2. **Un stall silencioso requiere contadores ANTES del incidente** — después del incidente
-   no hay nada que leer.
-3. `strings(1)` sobre binarios release NO sirve para forense de fuentes en este proyecto
-   (los literales del `log` crate no sobreviven — verificado con control). Usar
-   `BUILD_EPOCH`/`[SERVER-BOOT]` y hashes de release.
-4. El knob que mueve la duración del síntoma (no su existencia) localiza la falla: la
-   sensibilidad del knob apuntó a la cadena de drenaje antes de cualquier evidencia binaria.
+1. A stub must panic or fail loudly instead of returning zero. The silent `callout_when` stub lasted
+   for months.
+2. Add counters before an incident; after an incident there is nothing to inspect.
+3. `strings(1)` on release binaries is not source forensics here: `log` literals do not survive,
+   as verified against the control binary. Use `BUILD_EPOCH`, `[SERVER-BOOT]`, and release hashes.
+4. A knob that changes symptom duration, not existence, helps locate the fault. Its sensitivity
+   pointed to the TCP drain path before binary evidence was available.
 
-## Estado del fork
+## Fork status
 
-- Fix `callout_when` = commit `52fa8f9ae` en NUESTRO fork (no upstream). Fork ~439 commits
-  adelantado de `origin/master` (la mayoría ya upstreamed a F-Stack `dev`).
-- Azure corre NUESTRO fork — `[BOOT] fstack=52fa8f9ae…` es la prueba de runtime.
-- Los stubs restantes del port (`ff_stub_14_extra.c`) deben paniquear — seguimiento pendiente.
+- `callout_when` fix: `52fa8f9ae` in our fork, not upstream; the fork was about 439 commits ahead of
+  `origin/master` at the time, most of which had since reached F-Stack `dev`.
+- Azure runs our fork; `[BOOT] fstack=52fa8f9ae…` is the runtime proof.
+- Remaining port stubs in `ff_stub_14_extra.c` should fail loudly; follow-up remains open.

@@ -132,18 +132,38 @@
       return data;
     }
 
-    async sendEmailOtp(email) {
+    async requestOtp(email, newsletterOptIn = false, context) {
       const res = await fetch(`${ID_SERVER_URL}/api/v1/auth/otp/request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({
+          email,
+          account_id: this.user?.id || null,
+          context: context || this.defaultContext,
+          newsletter_opt_in: newsletterOptIn,
+        }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to dispatch verification code.');
+      if (!res.ok) {
+        const error = new Error(data.error || 'Failed to dispatch verification code.');
+        error.data = data;
+        throw error;
+      }
       return data;
     }
 
-    async verifyEmailOtp(email, code, context) {
+    describeOtpError(error) {
+      const retry = Number(error?.data?.retry_after_seconds);
+      if (Number.isFinite(retry) && retry > 0) {
+        const minutes = Math.floor(retry / 60);
+        const seconds = retry % 60;
+        const wait = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+        return { message: `Too many codes requested. Wait ${wait} before trying again.`, retryAfterSeconds: Math.ceil(retry) };
+      }
+      return { message: error?.message || 'Failed to dispatch verification code.' };
+    }
+
+    async verifyOtp(email, code, context) {
       const res = await fetch(`${ID_SERVER_URL}/api/v1/auth/otp/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

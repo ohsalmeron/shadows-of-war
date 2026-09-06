@@ -1,5 +1,5 @@
 use sow_data::crazygames;
-use sow_data::db::{PlayerDb, PlayerProfile};
+use sow_data::db::{PlayGamesMatchOutcome, PlayerDb, PlayerProfile};
 
 use axum::{
     Json, Router,
@@ -9,9 +9,12 @@ use axum::{
     routing::{get, post},
 };
 use log::{error, info, warn};
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::io::AsyncWriteExt;
 use tower_http::cors::{Any, CorsLayer};
 
@@ -24,6 +27,36 @@ struct AppState {
     revenuecat_webhook_secret: Option<String>,
     redb_path: String,
     events: std::sync::Mutex<sow_data::events::EventSink>,
+    playgames_handoffs: std::sync::Mutex<HashMap<String, PlayGamesHandoff>>,
+    playgames_sessions: std::sync::Mutex<HashMap<String, PlayGamesSession>>,
+    playgames_access_tokens: std::sync::Mutex<HashMap<String, PlayGamesAccessToken>>,
+}
+
+const PLAYGAMES_HANDOFF_TTL: Duration = Duration::from_secs(60);
+const PLAYGAMES_SESSION_TTL: Duration = Duration::from_secs(24 * 60 * 60);
+
+struct PlayGamesHandoff {
+    expires_at: Instant,
+    account_id: String,
+    external_id: String,
+    display_name: String,
+    avatar_url: Option<String>,
+}
+
+struct PlayGamesSession {
+    expires_at: Instant,
+    account_id: String,
+    external_id: String,
+}
+
+struct PlayGamesAccessToken {
+    access_token: String,
+    expires_at: Instant,
+}
+
+struct VerifiedPlayGamesIdentity {
+    account_id: String,
+    external_id: String,
 }
 
 #[derive(Deserialize)]
@@ -121,6 +154,33 @@ struct VerifyResponse {
     account_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     leader: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct PlayGamesExchangeRequest {
+    server_auth_code: String,
+    package_name: String,
+}
+
+#[derive(Serialize)]
+struct PlayGamesExchangeResponse {
+    handoff_token: String,
+}
+
+#[derive(Deserialize)]
+struct PlayGamesConsumeRequest {
+    handoff_token: String,
+}
+
+#[derive(Serialize)]
+struct PlayGamesIdentityResponse {
+    provider: &'static str,
+    external_id: String,
+    display_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    avatar_url: Option<String>,
+    name_locked: bool,
+    token: String,
 }
 
 /// POST /internal/profile/delete — operator-only account erasure for privacy
@@ -751,6 +811,9 @@ async fn handle_internal_verify(
                 .map_err(|e| e.to_string()),
             Err(e) => Err(e),
         },
+        "playgames" => state
+            .verify_playgames_session(payload.account_id.as_deref(), &payload.token)
+            .map(|identity| identity.account_id),
         "anonymous" => match (payload.account_id.as_deref(), payload.token.as_str()) {
             (Some(account_id), token) if !account_id.trim().is_empty() => {
                 state.db.verify_anonymous_secret(account_id, token).await
@@ -981,6 +1044,9 @@ async fn main() {
         revenuecat_webhook_secret,
         redb_path: redb_path.clone(),
         events: std::sync::Mutex::new(event_sink),
+        playgames_handoffs: std::sync::Mutex::new(HashMap::new()),
+        playgames_sessions: std::sync::Mutex::new(HashMap::new()),
+        playgames_access_tokens: std::sync::Mutex::new(HashMap::new()),
     });
 
     // Configure CORS for web portal compatibility
@@ -1000,6 +1066,8 @@ async fn main() {
         .route("/event", post(handle_event))
         .route("/internal/analytics", get(handle_internal_analytics))
         .route("/profile", get(handle_get_profile))
+        .route("/auth/playgames/exchange", post(handle_playgames_exchange))
+        .route("/auth/playgames/consume", post(handle_playgames_consume))
         .route("/store/catalog", get(handle_store_catalog))
         .route("/store/leaders/unlock", post(handle_unlock_leader))
         .route("/store/skins/unlock", post(handle_unlock_skin))
@@ -1640,6 +1708,578 @@ async fn handle_anonymous_tutorial_complete(
     }
 }
 
+#[derive(Deserialize)]
+struct PlayGamesOAuthTokenResponse {
+    access_token: String,
+    #[serde(default)]
+    expires_in: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct PlayGamesPlayerResponse {
+    #[serde(rename = "playerId")]
+    player_id: String,
+    #[serde(rename = "displayName", default)]
+    display_name: String,
+    #[serde(rename = "avatarImageUrl", default)]
+    avatar_url: Option<String>,
+}
+
+fn random_playgames_token() -> String {
+    let mut bytes = [0_u8; 32];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+async fn handle_playgames_exchange(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<PlayGamesExchangeRequest>,
+) -> impl IntoResponse {
+    if payload.package_name != "com.shadowsofwar"
+        && payload.package_name != "com.shadowsofwar.debug"
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "unsupported Android package".to_string(),
+            }),
+        )
+            .into_response();
+    }
+    if payload.server_auth_code.trim().is_empty() || payload.server_auth_code.len() > 4096 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "invalid Play Games server auth code".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
+    let client_id = match std::env::var("SOW_PLAY_GAMES_WEB_CLIENT_ID") {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            error!("Play Games server client ID is not configured");
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ErrorResponse {
+                    error: "Play Games server access is not configured".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+    let client_secret = match std::env::var("SOW_PLAY_GAMES_WEB_CLIENT_SECRET") {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            error!("Play Games server client secret is not configured");
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ErrorResponse {
+                    error: "Play Games server access is not configured".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    let client = reqwest::Client::new();
+    let token_response = match client
+        .post("https://oauth2.googleapis.com/token")
+        .form(&[
+            ("code", payload.server_auth_code.as_str()),
+            ("client_id", client_id.as_str()),
+            ("client_secret", client_secret.as_str()),
+            ("grant_type", "authorization_code"),
+        ])
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await
+    {
+        Ok(response) if response.status().is_success() => {
+            match response.json::<PlayGamesOAuthTokenResponse>().await {
+                Ok(value) if !value.access_token.is_empty() => value,
+                Ok(_) => {
+                    return (
+                        StatusCode::UNAUTHORIZED,
+                        Json(ErrorResponse {
+                            error: "Play Games token response was empty".to_string(),
+                        }),
+                    )
+                        .into_response();
+                }
+                Err(error) => {
+                    warn!("Play Games token response unreadable: {error}");
+                    return (
+                        StatusCode::BAD_GATEWAY,
+                        Json(ErrorResponse {
+                            error: "Play Games token exchange failed".to_string(),
+                        }),
+                    )
+                        .into_response();
+                }
+            }
+        }
+        Ok(response) => {
+            warn!(
+                "Play Games token exchange rejected: HTTP {}",
+                response.status()
+            );
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "Play Games authentication was rejected".to_string(),
+                }),
+            )
+                .into_response();
+        }
+        Err(error) => {
+            warn!("Play Games token exchange failed: {error}");
+            return (
+                StatusCode::BAD_GATEWAY,
+                Json(ErrorResponse {
+                    error: "Play Games authentication is temporarily unavailable".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    let access_token = token_response.access_token.clone();
+    let player = match client
+        .get("https://games.googleapis.com/games/v1/players/me")
+        .bearer_auth(&access_token)
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await
+    {
+        Ok(response) if response.status().is_success() => {
+            match response.json::<PlayGamesPlayerResponse>().await {
+                Ok(player) => player,
+                Err(error) => {
+                    warn!("Play Games player response unreadable: {error}");
+                    return (
+                        StatusCode::BAD_GATEWAY,
+                        Json(ErrorResponse {
+                            error: "Play Games player verification failed".to_string(),
+                        }),
+                    )
+                        .into_response();
+                }
+            }
+        }
+        Ok(response) => {
+            warn!(
+                "Play Games player verification rejected: HTTP {}",
+                response.status()
+            );
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    error: "Play Games player verification was rejected".to_string(),
+                }),
+            )
+                .into_response();
+        }
+        Err(error) => {
+            warn!("Play Games player verification failed: {error}");
+            return (
+                StatusCode::BAD_GATEWAY,
+                Json(ErrorResponse {
+                    error: "Play Games player verification is temporarily unavailable".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    if player.player_id.trim().is_empty() {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Play Games response did not include a player ID".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
+    let account = match state
+        .db
+        .get_or_create("playgames_android".to_string(), player.player_id.clone())
+        .await
+    {
+        Ok(account) => account,
+        Err(error) => {
+            error!("Play Games account lookup failed: {error}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Play Games account lookup failed".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    let token_ttl = token_response
+        .expires_in
+        .unwrap_or(3600)
+        .saturating_sub(30)
+        .max(60);
+    let Ok(mut access_tokens) = state.playgames_access_tokens.lock() else {
+        error!("Play Games access-token store is poisoned");
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "Play Games session unavailable".to_string(),
+            }),
+        )
+            .into_response();
+    };
+    access_tokens.insert(
+        account.id.clone(),
+        PlayGamesAccessToken {
+            access_token,
+            expires_at: Instant::now() + Duration::from_secs(token_ttl),
+        },
+    );
+
+    let handoff_token = random_playgames_token();
+    let handoff = PlayGamesHandoff {
+        expires_at: Instant::now() + PLAYGAMES_HANDOFF_TTL,
+        account_id: account.id,
+        external_id: player.player_id,
+        display_name: player.display_name,
+        avatar_url: player.avatar_url,
+    };
+    let Ok(mut handoffs) = state.playgames_handoffs.lock() else {
+        error!("Play Games handoff store is poisoned");
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "Play Games handoff unavailable".to_string(),
+            }),
+        )
+            .into_response();
+    };
+    let now = Instant::now();
+    handoffs.retain(|_, value| value.expires_at > now);
+    handoffs.insert(handoff_token.clone(), handoff);
+
+    (
+        StatusCode::OK,
+        Json(PlayGamesExchangeResponse { handoff_token }),
+    )
+        .into_response()
+}
+
+async fn handle_playgames_consume(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<PlayGamesConsumeRequest>,
+) -> impl IntoResponse {
+    let handoff = {
+        let Ok(mut handoffs) = state.playgames_handoffs.lock() else {
+            error!("Play Games handoff store is poisoned");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Play Games handoff unavailable".to_string(),
+                }),
+            )
+                .into_response();
+        };
+        let now = Instant::now();
+        handoffs.retain(|_, value| value.expires_at > now);
+        handoffs.remove(payload.handoff_token.trim())
+    };
+
+    let Some(handoff) = handoff else {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Play Games handoff expired or already used".to_string(),
+            }),
+        )
+            .into_response();
+    };
+
+    let token = random_playgames_token();
+    let Ok(mut sessions) = state.playgames_sessions.lock() else {
+        error!("Play Games session store is poisoned");
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "Play Games session unavailable".to_string(),
+            }),
+        )
+            .into_response();
+    };
+    let now = Instant::now();
+    sessions.retain(|_, value| value.expires_at > now);
+    sessions.insert(
+        token.clone(),
+        PlayGamesSession {
+            expires_at: now + PLAYGAMES_SESSION_TTL,
+            account_id: handoff.account_id,
+            external_id: handoff.external_id.clone(),
+        },
+    );
+
+    (
+        StatusCode::OK,
+        Json(PlayGamesIdentityResponse {
+            provider: "playgames",
+            external_id: handoff.external_id,
+            display_name: handoff.display_name,
+            avatar_url: handoff.avatar_url,
+            name_locked: true,
+            token,
+        }),
+    )
+        .into_response()
+}
+
+impl AppState {
+    async fn sync_playgames_match_event(&self, participants: &[String]) -> Result<(), String> {
+        let event_id = std::env::var("SOW_PLAY_GAMES_MATCH_EVENT_ID")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        if event_id.is_empty() || participants.is_empty() {
+            return Ok(());
+        }
+
+        let now = Instant::now();
+        let tokens = {
+            let mut access_tokens = self
+                .playgames_access_tokens
+                .lock()
+                .map_err(|_| "Play Games access-token store is poisoned".to_string())?;
+            access_tokens.retain(|_, value| value.expires_at > now);
+            participants
+                .iter()
+                .filter_map(|account_id| {
+                    access_tokens
+                        .get(account_id)
+                        .map(|value| (account_id.clone(), value.access_token.clone()))
+                })
+                .collect::<Vec<_>>()
+        };
+        if tokens.is_empty() {
+            return Ok(());
+        }
+
+        let body = serde_json::json!({
+            "kind": "games#eventRecordRequest",
+            "requestId": rand::random::<u64>().to_string(),
+            "currentTimeMillis": std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+                .to_string(),
+            "events": [{
+                "definitionId": event_id,
+                "updateCount": "1"
+            }]
+        });
+        let client = reqwest::Client::new();
+        let mut first_error = None;
+        for (account_id, access_token) in tokens {
+            match client
+                .post("https://games.googleapis.com/games/v1/events")
+                .bearer_auth(access_token)
+                .json(&body)
+                .timeout(Duration::from_secs(5))
+                .send()
+                .await
+            {
+                Ok(response) if response.status().is_success() => {
+                    info!(
+                        "Play Games match event recorded for account={}",
+                        account_hint(Some(&account_id))
+                    );
+                }
+                Ok(response) => {
+                    let message = format!(
+                        "HTTP {} for account={}",
+                        response.status(),
+                        account_hint(Some(&account_id))
+                    );
+                    error!("Play Games event request rejected: {message}");
+                    first_error.get_or_insert(message);
+                }
+                Err(error) => {
+                    let message =
+                        format!("{} for account={}", error, account_hint(Some(&account_id)));
+                    error!("Play Games event request failed: {message}");
+                    first_error.get_or_insert(message);
+                }
+            }
+        }
+        first_error.map_or(Ok(()), Err)
+    }
+
+    async fn sync_playgames_match_outcome(
+        &self,
+        outcome: &PlayGamesMatchOutcome,
+    ) -> Result<(), String> {
+        let env_value = |name: &str| std::env::var(name).unwrap_or_default().trim().to_string();
+        let first_victory = env_value("SOW_PLAY_GAMES_FIRST_VICTORY_ACHIEVEMENT_ID");
+        let battle_hardened = env_value("SOW_PLAY_GAMES_BATTLE_HARDENED_ACHIEVEMENT_ID");
+        let victory_march = env_value("SOW_PLAY_GAMES_VICTORY_MARCH_ACHIEVEMENT_ID");
+        let laurel_hoard = env_value("SOW_PLAY_GAMES_LAUREL_HOARD_ACHIEVEMENT_ID");
+        let first_command = env_value("SOW_PLAY_GAMES_FIRST_COMMAND_ACHIEVEMENT_ID");
+        let commander_victorious = env_value("SOW_PLAY_GAMES_COMMANDER_VICTORIOUS_ACHIEVEMENT_ID");
+        let veteran_commander = env_value("SOW_PLAY_GAMES_VETERAN_COMMANDER_ACHIEVEMENT_ID");
+        let banner_collector = env_value("SOW_PLAY_GAMES_BANNER_COLLECTOR_ACHIEVEMENT_ID");
+        let leader_path = env_value("SOW_PLAY_GAMES_LEADER_PATH_ACHIEVEMENT_ID");
+        let leaderboard_id = env_value("SOW_PLAY_GAMES_VICTORIES_LEADERBOARD_ID");
+        if first_victory.is_empty()
+            && battle_hardened.is_empty()
+            && victory_march.is_empty()
+            && laurel_hoard.is_empty()
+            && first_command.is_empty()
+            && commander_victorious.is_empty()
+            && veteran_commander.is_empty()
+            && banner_collector.is_empty()
+            && leader_path.is_empty()
+            && leaderboard_id.is_empty()
+        {
+            return Ok(());
+        }
+
+        let access_token = {
+            let mut access_tokens = self
+                .playgames_access_tokens
+                .lock()
+                .map_err(|_| "Play Games access-token store is poisoned".to_string())?;
+            access_tokens.retain(|_, value| value.expires_at > Instant::now());
+            access_tokens
+                .get(&outcome.account_id)
+                .map(|value| value.access_token.clone())
+        };
+        let Some(access_token) = access_token else {
+            return Ok(());
+        };
+
+        let client = reqwest::Client::new();
+        let account_hint = account_hint(Some(&outcome.account_id));
+        let mut actions = Vec::new();
+        let add_unlock =
+            |actions: &mut Vec<(String, Option<(&'static str, String)>, &'static str)>,
+             id: &str,
+             label: &'static str| {
+                if !id.is_empty() {
+                    actions.push((
+                        format!("https://games.googleapis.com/games/v1/achievements/{id}/unlock"),
+                        None,
+                        label,
+                    ));
+                }
+            };
+        let add_increment =
+            |actions: &mut Vec<(String, Option<(&'static str, String)>, &'static str)>,
+             id: &str,
+             steps: u64,
+             label: &'static str| {
+                if !id.is_empty() && steps > 0 {
+                    actions.push((
+                        format!(
+                            "https://games.googleapis.com/games/v1/achievements/{id}/increment"
+                        ),
+                        Some(("steps", steps.to_string())),
+                        label,
+                    ));
+                }
+            };
+
+        add_increment(&mut actions, &battle_hardened, 1, "Battle Hardened");
+        add_increment(&mut actions, &leader_path, 1, "Leader Path");
+        add_increment(
+            &mut actions,
+            &laurel_hoard,
+            outcome.laurels_earned,
+            "Laurel Hoard",
+        );
+        if outcome.leader_matches_played >= 1 {
+            add_unlock(&mut actions, &first_command, "First Command");
+        }
+        if outcome.won {
+            add_unlock(&mut actions, &first_victory, "First Victory");
+            add_unlock(&mut actions, &commander_victorious, "Commander Victorious");
+            add_increment(&mut actions, &victory_march, 1, "Victory March");
+        }
+        if outcome.leader_wins >= 10 {
+            add_unlock(&mut actions, &veteran_commander, "Veteran Commander");
+        }
+        if outcome.distinct_leaders >= 5 {
+            add_unlock(&mut actions, &banner_collector, "Banner Collector");
+        }
+        if outcome.won && !leaderboard_id.is_empty() {
+            actions.push((
+                format!(
+                    "https://games.googleapis.com/games/v1/leaderboards/{leaderboard_id}/scores"
+                ),
+                Some(("score", outcome.wins.to_string())),
+                "Victories leaderboard",
+            ));
+        }
+
+        let mut first_error = None;
+        for (url, query, label) in actions {
+            let mut request = client
+                .post(url)
+                .bearer_auth(&access_token)
+                .timeout(Duration::from_secs(5));
+            if let Some(query) = query {
+                request = request.query(&[query]);
+            }
+            match request.send().await {
+                Ok(response) if response.status().is_success() => {
+                    info!("Play Games {label} synced for account={account_hint}");
+                }
+                Ok(response) => {
+                    let message = format!(
+                        "HTTP {} syncing {label} for account={account_hint}",
+                        response.status()
+                    );
+                    error!("Play Games request rejected: {message}");
+                    first_error.get_or_insert(message);
+                }
+                Err(error) => {
+                    let message = format!("{error} syncing {label} for account={account_hint}");
+                    error!("Play Games request failed: {message}");
+                    first_error.get_or_insert(message);
+                }
+            }
+        }
+
+        first_error.map_or(Ok(()), Err)
+    }
+
+    fn verify_playgames_session(
+        &self,
+        external_id: Option<&str>,
+        token: &str,
+    ) -> Result<VerifiedPlayGamesIdentity, String> {
+        let Ok(mut sessions) = self.playgames_sessions.lock() else {
+            return Err("Play Games session store is poisoned".to_string());
+        };
+        let now = Instant::now();
+        sessions.retain(|_, value| value.expires_at > now);
+        let Some(session) = sessions.get(token.trim()) else {
+            return Err("Play Games session expired or invalid".to_string());
+        };
+        if external_id.is_some_and(|value| value != session.external_id) {
+            return Err("Play Games player mismatch".to_string());
+        }
+        Ok(VerifiedPlayGamesIdentity {
+            account_id: session.account_id.clone(),
+            external_id: session.external_id.clone(),
+        })
+    }
+}
+
 fn platform_auth_token(headers: &HeaderMap) -> Option<String> {
     headers
         .get("x-platform-auth")
@@ -1759,21 +2399,29 @@ async fn handle_get_profile(
             .into_response();
     }
 
-    let resolved_external_id =
-        match resolve_external_id(provider, external_id, auth_token.as_deref()).await {
-            Ok(id) => id,
-            Err(e) => {
-                warn!(
-                    "[identity] platform profile failed id={request_id} provider={provider}: {e}"
-                );
-                return (StatusCode::UNAUTHORIZED, Json(ErrorResponse { error: e }))
-                    .into_response();
-            }
-        };
+    let resolved_external_id = match if provider == "playgames" {
+        state
+            .verify_playgames_session(Some(external_id), auth_token.as_deref().unwrap_or(""))
+            .map(|identity| identity.external_id)
+            .map_err(|error| error.to_string())
+    } else {
+        resolve_external_id(provider, external_id, auth_token.as_deref()).await
+    } {
+        Ok(id) => id,
+        Err(e) => {
+            warn!("[identity] platform profile failed id={request_id} provider={provider}: {e}");
+            return (StatusCode::UNAUTHORIZED, Json(ErrorResponse { error: e })).into_response();
+        }
+    };
 
+    let account_provider = if provider == "playgames" {
+        "playgames_android"
+    } else {
+        provider
+    };
     match state
         .db
-        .get_or_create(provider.to_string(), resolved_external_id)
+        .get_or_create(account_provider.to_string(), resolved_external_id)
         .await
     {
         Ok(account) => {
@@ -1992,7 +2640,7 @@ async fn handle_match_finalize(
         .finalize_match_with_lobby(&payload.match_id, payload.lobby_json.as_deref())
         .await
     {
-        Ok(()) => {
+        Ok(playgames_outcomes) => {
             if !participants.is_empty() {
                 let humans = state.db.count_human_players(&participants).await;
                 let winner = participants
@@ -2016,6 +2664,17 @@ async fn handle_match_finalize(
                 }
                 if let Err(e) = state.db.record_match_activation(&participants).await {
                     warn!("match activation analytics failed: {e}");
+                }
+                if let Err(error) = state.sync_playgames_match_event(&participants).await {
+                    error!("Play Games match event sync failed: {error}");
+                }
+                for outcome in playgames_outcomes {
+                    if let Err(error) = state.sync_playgames_match_outcome(&outcome).await {
+                        error!(
+                            "Play Games match outcome sync failed for account={}: {error}",
+                            account_hint(Some(&outcome.account_id))
+                        );
+                    }
                 }
             }
             (

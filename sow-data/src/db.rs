@@ -74,6 +74,18 @@ pub struct MatchOutcomeKda {
     pub leader: Option<String>,
 }
 
+#[derive(Clone, Debug)]
+pub struct PlayGamesMatchOutcome {
+    pub account_id: String,
+    pub won: bool,
+    pub matches_played: u32,
+    pub wins: u32,
+    pub laurels_earned: u64,
+    pub leader_matches_played: u32,
+    pub leader_wins: u32,
+    pub distinct_leaders: u32,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct PlayerProfile {
     pub xp: u32,
@@ -2335,7 +2347,7 @@ impl PlayerDb {
     pub async fn finalize_match(
         &self,
         match_id: &str,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<Vec<PlayGamesMatchOutcome>, Box<dyn std::error::Error + Send + Sync>> {
         self.finalize_match_with_lobby(match_id, None).await
     }
 
@@ -2343,15 +2355,15 @@ impl PlayerDb {
         &self,
         match_id: &str,
         lobby_json: Option<&str>,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<Vec<PlayGamesMatchOutcome>, Box<dyn std::error::Error + Send + Sync>> {
         let mut con = self.get_connection().await?;
         let finalized_key = format!("sow:match:{match_id}:finalized");
         if con.exists(&finalized_key).await? {
-            return Ok(());
+            return Ok(Vec::new());
         }
         if self.load_match_record(match_id)?.is_some() {
             let _: () = con.set(&finalized_key, "1").await?;
-            return Ok(());
+            return Ok(Vec::new());
         }
 
         let players_key = format!("sow:match:{match_id}:players");
@@ -2361,11 +2373,11 @@ impl PlayerDb {
             // No account players registered (e.g. bot-only matches): the
             // replay was already archived by the handler; there is no stats
             // state to finalize, so treat it as a clean success.
-            return Ok(());
+            return Ok(Vec::new());
         };
         let players: Vec<String> = serde_json::from_str(&players_json)?;
         if players.is_empty() {
-            return Ok(());
+            return Ok(Vec::new());
         }
 
         let exits: Vec<String> = con.lrange(&exits_key, 0, -1).await?;
@@ -2492,6 +2504,7 @@ impl PlayerDb {
             .as_secs();
         let opponent_count = players.len().saturating_sub(1) as u32;
         let mut participant_records = Vec::with_capacity(players.len());
+        let mut playgames_outcomes = Vec::with_capacity(players.len());
         for account_id in &players {
             let raw = raw_player(account_id);
             let raw_leader = raw
@@ -2576,6 +2589,7 @@ impl PlayerDb {
                 rating_delta: None,
             });
 
+            let outcome_leader = leader.clone();
             match self
                 .record_match_outcome_with_kda(
                     account_id,
@@ -2593,6 +2607,30 @@ impl PlayerDb {
             {
                 Ok(account) => {
                     self.submit_crazygames_score(&account).await;
+                    let effective_leader = outcome_leader
+                        .as_deref()
+                        .and_then(crate::rewards::canonical_leader_name)
+                        .or_else(|| {
+                            account
+                                .profile
+                                .preferred_leader
+                                .as_deref()
+                                .and_then(crate::rewards::canonical_leader_name)
+                        })
+                        .unwrap_or_else(|| "Caesar".to_string());
+                    let leader_stats = account.profile.leader_stats.get(&effective_leader);
+                    playgames_outcomes.push(PlayGamesMatchOutcome {
+                        account_id: account_id.clone(),
+                        won,
+                        matches_played: account.profile.matches_played,
+                        wins: account.profile.wins,
+                        laurels_earned: reward.laurels,
+                        leader_matches_played: leader_stats
+                            .map(|stats| stats.matches_played)
+                            .unwrap_or_default(),
+                        leader_wins: leader_stats.map(|stats| stats.wins).unwrap_or_default(),
+                        distinct_leaders: account.profile.leader_stats.len() as u32,
+                    });
                 }
                 Err(e) => {
                     error!("Failed to record outcome for {account_id}: {e}");
@@ -2650,7 +2688,7 @@ impl PlayerDb {
         }
 
         info!("Finalized match {match_id} with {} players", players.len());
-        Ok(())
+        Ok(playgames_outcomes)
     }
 
     pub async fn submit_crazygames_score(&self, account: &PlayerAccount) {

@@ -307,12 +307,12 @@
       if (!email) return;
       pendingEmail = email;
       try {
-        await window.wouAuth.sendEmailOtp(email);
+        await window.wouAuth.requestOtp(email, false, 'shadows_of_war');
         step1?.classList.add('hidden');
         step2?.classList.remove('hidden');
         showMsg(`Verification code sent to ${email}`, 'success');
       } catch (err) {
-        showMsg(err.message || 'Failed to send code');
+        showMsg(window.wouAuth.describeOtpError(err).message || 'Failed to send code');
       }
     });
 
@@ -320,7 +320,7 @@
       const code = otpInput?.value.trim();
       if (!code || !pendingEmail) return;
       try {
-        await window.wouAuth.verifyEmailOtp(pendingEmail, code);
+        await window.wouAuth.verifyOtp(pendingEmail, code, 'shadows_of_war');
       } catch (err) {
         showMsg(err.message || 'Invalid code');
       }

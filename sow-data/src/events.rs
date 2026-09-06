@@ -24,6 +24,8 @@ pub const EVENT_NAMES: &[&str] = &[
     "boot_route_decision",
     "load_stage",
     "menu_quick_match",
+    "menu_join_attempt",
+    "menu_password_join_attempt",
     "menu_code_join_attempt",
     "menu_custom_create",
     "menu_single_player_start",
@@ -86,7 +88,7 @@ impl AnalyticsEvent {
         }
         for field in [&self.portal, &self.platform, &self.build, &self.locale] {
             if let Some(value) = field
-                && (value.is_empty() || value.len() > 32 || !is_simple_string(value))
+                && (!value.is_empty() && (value.len() > 32 || !is_simple_string(value)))
             {
                 return Err("invalid string field");
             }
@@ -243,6 +245,16 @@ mod tests {
     #[test]
     fn accepts_known_event() {
         assert!(sample("boot_start").validate(NOW_MS).is_ok());
+    }
+
+    #[test]
+    fn accepts_empty_optional_string_fields() {
+        let mut event = sample("boot_start");
+        event.portal = Some(String::new());
+        event.platform = Some(String::new());
+        event.build = Some(String::new());
+        event.locale = Some(String::new());
+        assert!(event.validate(NOW_MS).is_ok());
     }
 
     #[test]

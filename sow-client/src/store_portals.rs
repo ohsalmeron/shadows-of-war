@@ -126,6 +126,27 @@ pub fn is_portal_embed() -> bool {
     }
 }
 
+pub fn is_android_twa() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let Some(value) = get_window_value("SOW_isAndroidTwa") else {
+            return false;
+        };
+        if let Ok(function) = value.dyn_into::<js_sys::Function>() {
+            return function
+                .call0(&wasm_bindgen::JsValue::NULL)
+                .ok()
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false);
+        }
+        false
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        false
+    }
+}
+
 /// Waiting lobby uses a scroll modal on short iframe hosts (CrazyGames + marketing embed).
 pub fn is_lobby_modal_embed() -> bool {
     #[cfg(target_arch = "wasm32")]
@@ -383,7 +404,6 @@ pub fn get_portal_locale() -> Option<String> {
 pub fn happytime() {
     call_window_hook("SOW_portalHappytime");
 }
-
 pub fn show_auth_prompt() {
     call_window_hook("SOW_portalShowAuthPrompt");
 }

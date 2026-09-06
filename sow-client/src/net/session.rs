@@ -112,6 +112,13 @@ impl SowApp {
             return None;
         }
         let identity = crate::store_portals::load_identity("Player");
+        if crate::store_portals::is_android_twa() && identity.provider != "playgames" {
+            return Some(sow_core::protocol::AuthProof {
+                provider: "playgames".to_string(),
+                account_id: None,
+                token: String::new(),
+            });
+        }
         if identity.provider == "wou" {
             let token = identity.auth_token.clone().filter(|t| !t.is_empty())?;
             return Some(sow_core::protocol::AuthProof {
@@ -125,6 +132,14 @@ impl SowApp {
             return Some(sow_core::protocol::AuthProof {
                 provider: "crazygames".to_string(),
                 account_id: None,
+                token,
+            });
+        }
+        if identity.provider == "playgames" {
+            let token = identity.auth_token.clone().filter(|t| !t.is_empty())?;
+            return Some(sow_core::protocol::AuthProof {
+                provider: "playgames".to_string(),
+                account_id: identity.external_id.clone(),
                 token,
             });
         }
