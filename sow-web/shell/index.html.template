@@ -33,8 +33,6 @@
 
     <link rel="modulepreload" href="./__JS_FILE__">
     <link rel="preload" href="./__WASM_FILE__" as="fetch" type="application/wasm" crossorigin="anonymous" fetchpriority="high">
-    <link rel="preload" href="__ASSETS_UI_BASE__sow-splash-desktop.webp?v=__BUILD_TS__" as="image" type="image/webp" media="(min-width: 600px)" fetchpriority="high">
-    <link rel="preload" href="__ASSETS_UI_BASE__sow-splash-mobile.webp?v=__BUILD_TS__" as="image" type="image/webp" media="(max-width: 599px)" fetchpriority="high">
     <link rel="preload" href="__ASSETS_UI_BASE__loader_empty.webp?v=__BUILD_TS__" as="image" type="image/webp" fetchpriority="high">
     <style>
         body, html {
@@ -80,6 +78,12 @@
             overflow: hidden;
         }
 
+        #web-loader .splash-picture {
+            position: absolute;
+            inset: 0;
+            display: block;
+        }
+
         #web-loader .splash-bg {
             position: absolute;
             top: 0;
@@ -95,6 +99,9 @@
             position: absolute;
             left: 50%;
             transform: translateX(-50%);
+            width: min(42vw, 480px);
+            aspect-ratio: 2064 / 512;
+            bottom: max(7vh, 32px);
             pointer-events: none;
             overflow: visible;
         }
@@ -149,6 +156,11 @@
 
         /* Fallback sizes before JS layout(); JS sets data-layout + inline font-size. */
         @media (max-width: 599px) and (orientation: portrait) {
+            #web-loader .loader-bar-wrap {
+                width: min(76vw, calc(100vw - 64px));
+                bottom: max(6vh, 24px);
+            }
+
             #web-loader .loader-text {
                 font-size: 12px;
             }
@@ -171,7 +183,22 @@
     </style>
 </head>
 <body>
-    <div id="web-loader" aria-live="polite" aria-busy="true"></div>
+    <div id="web-loader" aria-live="polite" aria-busy="true">
+        <picture class="splash-picture">
+            <source media="(max-width: 599px)" srcset="__SOW_SPLASH_MOBILE_DATA__">
+            <img id="splash-bg" class="splash-bg" alt="" decoding="sync" fetchpriority="high"
+                src="__SOW_SPLASH_DESKTOP_DATA__">
+        </picture>
+        <div id="loader-bar-wrap" class="loader-bar-wrap">
+            <img id="loader-bar-empty" class="loader-bar-empty" alt="" decoding="async" fetchpriority="high"
+                src="__ASSETS_UI_BASE__loader_empty.webp?v=__BUILD_TS__">
+            <div id="loader-bar-fill" class="loader-bar-fill">
+                <img id="loader-bar-full" class="loader-bar-full" alt="" decoding="async" fetchpriority="low"
+                    src="__ASSETS_UI_BASE__loader_full.webp?v=__BUILD_TS__">
+            </div>
+            <p id="loader-text" class="loader-text">Loading...</p>
+        </div>
+    </div>
 
     <!-- Portal store listings (Poki, CrazyGames, etc.) may scrape index.html for title/description. -->
     <div style="display: none;" aria-hidden="true">
@@ -256,10 +283,10 @@
                     await window.SOW_initAndroidAuth();
                 } catch (error) {
                     console.error("Play Games authentication failed:", error);
-                    if (typeof window.SOW_showAndroidAuthFailure === "function") {
-                        window.SOW_showAndroidAuthFailure(error.message);
-                    }
-                    return;
+                    // Authentication is best-effort on Android. A failed
+                    // handoff must not turn into a black screen; the native
+                    // client can continue with its anonymous account.
+                    window.SOW_PLATFORM_IDENTITY = null;
                 }
             }
 

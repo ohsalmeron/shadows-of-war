@@ -289,6 +289,12 @@ pub enum AccountKind {
 pub struct LinkedIdentity {
     pub provider: String, // "crazygames" for verified players or "bot" for server fillers
     pub external_id: String, // Stable unique ID from the platform
+    #[serde(default = "default_identity_environment")]
+    pub environment: String,
+}
+
+fn default_identity_environment() -> String {
+    "production".to_string()
 }
 
 /// Result of an operator-driven account erasure (privacy deletion
@@ -1076,6 +1082,13 @@ impl PlayerDb {
         format!("sow:player:identity:{}:{}", provider, external_id)
     }
 
+    fn environment_identity_key(environment: &str, provider: &str, external_id: &str) -> String {
+        format!(
+            "sow:player:identity:{}:{}:{}",
+            environment, provider, external_id
+        )
+    }
+
     /// Key format for loading/saving full player account info
     fn account_key(account_id: &str) -> String {
         format!("sow:player:account:{}", account_id)
@@ -1318,6 +1331,11 @@ impl PlayerDb {
         keys.push(format!("sow:blocks:{account_id}"));
         if let Some(ref account) = account {
             for identity in &account.linked_identities {
+                keys.push(Self::environment_identity_key(
+                    &identity.environment,
+                    &identity.provider,
+                    &identity.external_id,
+                ));
                 keys.push(Self::identity_key(
                     &identity.provider,
                     &identity.external_id,
@@ -1577,13 +1595,36 @@ impl PlayerDb {
         provider: String,
         external_id: String,
     ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
+        self.get_or_create_with_environment(provider, "production".to_string(), external_id)
+            .await
+    }
+
+    /// Get or create an account for a verified provider identity. The legacy
+    /// production key is read as a compatibility fallback so existing
+    /// accounts are not duplicated during the namespace migration.
+    pub async fn get_or_create_with_environment(
+        &self,
+        provider: String,
+        environment: String,
+        external_id: String,
+    ) -> Result<PlayerAccount, Box<dyn std::error::Error + Send + Sync>> {
         let mut con = self.get_connection().await?;
-        let id_key = Self::identity_key(&provider, &external_id);
+        let id_key = Self::environment_identity_key(&environment, &provider, &external_id);
+        let legacy_key = Self::identity_key(&provider, &external_id);
 
         // 1. Try to find existing account ID mapped to this identity
-        if let Some(account_id) = con.get::<_, Option<String>>(&id_key).await?
+        let lookup_key = con
+            .get::<_, Option<String>>(&id_key)
+            .await?
+            .map(|_| id_key.clone())
+            .or_else(|| (environment == "production").then_some(legacy_key));
+        if let Some(lookup_key) = lookup_key
+            && let Some(account_id) = con.get::<_, Option<String>>(&lookup_key).await?
             && let Ok(account) = Self::load_account(&mut con, &account_id).await
         {
+            if lookup_key != id_key {
+                let _: () = con.set(&id_key, &account.id).await?;
+            }
             let _: () = Self::record_analytics(&mut con, &account.id, false).await?;
             let account = self.ensure_public_id(account).await?;
             return self.ensure_starting_leader(account).await;
@@ -1599,6 +1640,7 @@ impl PlayerDb {
         let identity = LinkedIdentity {
             provider,
             external_id,
+            environment,
         };
 
         // Bot identities (provider == "bot") are marked at creation. All
@@ -2149,6 +2191,7 @@ impl PlayerDb {
             let identity = LinkedIdentity {
                 provider: "bot".to_string(),
                 external_id: external_id.clone(),
+                environment: "production".to_string(),
             };
             let account = PlayerAccount {
                 id: random_id.clone(),

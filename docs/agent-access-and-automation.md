@@ -26,7 +26,7 @@ without the owner's device credential.
 
 | Area | Official interface | Automation available here | Boundary |
 |---|---|---|---|
-| Android releases, tracks, listings, testers, IAP | Google Play Android Publisher API v3 | `./sow a` and `fastlane`; `gpc` CLI can also operate the API | Android uploads stay in `./sow a`; `./sow p` never uploads Android |
+| Android releases, tracks, listings, testers, IAP | Google Play Android Publisher API v3 | `fastlane`/`gpc` for read-only inspection; owner-only `./sow a` for release | Codex never uploads Android; local validation uses `scripts/android-local-test.sh` |
 | Play Games configuration | Play Games Services Publishing API v1configuration | `gpc games` can manage achievement and leaderboard configurations | The API does not cover the complete Play Console bootstrap; event setup remains a Console operation |
 | Play Games runtime data | Play Games Services API v1 | `gpc games runtime` is read-only and requires the `games` OAuth scope | It is not the same API as configuration/publishing |
 | Play Games management | Play Games Services Management API v1management | Direct REST/client-library access is possible when the correct user OAuth scope exists | It is not exposed by an installed MCP in this session |
@@ -84,9 +84,10 @@ Verified configuration:
 - `./sow p` propagates the event, achievement, and leaderboard IDs to all
   production service environments and verifies configuration drift.
 
-The Play Games v2 Android launcher authenticates before starting the TWA,
-exchanges a one-use server auth code with the backend, and does not provide a
-guest fallback. The authoritative server submits match events, achievement
+The Play Games v2 Android launcher checks for an existing authenticated session
+before starting the TWA, exchanges a one-use server auth code with the backend
+when available, and falls back to the normal anonymous TWA session when Play
+Games is unavailable. The authoritative server submits match events, achievement
 increments/unlocks for matches, victories, laurels, and leader milestones, plus
 cumulative victory scores, only for verified Play Games sessions. No parallel
 achievement counters are stored; all thresholds are derived from the existing
@@ -97,7 +98,8 @@ authoritative profile and finalized match reward.
 Use the smallest verified path:
 
 1. `gpc` or a direct official Google API for read-only/configuration work.
-2. `./sow a` for Android build, device validation, and Play upload.
+2. Owner-only `./sow a` for Android build, device validation, and Play upload;
+   Codex must never run it.
 3. `./sow p` only for Web/backend/infra production deployment.
 4. Agent-controlled browser interaction for the small Play Games Console
    bootstrap surface that is not exposed by the APIs/CLI. Do not delegate

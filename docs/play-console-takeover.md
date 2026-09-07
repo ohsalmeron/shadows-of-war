@@ -14,7 +14,8 @@ Never store passwords, private keys, service-account JSON, or tokens here.
 - Use the browser only when the public API does not expose the write operation or Google requires
   an owner confirmation.
 - `./sow p` is the Web/backend/infra pipeline.
-- `./sow a` is the Android/Play pipeline.
+- `./sow a` is the Android/Play pipeline, but only the owner may run it
+  manually. Codex must never execute it or upload to Google Play.
 - Never replace either pipeline with manual `scp`, `rsync`, SSH activation, symlink swaps, or service
   restarts.
 
@@ -146,11 +147,11 @@ Read a track without deploying:
   json_key:"/home/bizkit/.config/shadows-of-war/google-play-service-account.json"
 ```
 
-Use the official pipelines for changes:
+Use the official pipelines for changes. Android upload is owner-only:
 
 ```sh
 ./sow p       # Web/backend/infra
-./sow a       # Android/Google Play
+./sow a       # Android/Google Play — owner runs manually; Codex never runs it
 ./sow l       # local Web/WASM preview
 ./sow native  # native desktop client
 ```
@@ -179,7 +180,7 @@ closed test when Play explicitly requires one.
 [ ] Verify ID, KE, NG, PH, and VN if a tester reports a region error.
 [ ] Do not ask for RevenueCat login again while the authenticated profile is valid.
 [ ] Use ./sow p for Web/backend/infra changes.
-[ ] Use ./sow a for Android/Play changes.
+[ ] Owner runs ./sow a manually for Android/Play changes; Codex never runs it.
 [ ] Verify the live result and record the date, track, and versionCode.
 ```
 
@@ -230,6 +231,8 @@ Package: com.shadowsofwar. Track: Closed testing / Alpha.
 First report: release/versionCode, country targeting, tester-list count versus opted-in count,
 and the exact remaining Production requirement.
 Use the existing API/CLI authentication without printing secrets.
-Use ./sow p for Web/backend changes and ./sow a for Android/Play changes.
+Use ./sow p for Web/backend changes. The owner runs ./sow a manually for
+Android/Play changes; Codex validates Android locally with
+scripts/android-local-test.sh and never uploads it.
 Do not deploy manually or create duplicate products/projects.
 ```

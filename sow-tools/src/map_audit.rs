@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 const LAND_BIT: u8 = 0x80;
 const OCEAN_BIT: u8 = 0x20;
 const SHORE_BIT: u8 = 0x40;
-const SMALL_WATER_LIMIT: usize = 30;
+const SMALL_WATER_LIMIT: usize = 16;
 
 pub struct MapAuditArgs {
     pub maps_root: PathBuf,
@@ -34,10 +34,10 @@ struct AuditReport {
     ocean_tiles: usize,
     shoreline_tiles: usize,
     water_components_4: usize,
-    tiny_water_components_4_lt30: usize,
+    tiny_water_components_4_lt16: usize,
     largest_water_component_4: usize,
     water_components_8: usize,
-    tiny_water_components_8_lt30: usize,
+    tiny_water_components_8_lt16: usize,
     largest_water_component_8: usize,
     recipe_present: bool,
     recipe_artifacts_match: Option<bool>,
@@ -103,7 +103,7 @@ pub fn run(args: MapAuditArgs) -> Result<(), Box<dyn std::error::Error>> {
     } else {
         for report in &reports {
             println!(
-                "{} {}x{} land={} water={} ocean={} shore={} water4={} (<30:{}) water8={} (<30:{}) recipe={} valid={}",
+                "{} {}x{} land={} water={} ocean={} shore={} water4={} (<16:{}) water8={} (<16:{}) recipe={} valid={}",
                 report.map,
                 report.width,
                 report.height,
@@ -112,9 +112,9 @@ pub fn run(args: MapAuditArgs) -> Result<(), Box<dyn std::error::Error>> {
                 report.ocean_tiles,
                 report.shoreline_tiles,
                 report.water_components_4,
-                report.tiny_water_components_4_lt30,
+                report.tiny_water_components_4_lt16,
                 report.water_components_8,
-                report.tiny_water_components_8_lt30,
+                report.tiny_water_components_8_lt16,
                 report.recipe_artifacts_match.unwrap_or(false),
                 report.valid,
             );
@@ -215,10 +215,10 @@ fn audit_map(
         ocean_tiles,
         shoreline_tiles,
         water_components_4: water4.count,
-        tiny_water_components_4_lt30: water4.tiny,
+        tiny_water_components_4_lt16: water4.tiny,
         largest_water_component_4: water4.largest,
         water_components_8: water8.count,
-        tiny_water_components_8_lt30: water8.tiny,
+        tiny_water_components_8_lt16: water8.tiny,
         largest_water_component_8: water8.largest,
         recipe_present: recipe.is_some(),
         recipe_artifacts_match,

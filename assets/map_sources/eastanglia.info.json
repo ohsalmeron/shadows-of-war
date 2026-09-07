@@ -1,0 +1,79 @@
+{
+  "id": "EastAnglia",
+  "name": "East Anglia",
+  "translation_key": "map.eastanglia",
+  "nations": [
+    {
+      "coordinates": [
+        835,
+        465
+      ],
+      "name": "Pas-de-Calais",
+      "flag": "fr"
+    },
+    {
+      "coordinates": [
+        163,
+        433
+      ],
+      "name": "Devon",
+      "flag": "gb-eng"
+    },
+    {
+      "coordinates": [
+        696,
+        45
+      ],
+      "name": "Norfolk",
+      "flag": "gb-eng"
+    },
+    {
+      "coordinates": [
+        198,
+        119
+      ],
+      "name": "Powys",
+      "flag": "gb-wls"
+    },
+    {
+      "coordinates": [
+        703,
+        134
+      ],
+      "name": "Suffolk",
+      "flag": "gb-eng"
+    },
+    {
+      "coordinates": [
+        444,
+        370
+      ],
+      "name": "Hampshire",
+      "flag": "gb-eng"
+    },
+    {
+      "coordinates": [
+        646,
+        230
+      ],
+      "name": "Camulodunum",
+      "flag": "gb-eng"
+    },
+    {
+      "coordinates": [
+        576,
+        300
+      ],
+      "name": "Londinium",
+      "flag": "gb-eng"
+    },
+    {
+      "coordinates": [
+        536,
+        270
+      ],
+      "name": "Verulamium",
+      "flag": "gb-eng"
+    }
+  ]
+}

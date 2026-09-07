@@ -25,3 +25,4 @@ reqwest = { workspace = true, features = ["json"] }
 hmac = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
+jsonwebtoken = "9"

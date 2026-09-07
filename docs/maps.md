@@ -1,6 +1,6 @@
 # Maps, thumbnails, and mobile terrain budgets
 
-Audited 2026-09-05. This document is the source of truth for the map and
+Audited 2026-09-06. This document is the source of truth for the map and
 thumbnail pipeline. The approved 16:9 framing is integrated into the official
 web packaging path; the playable map grid remains independent.
 
@@ -52,8 +52,9 @@ These framing calculations do not write gameplay dimensions.
 
 ## Reference source and provenance
 
-The production thumbnail source is vendored as an authoring-only input at
-`assets/map_sources/giantworldmap.png`. It is not copied into `dist/web`, the
+The production thumbnail sources are vendored as authoring-only inputs at
+`assets/map_sources/`. The global source is `giantworldmap.png`; East Anglia
+uses the reproducible Britannia frame `eastanglia.png`. It is not copied into `dist/web`, the
 release root, or Android. Its manifest is
 `assets/map_sources/thumbnail_frames.json`.
 
@@ -67,7 +68,11 @@ The separate `../games/MapGenerator` checkout is research material. Its file
 with the same `giantworldmap` name has different bytes; do not silently switch
 between checkouts or assume same filenames mean identical source revisions.
 
-The manifest stores one deterministic source rectangle per geographic map. It
+The manifest stores one deterministic source rectangle per geographic map.
+East Anglia uses the cropped Britannia frame that also matches the Boudica
+campaign coordinate system. The vendored frame removes three disconnected inland
+water components inherited from the upstream Britannia artwork; the correction is
+recorded in `assets/maps/SOURCES.toml` and does not change the shared Rust pipeline. It
 uses the giant-world equirectangular coordinates and expands the playable
 region to 16:9 without a square crop. World-wrap frames may cross the source's
 left/right edge; the renderer wraps longitude. A frame that extends beyond the
@@ -105,11 +110,11 @@ the same 16:9 aspect ratio and the existing single thumbnail URL.
 
 `assets/maps/SOURCES.toml` records the playable recipe for every map: origin
 hash and revision, target dimensions, pipeline settings, and hashes for
-`map.bin`, `map.bin.br`, and `thumbnail.webp`. East Anglia is explicitly marked
-as an existing-bin snapshot because its original authoring image is absent;
-that map is not reproducible until its source is recovered. Pangaea's playable
-bin was regenerated from the pinned source while its existing thumbnail hash
-was preserved; East Anglia preserved both its existing bin and thumbnail.
+`map.bin`, `map.bin.br`, and `thumbnail.webp`. The image pipeline uses
+water-wins downscale and removes inland water components smaller than 16 tiles.
+East Anglia is reproducible from the pinned Britannia frame and keeps the
+Boudica campaign spawn set. Pangaea uses the same pipeline and receives the
+standard 16:9 fallback thumbnail with the depth water palette.
 
 All authoring routes now call `sow-map::image_pipeline::generate_from_rgba`.
 The former parallel `sow-map/src/generator.rs` path was removed, so no second
@@ -125,18 +130,25 @@ Headers in the current local map library after the canonical regeneration:
 
 | Asset | Dimensions | Cells / source pixels | Role |
 |---|---:|---:|---|
-| Pangaea | 1000×1000 | 1,000,000 | Existing playable grid |
-| World | 1408×704 | 991,232 | Existing playable grid |
-| Europe | 1312×756 | 991,872 | Existing playable grid |
-| East Anglia | 896×504 | 451,584 | Existing playable grid |
-| giantworldmap PNG | 4110×1948 | 8,006,280 | Authoring reference image |
+| africa | 956×1000 | 956,000 | Playable grid |
+| asia | 1000×600 | 600,000 | Playable grid |
+| bajacalifornia | 848×1000 | 848,000 | Playable grid |
+| eastanglia | 896×504 | 451,584 | Playable grid |
+| eastasia | 948×1000 | 948,000 | Playable grid |
+| europe | 1000×576 | 576,000 | Playable grid |
+| indiansubcontinent | 900×1000 | 900,000 | Playable grid |
+| mena | 1000×436 | 436,000 | Playable grid |
+| middleeast | 1000×936 | 936,000 | Playable grid |
+| northamerica | 1000×516 | 516,000 | Playable grid |
+| oceania | 1000×600 | 600,000 | Playable grid |
+| pangaea | 1000×1000 | 1,000,000 | Playable grid |
+| southamerica | 732×1000 | 732,000 | Playable grid |
+| southeastasia | 1000×592 | 592,000 | Playable grid |
+| world | 1000×500 | 500,000 | Playable grid |
 
-All 15 local grids are at or below 1,000,000 cells. Pangaea has 420,205 land
-cells; MENA has 763,406 land cells in a 992,640-cell grid. Similar total sizes
-do not guarantee similar simulation workloads. Pangaea's acceptable behavior
-on slower phones is owner-reported; this documentation update ran no device
-benchmark and did not reproduce the reported giant-map crash.
-
+All 15 local grids are at or below 1,000,000 cells. Water cells count toward that cap.
+The final acceptance still requires the native visual review for rivers, lakes, shores,
+islands, and the Pangaea ocean palette.
 Current code is not a uniform hard gate:
 
 - `MAX_MAP_PIXELS = 1_000_000` in `sow-core/src/maps.rs` is the total-cell cap.

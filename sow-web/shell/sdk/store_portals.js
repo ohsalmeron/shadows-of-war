@@ -248,6 +248,51 @@
     return true;
   };
 
+  function androidIdentityFromResponse(serverIdentity) {
+    if (!serverIdentity || serverIdentity.provider !== "playgames" ||
+        !serverIdentity.external_id || !serverIdentity.token) {
+      throw new Error("Play Games identity response is invalid");
+    }
+    return {
+      provider: "playgames",
+      externalId: serverIdentity.external_id,
+      displayName: serverIdentity.display_name || "Player",
+      avatarUrl: serverIdentity.avatar_url || null,
+      nameLocked: serverIdentity.name_locked === true,
+      token: serverIdentity.token,
+    };
+  }
+
+  function clearAndroidAuthParam(params, key) {
+    params.delete(key);
+    var cleanUrl = window.location.pathname +
+      (params.toString() ? "?" + params.toString() : "") + window.location.hash;
+    window.history.replaceState({}, document.title, cleanUrl);
+  }
+
+  async function pollAndroidPlayGames(base, rendezvousId) {
+    var deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      try {
+        var response = await fetch(
+          base + "/auth/playgames/poll?rendezvous_id=" + encodeURIComponent(rendezvousId),
+          { headers: { "Accept": "application/json" } }
+        );
+        if (response.status === 204) {
+          await new Promise(function (resolve) { setTimeout(resolve, 100); });
+          continue;
+        }
+        if (response.status !== 200) {
+          return null;
+        }
+        return androidIdentityFromResponse(await response.json());
+      } catch (error) {
+        return null;
+      }
+    }
+    return null;
+  }
+
   window.SOW_initAndroidAuth = async function () {
     if (!isAndroidTwa()) {
       return;
@@ -255,6 +300,7 @@
 
     var params = new URLSearchParams(window.location.search);
     var handoff = params.get("sow_playgames_handoff");
+    var rendezvousId = params.get("sow_playgames_rendezvous");
     var saved = null;
     try {
       saved = sessionStorage.getItem("sow_playgames_identity");
@@ -270,24 +316,10 @@
       if (!response.ok) {
         throw new Error("Play Games handoff rejected");
       }
-      var serverIdentity = await response.json();
-      if (!serverIdentity || serverIdentity.provider !== "playgames" ||
-          !serverIdentity.external_id || !serverIdentity.token) {
-        throw new Error("Play Games identity response is invalid");
-      }
-      var identity = {
-        provider: "playgames",
-        externalId: serverIdentity.external_id,
-        displayName: serverIdentity.display_name || "Player",
-        avatarUrl: serverIdentity.avatar_url || null,
-        nameLocked: serverIdentity.name_locked === true,
-        token: serverIdentity.token,
-      };
+      var identity = androidIdentityFromResponse(await response.json());
       window.SOW_PLATFORM_IDENTITY = identity;
       try { sessionStorage.setItem("sow_playgames_identity", JSON.stringify(identity)); } catch (e) {}
-      params.delete("sow_playgames_handoff");
-      var cleanUrl = window.location.pathname + (params.toString() ? "?" + params.toString() : "") + window.location.hash;
-      window.history.replaceState({}, document.title, cleanUrl);
+      clearAndroidAuthParam(params, "sow_playgames_handoff");
       console.info("Play Games authentication complete");
       return;
     }
@@ -298,24 +330,33 @@
         if (cachedIdentity && cachedIdentity.provider === "playgames" &&
             cachedIdentity.externalId && cachedIdentity.token) {
           window.SOW_PLATFORM_IDENTITY = cachedIdentity;
+          if (rendezvousId) {
+            clearAndroidAuthParam(params, "sow_playgames_rendezvous");
+          }
           return;
         }
       } catch (e) {}
     }
 
-    throw new Error("Play Games authentication is required");
-  };
-
-  window.SOW_showAndroidAuthFailure = function (message) {
-    var loader = document.getElementById("web-loader");
-    if (!loader) {
-      return;
+    if (rendezvousId) {
+      var base = String(window.SOW_DATABASE_URL || "/api").replace(/\/$/, "");
+      var rendezvousIdentity = await pollAndroidPlayGames(base, rendezvousId);
+      clearAndroidAuthParam(params, "sow_playgames_rendezvous");
+      if (rendezvousIdentity) {
+        window.SOW_PLATFORM_IDENTITY = rendezvousIdentity;
+        try {
+          sessionStorage.setItem("sow_playgames_identity", JSON.stringify(rendezvousIdentity));
+        } catch (e) {}
+        console.info("Play Games rendezvous authentication complete");
+        return;
+      }
     }
-    loader.hidden = false;
-    loader.innerHTML =
-      "<div style=\"display:flex;align-items:center;justify-content:center;height:100%;padding:24px;box-sizing:border-box;background:#0a0a0f;color:#fff;text-align:center;font:600 18px system-ui\"><div>" +
-      String(message || "Play Games authentication is required") +
-      "<br><button onclick=\"location.reload()\" style=\"margin-top:20px;padding:12px 18px\">RETRY</button></div></div>";
+
+    // Play Games is an optional Android enhancement. The native launcher has
+    // already decided whether a silent handoff is available; a missing or
+    // expired handoff must never prevent the anonymous TWA from booting.
+    window.SOW_PLATFORM_IDENTITY = null;
+    console.info("Play Games unavailable; continuing with anonymous identity");
   };
 
   function refreshPortalFlags() {

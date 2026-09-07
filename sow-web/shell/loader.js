@@ -44,10 +44,6 @@
         throw new Error('SOW_ASSETS_URL is not set; cannot resolve boot UI asset: ' + file);
     }
 
-    function assetPath(file) {
-        return assetPathVariants(file)[0];
-    }
-
     function wireAssetFallback(img, file) {
         const variants = assetPathVariants(file);
         let attempt = 0;
@@ -90,7 +86,6 @@
     }
 
     let root = null;
-    let splashBg = null;
     let barFill = null;
     let barFull = null;
     let loaderText = null;
@@ -120,12 +115,6 @@
             return inner * cfg.barWidthRatio;
         }
         return Math.min(cfg.barMaxWidth, screenW * cfg.barWidthRatio);
-    }
-
-    function splashSrc() {
-        return assetUrl(
-            isMobile() ? assetPath('sow-splash-mobile.webp') : assetPath('sow-splash-desktop.webp')
-        );
     }
 
     function stageSize() {
@@ -175,18 +164,6 @@
             loaderText.style.fontSize = cfg.textSizePx + 'px';
             loaderText.style.marginTop = cfg.textNudgePx + 'px';
         }
-        if (splashBg) {
-            const nextSplash = splashSrc();
-            let current = '';
-            try {
-                current = splashBg.src;
-            } catch {
-                current = '';
-            }
-            if (current !== new URL(nextSplash, window.location.href).href) {
-                setImgSrc(splashBg, nextSplash);
-            }
-        }
     }
 
     function stopProgress() {
@@ -220,29 +197,19 @@
     function buildDom() {
         root = document.getElementById('web-loader');
         if (!root) {
-            root = document.createElement('div');
-            root.id = 'web-loader';
-            document.body.appendChild(root);
+            return;
         }
 
-        root.innerHTML = `
-            <img id="splash-bg" class="splash-bg" alt="" decoding="async" fetchpriority="high" src="${splashSrc()}">
-            <div id="loader-bar-wrap" class="loader-bar-wrap">
-                <img id="loader-bar-empty" class="loader-bar-empty" alt="" decoding="async" fetchpriority="high" src="${assetUrl(assetPath('loader_empty.webp'))}">
-                <div id="loader-bar-fill" class="loader-bar-fill">
-                    <img id="loader-bar-full" class="loader-bar-full" alt="" decoding="async" fetchpriority="low" src="${assetUrl(assetPath('loader_full.webp'))}">
-                </div>
-                <p id="loader-text" class="loader-text">Loading...</p>
-            </div>
-        `;
-
-        splashBg = document.getElementById('splash-bg');
+        const splashBg = document.getElementById('splash-bg');
         barFill = document.getElementById('loader-bar-fill');
         barFull = document.getElementById('loader-bar-full');
         loaderText = document.getElementById('loader-text');
 
         for (const img of root.querySelectorAll('img[src]')) {
-            setImgSrc(img, img.getAttribute('src'));
+            const src = img.getAttribute('src');
+            if (src && !src.startsWith('data:')) {
+                setImgSrc(img, src);
+            }
         }
         for (const [id, file] of [
             ['splash-bg', isMobile() ? 'sow-splash-mobile.webp' : 'sow-splash-desktop.webp'],
@@ -276,7 +243,6 @@
             root.parentNode.removeChild(root);
         }
         root = null;
-        splashBg = null;
         barFill = null;
         barFull = null;
         loaderText = null;

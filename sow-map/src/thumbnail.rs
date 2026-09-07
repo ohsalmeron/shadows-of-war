@@ -313,13 +313,14 @@ fn color_from_terrain_byte(byte: u8) -> [u8; 4] {
         if shoreline {
             return [100, 143, 255, 255];
         }
-        let water_adj = (11.0 - (magnitude / 2.0).min(10.0) - 10.0) as i32;
-        return [
-            (70 + water_adj).clamp(0, 255) as u8,
-            (132 + water_adj).clamp(0, 255) as u8,
-            (180 + water_adj).clamp(0, 255) as u8,
-            255,
-        ];
+        let depth = (magnitude as u8).min(8);
+        return if depth <= 2 {
+            [78, 151, 208, 255]
+        } else if depth <= 6 {
+            [63, 132, 188, 255]
+        } else {
+            [52, 115, 170, 255]
+        };
     }
 
     if shoreline {

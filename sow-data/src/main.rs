@@ -157,6 +157,27 @@ struct VerifyResponse {
 }
 
 #[derive(Deserialize)]
+struct VerifiedIdentityRequest {
+    provider: String,
+    environment: String,
+    external_subject: String,
+    #[serde(default)]
+    display_name: Option<String>,
+    #[serde(default)]
+    avatar_url: Option<String>,
+    #[serde(default)]
+    requested_leader: Option<String>,
+}
+
+#[derive(Serialize)]
+struct VerifiedIdentityResponse {
+    account_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    leader: Option<String>,
+    account: sow_data::db::PlayerAccount,
+}
+
+#[derive(Deserialize)]
 struct PlayGamesExchangeRequest {
     server_auth_code: String,
     package_name: String,
@@ -791,35 +812,15 @@ async fn handle_internal_verify(
     }
     let provider = payload.provider.trim();
     let result: Result<String, String> = match provider {
-        "wou" | "wou_id" | "world_of_unreal" => {
-            match resolve_external_id("wou", "", Some(&payload.token)).await {
-                Ok(external_id) => state
-                    .db
-                    .get_or_create("wou".to_string(), external_id)
-                    .await
-                    .map(|account| account.id)
-                    .map_err(|e| e.to_string()),
-                Err(e) => Err(e),
-            }
-        }
-        "crazygames" => match resolve_external_id("crazygames", "", Some(&payload.token)).await {
-            Ok(external_id) => state
-                .db
-                .get_or_create("crazygames".to_string(), external_id)
-                .await
-                .map(|account| account.id)
-                .map_err(|e| e.to_string()),
-            Err(e) => Err(e),
-        },
-        "playgames" => state
-            .verify_playgames_session(payload.account_id.as_deref(), &payload.token)
-            .map(|identity| identity.account_id),
         "anonymous" => match (payload.account_id.as_deref(), payload.token.as_str()) {
             (Some(account_id), token) if !account_id.trim().is_empty() => {
                 state.db.verify_anonymous_secret(account_id, token).await
             }
             _ => Err("anonymous verification requires account_id and token".to_string()),
         },
+        "wou" | "wou_id" | "world_of_unreal" | "crazygames" | "playgames" => {
+            Err("external identities must be verified by sow-server".to_string())
+        }
         other => Err(format!("unsupported provider: {other}")),
     };
     match result {
@@ -860,6 +861,92 @@ async fn handle_internal_verify(
             (StatusCode::UNAUTHORIZED, Json(ErrorResponse { error: e })).into_response()
         }
     }
+}
+
+/// POST /internal/identity/resolve — persist only an identity already
+/// verified by sow-server. Provider tokens never enter this service.
+async fn handle_internal_identity_resolve(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(payload): Json<VerifiedIdentityRequest>,
+) -> impl IntoResponse {
+    if !verify_internal_auth(&headers, &state.secret_token) {
+        warn!("Unauthorized access attempt to /internal/identity/resolve");
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                error: "Unauthorized".to_string(),
+            }),
+        )
+            .into_response();
+    }
+    if payload.provider.trim().is_empty()
+        || payload.environment.trim().is_empty()
+        || payload.external_subject.trim().is_empty()
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "verified identity fields are incomplete".to_string(),
+            }),
+        )
+            .into_response();
+    }
+    let account = match state
+        .db
+        .get_or_create_with_environment(
+            payload.provider.trim().to_string(),
+            payload.environment.trim().to_string(),
+            payload.external_subject.trim().to_string(),
+        )
+        .await
+    {
+        Ok(account) => account,
+        Err(error) => {
+            error!("verified identity persistence failed: {error}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "identity persistence unavailable".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+    let leader = match payload.requested_leader.as_deref() {
+        Some(requested) => match state
+            .db
+            .resolve_leader_for_account(&account.id, Some(requested))
+            .await
+        {
+            Ok(resolution) => {
+                Some(sow_data::commerce::leader_wire_id(resolution.resolved).to_string())
+            }
+            Err(error) => {
+                error!("verified identity leader resolution failed: {error}");
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: "leader resolution unavailable".to_string(),
+                    }),
+                )
+                    .into_response();
+            }
+        },
+        None => None,
+    };
+    // These are deliberately accepted at the boundary for future profile
+    // enrichment. PlayerAccount currently owns only its display name.
+    let _ = (payload.display_name, payload.avatar_url);
+    (
+        StatusCode::OK,
+        Json(VerifiedIdentityResponse {
+            account_id: account.id.clone(),
+            leader,
+            account: account.without_auth_secret(),
+        }),
+    )
+        .into_response()
 }
 
 async fn handle_internal_profile_delete(
@@ -1113,6 +1200,10 @@ async fn main() {
         .route("/internal/save", post(handle_direct_save))
         .route("/internal/stats", get(handle_internal_stats))
         .route("/internal/verify", post(handle_internal_verify))
+        .route(
+            "/internal/identity/resolve",
+            post(handle_internal_identity_resolve),
+        )
         .route(
             "/internal/profile/delete",
             post(handle_internal_profile_delete),

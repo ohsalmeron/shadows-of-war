@@ -8,9 +8,10 @@
     var lastRaw = "";
     var lastRenderKey = "";
     var previousScreen = null;
-    var leaderPickerOpen = false;
     var tempSelectedLeader = null;
     var browserSearchQuery = "";
+    var heroesSearchQuery = "";
+    var heroesRegionFilter = "all";
     var settingsOpen = false;
     var profileOpen = false;
     var profilePublicId = null;
@@ -35,19 +36,19 @@
     var pendingHud = null;
     var lastHudRaw = "";
 
-    var LEADER_REIGNS = {
-        "Caesar": "Reigned 49 – 44 BC",
-        "Cleopatra": "Reigned 51 – 30 BC",
-        "Ragnar": "Reigned 800 – 845 AD",
-        "SunTzu": "Reigned 544 – 496 BC",
-        "Alexander": "Reigned 336 – 323 BC",
-        "GenghisKhan": "Reigned 1206 – 1227 AD",
-        "RichardTheLionheart": "Reigned 1189 – 1199 AD",
-        "Vercingetorix": "Reigned 82 – 46 BC",
-        "Boudica": "Reigned 60 – 61 AD",
-        "LadySixSky": "Reigned 612 – 693 AD",
-        "Leonidas": "Reigned 489 – 480 BC",
-        "Napoleon": "Reigned 1804 – 1814 AD"
+    var LEADER_REGIONS = {
+        caesar: "Europe",
+        cleopatra: "Africa",
+        ragnar: "Europe",
+        sun_tzu: "Asia",
+        alexander: "Europe",
+        genghis_khan: "Asia",
+        richard_the_lionheart: "Europe",
+        vercingetorix: "Europe",
+        boudica: "Europe",
+        lady_six_sky: "Americas",
+        leonidas: "Europe",
+        napoleon: "Europe"
     };
 
     function esc(value) {

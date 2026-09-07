@@ -178,8 +178,7 @@ impl SowApp {
             .filter(|_| matches!(provider.as_str(), "crazygames" | "wou" | "playgames"))
         else {
             if android_twa {
-                log::error!("[identity] Play Games identity required on Android");
-                return;
+                log::info!("[identity] Play Games unavailable; using anonymous Android profile");
             }
             self.fetch_anonymous_progress();
             return;

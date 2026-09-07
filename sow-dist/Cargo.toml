@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1"
+base64 = "0.22"
 brotli = { workspace = true }
 minifier = { workspace = true }
 serde_json = { workspace = true }

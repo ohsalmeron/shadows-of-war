@@ -148,7 +148,7 @@ pub(crate) fn fill_terrain_buffer(
                 // visible shore-to-abyss ramp once at upload, without per-fragment math.
                 let depth = (terrain_byte & 0x1f).min(8);
                 let color = if terrain_byte & 0x40 != 0 {
-                    [204, 203, 158] // beach on the water side of a shore
+                    [100, 143, 255] // water side of a shore
                 } else if depth <= 2 {
                     [78, 151, 208] // shallow
                 } else if depth <= 6 {
@@ -185,5 +185,17 @@ pub(crate) fn fill_terrain_buffer(
             terrain_slice[dst + 2] = packed_dy;
             terrain_slice[dst + 3] = noise_byte;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fill_terrain_buffer;
+
+    #[test]
+    fn water_shore_keeps_water_palette() {
+        let mut buffer = [0u8; 4];
+        fill_terrain_buffer(&[0x60], 1, 1, 4, &mut buffer);
+        assert_eq!(buffer, [0x60, 100, 143, 255]);
     }
 }

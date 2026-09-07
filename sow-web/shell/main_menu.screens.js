@@ -39,13 +39,14 @@
 
     function renderAgeGate() {
         var body = ageDeclined
-            ? "<p>Shadows of War is for players aged 13 and older (13–17 with a parent or guardian's permission). <a href='https://shadowsofwar.io/' style='color:var(--orange);text-decoration:underline;'>Back to the site</a></p>"
-            : "<p>Shadows of War is for players aged 13 and older. Players 13–17 may play with a parent or guardian's permission. Confirm to enter.</p>" +
-              "<div style='display:flex;gap:12px;justify-content:center;flex-wrap:wrap;'>" +
-              "<button type='button' class='sow-menu__primary' data-command='confirm_age'>I AM 13+ / HAVE PERMISSION</button>" +
-              "<button type='button' class='sow-menu__ghost-button' data-command='decline_age'>LEAVE</button></div>";
-        return "<div role='dialog' aria-modal='true' aria-label='Age confirmation' style='position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(5,5,10,.92);padding:24px;'>" +
-            "<div style='max-width:520px;text-align:center;'><h2>AGE CHECK</h2>" + body + "<p style='margin-top:16px;'><a href='https://shadowsofwar.io/terms/' target='_blank' rel='noopener' style='color:var(--orange);'>Terms</a> · <a href='https://shadowsofwar.io/privacy/' target='_blank' rel='noopener' style='color:var(--orange);'>Privacy</a></p></div></div>";
+            ? "<p>You must be 13 or older to play. Players aged 13–17 need a parent or guardian's permission.</p><a class='sow-age-gate__site-link' href='https://shadowsofwar.io/'>Back to site</a>"
+            : "<p>You must be 13 or older to play. Players aged 13–17 need a parent or guardian's permission.</p>" +
+              "<div class='sow-age-gate__actions'>" +
+              "<button type='button' class='sow-age-gate__confirm' data-command='confirm_age'>I AM 13+ / HAVE PERMISSION</button>" +
+              "<button type='button' class='sow-age-gate__leave' data-command='decline_age'>LEAVE</button></div>";
+        return "<div class='sow-age-gate' role='dialog' aria-modal='true' aria-labelledby='sow-age-gate-title'>" +
+            "<section class='sow-age-gate__dialog'><header class='sow-age-gate__header'><div class='sow-age-gate__portrait'><img src='" + esc(asset("gameplay/avatars/lady_six_sky.webp")) + "' alt='Lady Six Sky' width='52' height='52'><span class='sow-age-gate__mark'>13+</span></div><div><span class='sow-age-gate__eyebrow'>ACCESS CHECK</span><h2 id='sow-age-gate-title'>AGE CHECK</h2></div></header>" +
+            "<div class='sow-age-gate__body'>" + body + "</div><footer class='sow-age-gate__footer'><a href='https://shadowsofwar.io/terms/' target='_blank' rel='noopener'>Terms</a><span aria-hidden='true'>·</span><a href='https://shadowsofwar.io/privacy/' target='_blank' rel='noopener'>Privacy</a></footer></section></div>";
     }
 
     function renderTopbar() {
@@ -179,7 +180,6 @@
 
     function renderHome() {
         var leader = leaderById(state.selected_leader);
-        var leaderOverlay = leaderPickerOpen ? renderLeaderPicker() : "";
         var settingsOverlay = settingsOpen ? renderSettings() : "";
         return "" +
             "<div class='sow-menu__backdrop'></div>" +
@@ -193,7 +193,7 @@
                     "</section>" +
                 "</main>" +
                 renderFooter("") + renderMobileNav("battle") +
-            "</div>" + leaderOverlay + settingsOverlay + renderPasswordModal();
+            "</div>" + settingsOverlay + renderPasswordModal();
     }
 
     function renderBrowser() {
@@ -346,21 +346,45 @@
             "</button>";
     }
 
-    function renderHeroes() {
+    function heroesRoster(leaders) {
+        var query = heroesSearchQuery.trim().toLowerCase();
+        return leaders.filter(function (leader) {
+            var matchesQuery = !query ||
+                String(leader.name || "").toLowerCase().indexOf(query) !== -1 ||
+                String(leader.civilization || "").toLowerCase().indexOf(query) !== -1;
+            var regionKey = String(leader.slug || leader.id || "").toLowerCase();
+            var matchesRegion = heroesRegionFilter === "all" || LEADER_REGIONS[regionKey] === heroesRegionFilter;
+            return matchesQuery && matchesRegion;
+        });
+    }
+
+    function renderHeroesRegionOptions() {
+        return ["all", "Europe", "Africa", "Asia", "Americas"].map(function (region) {
+            var label = region === "all" ? "All regions" : region;
+            return "<option value='" + esc(region) + "'" + (heroesRegionFilter === region ? " selected" : "") + ">" + esc(label) + "</option>";
+        }).join("");
+    }
+
+    function renderHeroesRoster(activeId) {
         var leaders = state && Array.isArray(state.leaders) ? state.leaders : [];
+        var filtered = heroesRoster(leaders);
+        var cards = filtered.map(function (leader) { return renderHeroesCard(leader, activeId); }).join("");
+        return cards || "<p class='sow-menu__empty sow-heroes__empty'>No leaders found.</p>";
+    }
+
+    function renderHeroes() {
         var activeId = tempSelectedLeader || (state && state.selected_leader) || "Caesar";
         var activeLeader = leaderById(activeId);
-        var heroPortrait = asset("shell/leaders/" + activeLeader.slug + "_desktop.webp");
-        var mobilePortrait = asset("shell/leaders/" + activeLeader.slug + "_mobile.webp");
+        var portraitAsset = asset("shell/leaders/" + activeLeader.slug + "_mobile.webp");
+        var landscapeAsset = asset("shell/leaders/" + activeLeader.slug + "_desktop.webp");
         return "" +
             "<div class='sow-menu__backdrop sow-heroes__backdrop'></div>" +
             "<div class='sow-menu__shell sow-menu__heroes'>" +
                 renderTopbar() +
                 "<main class='sow-menu__main sow-menu__main--heroes'><section class='sow-menu__heroes-slot' aria-label='Heroes'>" +
-                    "<header class='sow-heroes__heading'><div><p class='sow-heroes__eyebrow'>COMMAND ROSTER</p><h1>Heroes</h1><p>Choose the commander who defines your campaign.</p></div><span class='sow-heroes__count'>" + leaders.length + " HISTORICAL LEADERS</span></header>" +
                     "<div class='sow-heroes__workspace'>" +
-                        "<section class='sow-heroes__featured' aria-labelledby='sow-heroes-selected'><picture><source media='(max-width: 700px)' srcset='" + esc(mobilePortrait) + "'><img src='" + esc(heroPortrait) + "' alt='" + esc(activeLeader.name) + "' width='720' height='480' fetchpriority='high'></picture><div class='sow-heroes__featured-copy'><p class='sow-heroes__featured-label'>SELECTED COMMANDER</p><h2 id='sow-heroes-selected'>" + esc(activeLeader.name) + "</h2><p class='sow-heroes__civilization'>" + esc(activeLeader.civilization) + "</p><p class='sow-heroes__perk'>" + esc(activeLeader.perk || "Enhanced military & empire bonuses.") + "</p><button class='sow-menu__primary sow-heroes__confirm' type='button' data-command='confirm_leader' data-leader-id='" + esc(activeLeader.id) + "'>CONFIRM " + esc(activeLeader.name.toUpperCase()) + " <span>✓</span></button></div></section>" +
-                        "<section class='sow-heroes__roster' aria-labelledby='sow-heroes-roster-title'><div class='sow-heroes__section-head'><h2 id='sow-heroes-roster-title'>All heroes</h2><span>Tap a commander to preview</span></div><div class='sow-heroes__grid'>" + (leaders.map(function (leader) { return renderHeroesCard(leader, activeId); }).join("") || "<p class='sow-menu__empty'>No heroes available.</p>") + "</div></section>" +
+                        "<section class='sow-heroes__featured' aria-labelledby='sow-heroes-selected'><picture><source media='(max-width: 700px) and (orientation: portrait)' srcset='" + esc(landscapeAsset) + "'><img src='" + esc(portraitAsset) + "' alt='" + esc(activeLeader.name) + "' width='1080' height='1920' fetchpriority='high'></picture><div class='sow-heroes__featured-copy'><p class='sow-heroes__featured-label'>SELECTED</p><h2 id='sow-heroes-selected'>" + esc(activeLeader.name) + "</h2><p class='sow-heroes__civilization'>" + esc(activeLeader.civilization) + "</p><p class='sow-heroes__perk'>" + esc(activeLeader.perk || "Enhanced military & empire bonuses.") + "</p><button class='sow-menu__primary sow-heroes__confirm' type='button' data-command='confirm_leader' data-leader-id='" + esc(activeLeader.id) + "'>CONFIRM " + esc(activeLeader.name.toUpperCase()) + " <span>✓</span></button></div></section>" +
+                        "<section class='sow-heroes__roster' aria-label='Leader list'><div class='sow-heroes__section-head'><div class='sow-heroes__filters'><label class='sow-heroes__search'><span class='sow-heroes__sr-only'>Search leaders</span><input data-role='heroes-search' type='search' placeholder='Search leader or civilization' value=\"" + esc(heroesSearchQuery) + "\" autocomplete='off' spellcheck='false'></label><label class='sow-heroes__region'><span class='sow-heroes__sr-only'>Filter leaders by region</span><select data-role='heroes-region' aria-label='Filter leaders by region'>" + renderHeroesRegionOptions() + "</select></label></div></div><div class='sow-heroes__grid' data-heroes-roster aria-live='polite'>" + renderHeroesRoster(activeId) + "</div></section>" +
                     "</div>" +
                 "</section></main>" +
                 renderFooter("HEROES") + renderMobileNav("heroes") +
@@ -376,6 +400,40 @@
             "<span>" + esc(summary.matches_played || 0) + " matches · " + esc(Math.round((summary.win_rate || 0) * 100)) + "% wins</span></div>" +
             "<b>LV " + esc(1 + Math.floor((summary.xp || 0) / 100)) + "</b>" +
             "</article>";
+    }
+
+    function profileRecentLeaders(matches) {
+        var recent = Array.isArray(matches) ? matches.slice(0, 10) : [];
+        var knownLeaders = state && Array.isArray(state.leaders) ? state.leaders : [];
+        var counts = {};
+        recent.forEach(function (match, index) {
+            var leaderId = match && match.leader;
+            var leaderInfo = knownLeaders.find(function (leader) { return leader.id === leaderId; });
+            if (!leaderInfo) return;
+            var entry = counts[leaderInfo.id];
+            if (!entry) {
+                entry = counts[leaderInfo.id] = { leader: leaderInfo, matches: 0, lastIndex: index };
+            }
+            entry.matches += 1;
+            entry.lastIndex = Math.min(entry.lastIndex, index);
+        });
+        return Object.keys(counts).map(function (id) { return counts[id]; }).sort(function (left, right) {
+            return right.matches - left.matches || left.lastIndex - right.lastIndex;
+        }).slice(0, 3);
+    }
+
+    function profileRecentLeadersPanel(matches) {
+        var recent = Array.isArray(matches) ? matches.slice(0, 10) : [];
+        var favorites = profileRecentLeaders(recent);
+        var cards = favorites.map(function (entry) {
+            var leader = entry.leader;
+            var share = recent.length ? Math.round((entry.matches / recent.length) * 100) : 0;
+            var unit = entry.matches === 1 ? "game" : "games";
+            return "<article class='sow-profile__favorite'><img src='" + esc(asset("gameplay/avatars/" + leader.slug + ".webp")) + "' alt='" + esc(leader.name) + " avatar' width='64' height='64' loading='lazy'><div class='sow-profile__favorite-copy'><strong>" + esc(leader.name) + "</strong><span>" + esc(entry.matches) + " " + unit + " · " + esc(share) + "%</span></div></article>";
+        }).join("");
+        return "<section class='sow-profile__favorites' aria-labelledby='sow-profile-favorites-title'><div class='sow-profile__favorites-head'><h2 id='sow-profile-favorites-title'>Most played leaders</h2><span>Last " + esc(recent.length) + " matches</span></div>" +
+            (cards ? "<div class='sow-profile__favorites-track' data-count='" + esc(favorites.length) + "'>" + cards + "</div>" : "<p class='sow-profile__favorites-empty'>No leader data yet.</p>") +
+            "</section>";
     }
 
     function profileMatchRow(match) {
@@ -394,16 +452,9 @@
     function renderProfile() {
         var data = profileData;
         var own = state && state.public_profile_id === profilePublicId;
-        var profileLeader = leaderById(data && data.preferred_leader ? data.preferred_leader : (own && state ? state.selected_leader : "Caesar"));
-        var leaderSlug = profileLeader.slug || "caesar";
-        var leaderName = profileLeader.name || "Leader";
-        var leaderCivilization = profileLeader.civilization || "";
-        var leaderAvatar = asset("gameplay/avatars/" + leaderSlug + ".webp");
-        var leaderDesktop = asset("shell/leaders/" + leaderSlug + "_desktop.webp");
-        var leaderMobile = asset("shell/leaders/" + leaderSlug + "_mobile.webp");
         var title = own ? "Your profile" : "Player profile";
         var header = data
-            ? "<section class='sow-profile__heading' aria-labelledby='sow-profile-title'><div class='sow-profile__identity-card'><div class='sow-profile__heading-top'><span class='sow-profile__kicker'>" + esc(title) + "</span><button type='button' class='sow-profile__back' data-command='close_profile'>← Back</button></div><div class='sow-profile__identity-main'><img class='sow-profile__avatar' src='" + esc(leaderAvatar) + "' alt='' width='88' height='88'><div class='sow-profile__identity-copy'><h1 id='sow-profile-title'>" + esc(data.display_name) + "</h1><p class='sow-profile__handle'>" + esc(data.handle) + "</p><p class='sow-profile__leader-line'><span>Leader</span><strong>" + esc(leaderName) + "</strong>" + (leaderCivilization ? "<small>" + esc(leaderCivilization) + "</small>" : "") + "</p></div><div class='sow-profile__level'><small>LEVEL</small><strong>" + esc(data.level) + "</strong></div></div></div><div class='sow-profile__leader-art'><picture><source media='(max-width: 700px)' srcset='" + esc(leaderMobile) + "'><img src='" + esc(leaderDesktop) + "' alt='" + esc(leaderName) + "' width='720' height='480' fetchpriority='high'></picture><span>" + esc(leaderName) + "</span></div></section>"
+            ? "<section class='sow-profile__heading' aria-labelledby='sow-profile-title'><div class='sow-profile__identity-card'><div class='sow-profile__heading-top'><span class='sow-profile__kicker'>" + esc(title) + "</span><button type='button' class='sow-profile__back' data-command='close_profile'>← Back</button></div><div class='sow-profile__identity-main'><div class='sow-profile__identity-copy'><h1 id='sow-profile-title'>" + esc(data.display_name) + "</h1><p class='sow-profile__handle'>" + esc(data.handle) + "</p></div><div class='sow-profile__level'><small>LEVEL</small><strong>" + esc(data.level) + "</strong></div></div></div>" + profileRecentLeadersPanel(profileHistory) + "</section>"
             : "<section class='sow-profile__heading sow-profile__heading--loading' aria-live='polite'><div class='sow-profile__identity-card'><div class='sow-profile__heading-top'><span class='sow-profile__kicker'>Player profile</span><button type='button' class='sow-profile__back' data-command='close_profile'>← Back</button></div><h1 id='sow-profile-title'>" + (profileLoading ? "Loading…" : "Profile unavailable") + "</h1><p class='sow-profile__handle'>" + esc(profileError || "Try again or return to the menu.") + "</p></div></section>";
         var tabs = ["overview", "leaders", "history", "ranked"].map(function (tab) {
             var active = profileTab === tab;
@@ -795,65 +846,6 @@
             "</div>";
     }
 
-    function renderLeaderPicker() {
-        var leaders = state && Array.isArray(state.leaders) ? state.leaders : [];
-        var activeId = tempSelectedLeader || (state && state.selected_leader) || "Caesar";
-        var activeLeader = leaderById(activeId);
-        var reign = LEADER_REIGNS[activeLeader.id] || "";
-        var heroPortrait = asset("gameplay/avatars/" + activeLeader.slug + ".webp");
-
-        var listHtml = leaders.map(function (leader) {
-            var isSelected = leader.id === activeId;
-            var avatarUrl = asset("gameplay/avatars/" + leader.slug + ".webp");
-            return "" +
-                "<button class='sow-menu__leader-card" + (isSelected ? " selected" : "") + "' type='button' data-command='preview_leader' data-leader-id='" + esc(leader.id) + "'>" +
-                    "<div class='sow-menu__leader-card-avatar' style=\"background-image:url('" + esc(avatarUrl) + "')\">" +
-                        (isSelected ? "<span class='sow-menu__leader-card-check'>✓</span>" : "") +
-                    "</div>" +
-                    "<div class='sow-menu__leader-card-info'>" +
-                        "<strong>" + esc(leader.name) + "</strong>" +
-                        "<small>" + esc(leader.civilization) + "</small>" +
-                    "</div>" +
-                "</button>";
-        }).join("");
-
-        return "" +
-            "<div class='sow-menu__overlay'>" +
-                "<section class='sow-menu__modal sow-menu__leader-modal'>" +
-                    "<div class='sow-menu__modal-head'>" +
-                        "<div>" +
-                            "<p class='sow-menu__panel-label'>LEADERS</p>" +
-                            "<h2>SELECT LEADER</h2>" +
-                        "</div>" +
-                        "<button class='sow-menu__icon-button' type='button' data-command='close_leader_picker' aria-label='Close'>×</button>" +
-                    "</div>" +
-                    "<div class='sow-menu__leader-layout'>" +
-                        "<div class='sow-menu__leader-showcase'>" +
-                            "<div class='sow-menu__leader-hero-frame' style=\"background-image:url('" + esc(heroPortrait) + "')\"></div>" +
-                            "<div class='sow-menu__leader-hero-details'>" +
-                                "<div class='sow-menu__leader-hero-meta'>" +
-                                    "<span class='sow-menu__civ-badge'>" + esc(activeLeader.civilization) + "</span>" +
-                                    (reign ? "<span class='sow-menu__reign-badge'>" + esc(reign) + "</span>" : "") +
-                                "</div>" +
-                                "<h3>" + esc(activeLeader.name) + "</h3>" +
-                                "<div class='sow-menu__perk-card'>" +
-                                    "<div class='sow-menu__perk-title'>⚡ COMMAND TRAIT</div>" +
-                                    "<p class='sow-menu__perk-desc'>" + esc(activeLeader.perk || "Enhanced military & empire bonuses.") + "</p>" +
-                                "</div>" +
-                                "<button class='sow-menu__primary sow-menu__leader-confirm-btn' type='button' data-command='confirm_leader' data-leader-id='" + esc(activeLeader.id) + "'>" +
-                                    "CONFIRM " + esc(activeLeader.name.toUpperCase()) + " <span>✓</span>" +
-                                "</button>" +
-                            "</div>" +
-                        "</div>" +
-                        "<div class='sow-menu__leader-grid-wrap'>" +
-                            "<p class='sow-menu__panel-sublabel'>LEADERS (" + leaders.length + ")</p>" +
-                            "<div class='sow-menu__leader-grid'>" + listHtml + "</div>" +
-                        "</div>" +
-                    "</div>" +
-                "</section>" +
-            "</div>";
-    }
-
     function renderSettings() {
         var settings = state.settings || {};
         var fullscreen = document.fullscreenElement ? "EXIT FULLSCREEN" : "FULLSCREEN";
@@ -943,8 +935,6 @@
         else if (screen === "store") root.innerHTML = renderStore();
         else root.innerHTML = "";
 
-        if (leaderPickerOpen && screen !== "home") root.innerHTML += renderLeaderPicker();
-
         // 13+ eligibility gate (Terms). Blocks the whole menu until confirmed;
         // the choice persists per device. Under-13s must leave.
         if (!ageConfirmed) root.innerHTML += renderAgeGate();
@@ -1012,7 +1002,6 @@
             settingsOpen = false;
             passwordLobbyId = null;
             passwordDraft = "";
-            leaderPickerOpen = false;
             tempSelectedLeader = null;
             if (mobileScreen === "heroes") {
                 profileOpen = false;
@@ -1020,6 +1009,8 @@
                 profileMatchDetail = null;
                 mobileStoreOpen = false;
                 mobileHeroesOpen = true;
+                heroesSearchQuery = "";
+                heroesRegionFilter = "all";
                 tempSelectedLeader = state ? state.selected_leader : "Caesar";
                 render();
                 return;
@@ -1190,18 +1181,16 @@
             return;
         }
         if (command === "open_leader_picker") {
+            profileOpen = false;
+            profilePublicId = null;
+            profileMatchDetail = null;
+            profileSearchResults = [];
             mobileStoreOpen = false;
             mobileHeroesOpen = true;
-            leaderPickerOpen = false;
+            heroesSearchQuery = "";
+            heroesRegionFilter = "all";
             tempSelectedLeader = state ? state.selected_leader : "Caesar";
             settingsOpen = false;
-            render();
-            return;
-        }
-        if (command === "close_leader_picker") {
-            leaderPickerOpen = false;
-            mobileHeroesOpen = false;
-            tempSelectedLeader = null;
             render();
             return;
         }
@@ -1214,8 +1203,9 @@
             var leaderId = target.dataset.leaderId || tempSelectedLeader;
             if (leaderId) {
                 send("set_leader", { leader_id: leaderId });
-                leaderPickerOpen = false;
                 mobileHeroesOpen = false;
+                heroesSearchQuery = "";
+                heroesRegionFilter = "all";
                 tempSelectedLeader = null;
                 render();
             }
@@ -1315,7 +1305,6 @@
         }
         if (command === "toggle_settings") {
             settingsOpen = !settingsOpen;
-            leaderPickerOpen = false;
             render();
             return;
         }
@@ -1366,7 +1355,6 @@
         }
         if (command === "set_leader") {
             if (send("set_leader", { leader_id: target.dataset.leaderId })) {
-                leaderPickerOpen = false;
                 mobileHeroesOpen = false;
             }
             return;
@@ -1517,6 +1505,16 @@
                 if (lobbiesContainer) lobbiesContainer.innerHTML = cards;
             }
         }
+        if (input.dataset && input.dataset.role === "heroes-search") {
+            heroesSearchQuery = input.value;
+            var heroesRosterContainer = root.querySelector("[data-heroes-roster]");
+            if (heroesRosterContainer) {
+                var activeHeroesId = tempSelectedLeader || (state && state.selected_leader) || "Caesar";
+                heroesRosterContainer.innerHTML = renderHeroesRoster(activeHeroesId);
+                var heroesRosterPanel = root.querySelector(".sow-heroes__roster");
+                if (heroesRosterPanel) heroesRosterPanel.scrollTop = 0;
+            }
+        }
         var createForm = input.closest("form[data-form='create']");
         if (createForm) {
             syncCreateDraft(createForm);
@@ -1542,6 +1540,17 @@
 
     root.addEventListener("change", function (event) {
         var input = event.target;
+        if (input.dataset && input.dataset.role === "heroes-region") {
+            heroesRegionFilter = input.value || "all";
+            var heroesRosterContainer = root.querySelector("[data-heroes-roster]");
+            if (heroesRosterContainer) {
+                var activeHeroesId = tempSelectedLeader || (state && state.selected_leader) || "Caesar";
+                heroesRosterContainer.innerHTML = renderHeroesRoster(activeHeroesId);
+                var heroesRosterPanel = root.querySelector(".sow-heroes__roster");
+                if (heroesRosterPanel) heroesRosterPanel.scrollTop = 0;
+            }
+            return;
+        }
         var createForm = input.closest("form[data-form='create']");
         if (createForm) {
             syncCreateDraft(createForm);

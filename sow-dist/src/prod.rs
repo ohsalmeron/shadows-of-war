@@ -1988,7 +1988,14 @@ fn play_games_config_drift(config: &Config) -> Result<bool> {
     expected_fields.push(expected_leaderboard_id);
     expected_fields.push("set".to_string());
     let expected_line = expected_fields.join("|");
-    let expected = (0..3).map(|_| expected_line.clone()).collect::<Vec<_>>();
+    let mut expected_without_secret = expected_fields;
+    let _ = expected_without_secret.pop();
+    expected_without_secret.push(String::new());
+    let expected = vec![
+        expected_line.clone(),
+        expected_line,
+        expected_without_secret.join("|"),
+    ];
     Ok(remote.lines().map(str::trim).collect::<Vec<_>>() != expected)
 }
 
@@ -2142,6 +2149,36 @@ fn activate_control_host(
     } else {
         ":".to_string()
     };
+    let database_secret_scrub = if runtime_env {
+        r#"db_env=/zroot/jails/sow-database/usr/local/etc/sow/sow.env
+if sudo test -f "$db_env"; then
+    sudo cp -p "$db_env" "$db_env.bak_$(date +%s)"
+    db_tmp=$(mktemp /tmp/sow-db-env.XXXXXX)
+    sudo grep -v '^SOW_PLAY_GAMES_WEB_CLIENT_SECRET=' "$db_env" > "$db_tmp" || true
+    sudo install -o root -g wheel -m 0600 "$db_tmp" "$db_env"
+    rm -f "$db_tmp"
+fi"#
+        .to_string()
+    } else {
+        ":".to_string()
+    };
+    let resolver_update = if server_restart {
+        r#"server_resolver=/zroot/jails/sow-server/etc/resolv.conf
+if sudo test -f "$server_resolver"; then
+    sudo cp -p "$server_resolver" "$server_resolver.bak_$(date +%s)"
+fi
+sudo install -o root -g wheel -m 0644 /etc/resolv.conf "$server_resolver""#
+            .to_string()
+    } else {
+        ":".to_string()
+    };
+    let env_backups = if runtime_env {
+        r#"for f in /usr/local/etc/sow/sow.env /zroot/jails/sow-server/usr/local/etc/sow/sow.env /zroot/jails/sow-database/usr/local/etc/sow/sow.env; do
+    if sudo test -f "$f"; then sudo cp -p "$f" "$f.bak_$(date +%s)"; fi
+done"#.to_string()
+    } else {
+        ":".to_string()
+    };
     let mut remote = String::from(
         r#"set -eu
 old=$(sudo readlink /srv/sow/current 2>/dev/null || true)
@@ -2184,8 +2221,11 @@ if __NGINX_RELOAD__; then
     sudo nginx -t || rollback
     sudo service nginx reload || rollback
 fi
+__ENV_BACKUPS__
 __ENV_UPDATE__
 __REVENUECAT_UPDATE__
+__DATABASE_SECRET_SCRUB__
+__RESOLVER_UPDATE__
 if __DB_RESTART__; then
     sudo jexec sow-database service sow_database restart || rollback
     i=0
@@ -2231,7 +2271,10 @@ __SECRET_CLEANUP__
             },
         ),
         ("__ENV_UPDATE__", env_update),
+        ("__ENV_BACKUPS__", env_backups),
         ("__REVENUECAT_UPDATE__", revenuecat_update),
+        ("__DATABASE_SECRET_SCRUB__", database_secret_scrub),
+        ("__RESOLVER_UPDATE__", resolver_update),
         (
             "__SECRET_TRAP__",
             if runtime_env {

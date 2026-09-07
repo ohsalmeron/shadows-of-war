@@ -1,4 +1,5 @@
 mod bot_fill;
+mod identity;
 mod lobby;
 mod map_catalog;
 mod map_playlist;
@@ -385,58 +386,12 @@ async fn send_relay_handoff_frame(
     })
 }
 
-/// Register the account-backed match before the relay is exposed to clients.
-/// This ordering prevents a fast match from finalizing before Valkey contains
-/// its player list, which otherwise loses statistics as `Match not registered`.
-/// Resolve a `JoinWithAuth` identity proof and server-authorized leader via
-/// sow-data's /internal/verify.
-struct VerifiedIdentity {
-    account_id: String,
-    leader: sow_core::player::Leader,
-}
-
 async fn verify_identity(
+    identity: &identity::IdentityState,
     auth: &sow_core::protocol::AuthProof,
     requested_leader: sow_core::player::Leader,
-) -> Result<VerifiedIdentity, String> {
-    let db_base_url =
-        std::env::var("SOW_DB_URL").unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
-    let secret_token =
-        std::env::var("SOW_DB_SECRET").map_err(|_| "SOW_DB_SECRET missing".to_string())?;
-    let url = format!("{}/internal/verify", db_base_url.trim_end_matches('/'));
-    let body = serde_json::json!({
-        "provider": auth.provider.trim(),
-        "account_id": auth.account_id.as_deref(),
-        "token": auth.token,
-        "requested_leader": sow_core::commerce::leader_wire_id(requested_leader),
-    });
-    let client = reqwest::Client::new();
-    let res = client
-        .post(&url)
-        .header("Authorization", format!("Bearer {secret_token}"))
-        .json(&body)
-        .timeout(Duration::from_secs(5))
-        .send()
-        .await
-        .map_err(|e| format!("verify request failed: {e}"))?;
-    if !res.status().is_success() {
-        return Err(format!("verify returned HTTP {}", res.status()));
-    }
-    let value: serde_json::Value = res
-        .json()
-        .await
-        .map_err(|e| format!("verify response unreadable: {e}"))?;
-    let account_id = value
-        .get("account_id")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .ok_or_else(|| "verify response missing account_id".to_string())?;
-    let leader = value
-        .get("leader")
-        .and_then(|v| v.as_str())
-        .and_then(sow_core::commerce::leader_from_id)
-        .ok_or_else(|| "verify response missing authorized leader".to_string())?;
-    Ok(VerifiedIdentity { account_id, leader })
+) -> Result<identity::VerifiedIdentity, String> {
+    identity.verify_auth_proof(auth, requested_leader).await
 }
 
 async fn register_match_start(rc: &RelayCandidate) -> Result<(), String> {
@@ -684,6 +639,11 @@ async fn main() {
         log::error!("{e}");
         return;
     }
+
+    let db_url =
+        std::env::var("SOW_DB_URL").unwrap_or_else(|_| "http://127.0.0.1:25585".to_string());
+    let db_secret = std::env::var("SOW_DB_SECRET").expect("SOW_DB_SECRET was validated above");
+    let identity_state = identity::IdentityState::from_env(db_url, db_secret);
 
     let redis_url =
         std::env::var("SOW_REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1/".to_string());
@@ -1173,11 +1133,13 @@ async fn main() {
     // HTTP Static File Server for maps and Admin Dashboard
     let games_for_axum = Arc::clone(&games_state);
     let redis_client_for_axum = redis_client.clone();
+    let identity_state_http = identity_state.clone();
     tokio::spawn(async move {
         let root = maps_root.clone();
         let state = AppState {
             games: games_for_axum,
             redis_client: redis_client_for_axum,
+            identity: identity_state_http,
         };
         let catalog_route = axum::Router::new()
             .route(
@@ -1197,6 +1159,19 @@ async fn main() {
                 axum::routing::get(catalog_json_handler),
             )
             .route("/lobbies.json", axum::routing::get(lobbies_json_handler))
+            .route(
+                "/auth/playgames/exchange",
+                axum::routing::post(identity::handle_playgames_exchange),
+            )
+            .route(
+                "/auth/playgames/consume",
+                axum::routing::post(identity::handle_playgames_consume),
+            )
+            .route(
+                "/auth/playgames/poll",
+                axum::routing::get(identity::handle_playgames_poll),
+            )
+            .route("/profile", axum::routing::get(identity::handle_profile))
             .route("/admin/api/status", axum::routing::get(admin_status))
             .with_state(state);
 
@@ -1234,6 +1209,7 @@ async fn main() {
         let mut global_rx = global_tx.subscribe();
         let ev_tx = event_tx.clone();
         let games_state_conn = Arc::clone(&games_state);
+        let identity_state_conn = identity_state.clone();
         tokio::spawn(async move {
             let _connection_permit = permit;
             let session_id = next_session_id();
@@ -1360,7 +1336,7 @@ async fn main() {
                                                     continue;
                                                 }
 
-                                                let (database_account_id, leader) = match verify_identity(&auth, payload.leader).await {
+                                                let (database_account_id, leader) = match verify_identity(&identity_state_conn, &auth, payload.leader).await {
                                                     Ok(identity) => {
                                                         log::info!(
                                                             "[AUTH] join verified provider={} account={}",
@@ -1564,6 +1540,7 @@ async fn main() {
 struct AppState {
     games: Arc<Mutex<Vec<lobby::ServerLobby>>>,
     redis_client: redis::Client,
+    identity: identity::IdentityState,
 }
 
 async fn admin_status(

@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, bail};
+use base64::Engine as _;
 use rand::RngCore;
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
@@ -443,6 +444,8 @@ fn build_index(paths: &Paths, out: &Path, build: IndexBuild<'_>) -> Result<()> {
         cg,
     } = build;
     let tpl = fs::read_to_string(paths.shell.join("index.html.template"))?;
+    let splash_desktop = inline_webp(&paths.assets_shell.join("loader/sow-splash-desktop.webp"))?;
+    let splash_mobile = inline_webp(&paths.assets_shell.join("loader/sow-splash-mobile.webp"))?;
     let web_purchase_link = if cg {
         String::new()
     } else {
@@ -474,6 +477,8 @@ fn build_index(paths: &Paths, out: &Path, build: IndexBuild<'_>) -> Result<()> {
         .replace("__WASM_FILE__", wasm)
         .replace("__BUILD_TS__", ts)
         .replace("__MAPS_CACHE_BUST__", maps_cache_bust)
+        .replace("__SOW_SPLASH_DESKTOP_DATA__", &splash_desktop)
+        .replace("__SOW_SPLASH_MOBILE_DATA__", &splash_mobile)
         .replace(
             "__REVENUECAT_WEB_PURCHASE_LINK__",
             &web_purchase_link_js,
@@ -605,6 +610,15 @@ fn build_index(paths: &Paths, out: &Path, build: IndexBuild<'_>) -> Result<()> {
     fh = fh.replacen(menu_js_marker, &menu_js, 1);
     fs::write(&index, fh)?;
     Ok(())
+}
+
+fn inline_webp(path: &Path) -> Result<String> {
+    let bytes = fs::read(path)
+        .with_context(|| format!("read critical loader asset {}", path.display()))?;
+    Ok(format!(
+        "data:image/webp;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    ))
 }
 
 fn copy_shell(paths: &Paths, out: &Path) -> Result<()> {
@@ -1306,6 +1320,9 @@ mod tests {
             },
         )?;
         let html = fs::read_to_string(out.path().join("play/index.html"))?;
+        assert!(!html.contains("__SOW_SPLASH_DESKTOP_DATA__"));
+        assert!(!html.contains("__SOW_SPLASH_MOBILE_DATA__"));
+        assert!(html.contains("data:image/webp;base64,"));
         assert!(!html.contains("__INLINE_MAIN_MENU_CSS__"));
         assert!(!html.contains("__INLINE_MAIN_MENU_JS__"));
         assert!(html.contains("#sow-menu"));

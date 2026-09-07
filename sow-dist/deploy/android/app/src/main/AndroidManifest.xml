@@ -1,5 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -21,15 +20,9 @@
             android:name="com.google.android.gms.games.APP_ID"
             android:value="${playGamesAppId}" />
 
-        <provider
-            android:name="androidx.core.content.FileProvider"
-            android:authorities="${applicationId}.fileprovider"
-            android:exported="false"
-            android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths" />
-        </provider>
+        <meta-data
+            android:name="com.google.android.gms.games.SUPPRESS_GAME_PROFILE_CREATION"
+            android:value="true" />
 
         <activity
             android:name=".PurchaseActivity"
@@ -51,17 +44,6 @@
         </activity>
 
         <activity
-            android:name=".PlayGamesLauncherActivity"
-            android:exported="true"
-            android:label="@string/app_name"
-            android:theme="@style/Theme.ShadowsOfWar">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-
-        <activity
             android:name=".PlayGamesServicesActivity"
             android:exported="true"
             android:theme="@style/Theme.ShadowsOfWar">
@@ -74,11 +56,16 @@
         </activity>
 
         <activity
-            android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"
+            android:name=".TwaLauncherActivity"
             android:exported="true"
             android:label="@string/app_name"
             android:screenOrientation="fullUser"
             android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
 
             <meta-data
                 android:name="android.support.customtabs.trusted.DEFAULT_URL"
@@ -87,10 +74,6 @@
             <meta-data
                 android:name="android.support.customtabs.trusted.DISPLAY_MODE"
                 android:value="sticky-immersive" />
-
-            <meta-data
-                android:name="android.support.customtabs.trusted.FILE_PROVIDER_AUTHORITY"
-                android:value="${applicationId}.fileprovider" />
 
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />

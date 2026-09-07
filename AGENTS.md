@@ -65,8 +65,10 @@ deployment path for web/backend (WASM + FreeBSD + Azure); `./sow l` / `./sow loc
 `./sow` without a subcommand runs the native client.
 Android is decoupled on purpose: `./sow a` / `./sow android` builds the AAB
 and publishes it to Google Play alpha. Every Play upload restarts Google's
-review clock, so `./sow p` never touches Android — run `./sow a` only when a
-new build is actually ready for review. This four-command interface
+review clock, so `./sow p` never touches Android. The owner alone runs `./sow a`
+manually only when a new build is actually ready for review; Codex must never
+run it or upload to Play. Codex validates Android locally with
+`scripts/android-local-test.sh` only. This four-command interface
 (`native`, `l`, `p`, `a`) is the amended CLI contract; do not invent
 further subcommands.
 
@@ -108,9 +110,10 @@ the freeze gate is disabled in all developer and iOS workflows.
 ## Production pipeline validation gate
 
 - Changes intended for the production web/backend/FreeBSD release must be
-  validated with `./sow p` from the configured production control host. Android
-  and Google Play changes use `./sow a`, which owns the Android preflight,
-  device test, Play validation, and upload for that platform.
+  validated with `./sow p` from the configured production control host. The
+  owner alone runs `./sow a` for Android/Google Play; Codex never runs it or
+  uploads Android. Codex's Android validation is local-only through
+  `scripts/android-local-test.sh`.
 - `./sow l` / `./sow local` is for local web/WASM preview only. It does not
   validate production deployment and does not replace `./sow p` when that
   pipeline is in scope.
