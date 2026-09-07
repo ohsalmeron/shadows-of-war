@@ -5,11 +5,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 "$ROOT/scripts/vendor-blade.sh"
 PROJECT="$ROOT/sow-dist/deploy/ios/sow_ios.xcodeproj"
 EXPORT_OPTIONS="$ROOT/sow-dist/deploy/ios/ExportOptions.plist"
-ARCHIVE="${SOW_IOS_ARCHIVE_PATH:-$ROOT/dist/ios/ShadowsOfWar.xcarchive}"
-EXPORT_DIR="${SOW_IOS_EXPORT_DIR:-$ROOT/dist/ios/export}"
-DERIVED_DATA_PATH="${SOW_IOS_DERIVED_DATA_PATH:-$ROOT/dist/ios/DerivedData}"
-VERSION_NAME="${SOW_IOS_VERSION_NAME:-$(tr -d '[:space:]' <"$ROOT/.version")}"
+VERSION_NAME="${SOW_IOS_VERSION_NAME:-$(tr -d '[:space:]' < "$ROOT/.version")}"
 BUILD_NUMBER="${SOW_IOS_BUILD_NUMBER:-$(git -C "$ROOT" rev-list --count HEAD)}"
+MIN_BUILD_NUMBER="${SOW_IOS_MIN_BUILD_NUMBER:-408}"
+RUN_ROOT="${SOW_IOS_RUN_ROOT:-$ROOT/dist/ios/runs/$VERSION_NAME-$BUILD_NUMBER}"
+ARCHIVE="${SOW_IOS_ARCHIVE_PATH:-$RUN_ROOT/ShadowsOfWar.xcarchive}"
+EXPORT_DIR="${SOW_IOS_EXPORT_DIR:-$RUN_ROOT/export}"
+DERIVED_DATA_PATH="${SOW_IOS_DERIVED_DATA_PATH:-$RUN_ROOT/DerivedData}"
 TEAM_ID="${SOW_IOS_TEAM_ID:-HS8F4NGXWN}"
 REVENUECAT_IOS_PUBLIC_KEY="${SOW_REVENUECAT_IOS_PUBLIC_KEY:-}"
 ASC_API_KEY="${SOW_ASC_API_KEY:-}"
@@ -18,11 +20,15 @@ ASC_P8_PATH="${SOW_ASC_P8_PATH:-}"
 ACTIVE_EXPORT_OPTIONS=""
 IPA_STAGE=""
 DSYM_SYMBOLS=""
+BUILD_SETTINGS=""
+SWIFT_RUNTIME_REPORT=""
 
 cleanup() {
     [[ -z "$ACTIVE_EXPORT_OPTIONS" ]] || rm -f "$ACTIVE_EXPORT_OPTIONS"
     [[ -z "$IPA_STAGE" ]] || rm -rf "$IPA_STAGE"
     [[ -z "$DSYM_SYMBOLS" ]] || rm -f "$DSYM_SYMBOLS"
+    [[ -z "$BUILD_SETTINGS" ]] || rm -f "$BUILD_SETTINGS"
+    [[ -z "$SWIFT_RUNTIME_REPORT" ]] || rm -f "$SWIFT_RUNTIME_REPORT"
 }
 trap cleanup EXIT
 
@@ -34,6 +40,9 @@ die() {
 [[ "${1:-}" == "" || "${1:-}" == "--upload" ]] || die "usage: scripts/ios-testflight.sh [--upload]"
 [[ "$VERSION_NAME" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]] || die "invalid iOS version name: $VERSION_NAME"
 [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]] || die "invalid iOS build number: $BUILD_NUMBER"
+[[ "$MIN_BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]] || die "invalid minimum iOS build number: $MIN_BUILD_NUMBER"
+(( BUILD_NUMBER >= MIN_BUILD_NUMBER )) \
+    || die "iOS build $BUILD_NUMBER is not newer than the known failed build floor $MIN_BUILD_NUMBER"
 [[ "$REVENUECAT_IOS_PUBLIC_KEY" == appl_* ]] \
     || die "SOW_REVENUECAT_IOS_PUBLIC_KEY must be the RevenueCat iOS public SDK key (appl_...)"
 
@@ -55,6 +64,20 @@ fi
 mkdir -p "$(dirname "$ARCHIVE")" "$EXPORT_DIR" "$DERIVED_DATA_PATH"
 rm -rf "$ARCHIVE" "$EXPORT_DIR"
 export SOW_IOS_CARGO_HOME="${SOW_IOS_CARGO_HOME:-${CARGO_HOME:-$HOME/.cargo}}"
+
+BUILD_SETTINGS="$(mktemp "${TMPDIR:-/tmp}/ShadowsOfWar-build-settings.XXXXXX")"
+xcodebuild \
+    -project "$PROJECT" \
+    -scheme ShadowsOfWar \
+    -configuration Release \
+    -destination "generic/platform=iOS" \
+    -showBuildSettings >"$BUILD_SETTINGS"
+grep -Eq '^    ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES$' "$BUILD_SETTINGS" \
+    || die "Release target does not embed Swift standard libraries"
+grep -Eq '^    EMBEDDED_CONTENT_CONTAINS_SWIFT = YES$' "$BUILD_SETTINGS" \
+    || die "Release target does not declare embedded Swift content"
+grep -Eq '^    SWIFT_VERSION = 5(\.[0-9]+)?$' "$BUILD_SETTINGS" \
+    || die "Release target is not using the expected Swift version"
 
 echo "==> Archive iOS"
 echo "==> version=$VERSION_NAME build=$BUILD_NUMBER team=$TEAM_ID"
@@ -84,8 +107,14 @@ xcodebuild \
     -exportPath "$EXPORT_DIR" \
     -exportOptionsPlist "$ACTIVE_EXPORT_OPTIONS"
 
-IPA="$(find "$EXPORT_DIR" -maxdepth 1 -name '*.ipa' -print -quit)"
-[[ -n "$IPA" && -s "$IPA" ]] || die "IPA export did not produce an .ipa"
+IPA=""
+IPA_COUNT=0
+while IFS= read -r candidate; do
+    IPA="$candidate"
+    IPA_COUNT=$((IPA_COUNT + 1))
+done < <(find "$EXPORT_DIR" -maxdepth 1 -type f -name '*.ipa' -print)
+[[ "$IPA_COUNT" -eq 1 && -s "$IPA" ]] \
+    || die "expected exactly one exported IPA, found $IPA_COUNT"
 
 IPA_STAGE="$(mktemp -d "${TMPDIR:-/tmp}/ShadowsOfWar-ipa.XXXXXX")"
 unzip -q "$IPA" -d "$IPA_STAGE"
@@ -108,6 +137,38 @@ if find "$APP_PATH" -type f \( -name 'libSOWRevenueCatBridge.dylib' -o -name '*R
     | grep -q .; then
     die "packaged app still contains the removed manual RevenueCat bridge dylib"
 fi
+SWIFT_RUNTIME_REPORT="$(mktemp "${TMPDIR:-/tmp}/ShadowsOfWar-swift-runtime.XXXXXX")"
+xcrun swift-stdlib-tool \
+    --print \
+    --platform iphoneos \
+    --scan-executable "$APP_PATH/$APP_EXECUTABLE" >"$SWIFT_RUNTIME_REPORT" 2>&1 \
+    || die "Xcode could not determine the Swift runtime dependencies"
+while IFS= read -r library; do
+    [[ -z "$library" ]] && continue
+    library="${library##*/}"
+    if [[ ! -f "$APP_PATH/Frameworks/$library" && ! -f "$IPA_STAGE/SwiftSupport/iphoneos/$library" ]]; then
+        die "packaged app is missing Swift runtime library reported by Xcode: $library"
+    fi
+done < <(sed -nE 's#.*(libswift[^/[:space:]]+\.dylib).*#\1#p' "$SWIFT_RUNTIME_REPORT" | sort -u)
+RPATH_DEPENDENCIES="$(otool -L "$APP_PATH/$APP_EXECUTABLE" \
+    | awk '/^[[:space:]]/ {path=$1; if (path ~ /^@rpath\/.*\.dylib$/) print path}')"
+while IFS= read -r dependency; do
+    [[ -z "$dependency" ]] && continue
+    library="${dependency##*/}"
+    [[ -f "$APP_PATH/Frameworks/$library" ]] \
+        || die "packaged app has an @rpath dylib without a matching Frameworks copy: $library"
+done <<<"$RPATH_DEPENDENCIES"
+echo "PASS: Swift runtime packaging matches Xcode's current iOS resolution"
+SIGNING_DETAILS="$(codesign -dvvv "$APP_PATH" 2>&1 || true)"
+grep -q '^Authority=Apple Distribution:' <<<"$SIGNING_DETAILS" \
+    || die "exported app is not signed with Apple Distribution"
+if grep -q '^Authority=Apple Development:' <<<"$SIGNING_DETAILS"; then
+    die "exported app still has an Apple Development signature"
+fi
+grep -q '^TeamIdentifier=HS8F4NGXWN$' <<<"$SIGNING_DETAILS" \
+    || die "exported app has the wrong signing team"
+[[ "$(lipo -archs "$APP_PATH/$APP_EXECUTABLE")" == *arm64* ]] \
+    || die "exported app is missing arm64"
 otool -L "$APP_PATH/$APP_EXECUTABLE" | grep -q '/StoreKit.framework/StoreKit' \
     || die "packaged app is not linked with StoreKit"
 

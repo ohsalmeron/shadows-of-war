@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>Shadows of War</string>
+	<key>CFBundleExecutable</key>
+	<string>ShadowsOfWar</string>
+	<key>CFBundleIconFile</key>
+	<string>ShadowsOfWar.icns</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Shadows of War</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleSignature</key>
+	<string>SOWR</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.games</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>12.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>SOW_ASSETS_URL</key>
+	<string>https://shadowsofwar.io/assets</string>
+	<key>SOW_DATABASE_URL</key>
+	<string>https://shadowsofwar.io/api</string>
+	<key>SOW_MAPS_URL</key>
+	<string>https://shadowsofwar.io/maps</string>
+	<key>SOW_WS_URL</key>
+	<string>wss://shadowsofwar.io/ws/</string>
+</dict>
+</plist>

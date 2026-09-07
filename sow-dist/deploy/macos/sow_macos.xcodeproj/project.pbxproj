@@ -1,0 +1,215 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 54;
+	objects = {
+
+/* Begin PBXFileReference section */
+		55EAC02897847195D2F44C16 /* ShadowsOfWar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ShadowsOfWar.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8EE7F1E3B0303533925D7E34 /* TestFlight-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "TestFlight-Info.plist"; sourceTree = "<group>"; };
+		EAFC1728394A5B6C7D8E9F0 /* ShadowsOfWar.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "ShadowsOfWar.entitlements"; sourceTree = "<group>"; };
+		F1BE394A5B6C7D8E9F0123 /* build_rust_app.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "build_rust_app.sh"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		321F7D6A765B38E746C35105 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				55EAC02897847195D2F44C16 /* ShadowsOfWar.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		4F1D6F28B8A5D1927AB0ADED /* macos */ = {
+			isa = PBXGroup;
+			children = (
+				8EE7F1E3B0303533925D7E34 /* TestFlight-Info.plist */,
+				EAFC1728394A5B6C7D8E9F0 /* ShadowsOfWar.entitlements */,
+				F1BE394A5B6C7D8E9F0123 /* build_rust_app.sh */,
+			);
+			path = "";
+			sourceTree = "<group>";
+		};
+		8F2E3E6040EAD2EC9F3FA530 = {
+			isa = PBXGroup;
+			children = (
+				4F1D6F28B8A5D1927AB0ADED /* macos */,
+				321F7D6A765B38E746C35105 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		3BDB8152E4962373181B4FE5 /* ShadowsOfWar */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E714A1AEAAE517C348B5BD27 /* Build configuration list for PBXNativeTarget "ShadowsOfWar" */;
+			buildPhases = (
+				ECFC92D02C6F14FA0095E5B1 /* Rust app */, 
+				57CD630D253C80E60098CD4A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ShadowsOfWar;
+			productName = ShadowsOfWar;
+			productReference = 55EAC02897847195D2F44C16 /* ShadowsOfWar.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		8DBF1E2B5C613DA41701F6D9 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					3BDB8152E4962373181B4FE5 = {
+					};
+				};
+			};
+			buildConfigurationList = 9D43D41707A5C30B227B83F9 /* Build configuration list for PBXProject "sow_macos" */;
+			compatibilityVersion = "Xcode 10.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+			);
+			mainGroup = 8F2E3E6040EAD2EC9F3FA530;
+			productRefGroup = 321F7D6A765B38E746C35105 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				3BDB8152E4962373181B4FE5 /* ShadowsOfWar */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		57CD630D253C80E60098CD4A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		ECFC92D02C6F14FA0095E5B1 /* Rust app */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/build_rust_app.sh",
+				"$(SRCROOT)/../../../Cargo.toml",
+			);
+			name = "Rust app";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/ShadowsOfWar.app/Contents/MacOS/ShadowsOfWar",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "bash ./build_rust_app.sh\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		4AD7BC6FDD56FF18FA6DA7D7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = HS8F4NGXWN;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		79E3C28F06346EA58420A93D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = HS8F4NGXWN;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = "TestFlight-Info.plist";
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				PRODUCT_BUNDLE_IDENTIFIER = games.shadowsofwar.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				CODE_SIGN_ENTITLEMENTS = "ShadowsOfWar.entitlements";
+				SKIP_INSTALL = NO;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		A2D5B73DD30D562B6F366526 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = HS8F4NGXWN;
+				INFOPLIST_FILE = "TestFlight-Info.plist";
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				PRODUCT_BUNDLE_IDENTIFIER = games.shadowsofwar.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				CODE_SIGN_ENTITLEMENTS = "ShadowsOfWar.entitlements";
+				SKIP_INSTALL = NO;
+			};
+			name = Debug;
+		};
+		5B14EC4ADC81FBF1F8CF20E9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = HS8F4NGXWN;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = "TestFlight-Info.plist";
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				PRODUCT_BUNDLE_IDENTIFIER = games.shadowsofwar.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				CODE_SIGN_ENTITLEMENTS = "ShadowsOfWar.entitlements";
+				SKIP_INSTALL = NO;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		9D43D41707A5C30B227B83F9 /* Build configuration list for PBXProject "sow_macos" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4AD7BC6FDD56FF18FA6DA7D7 /* Debug */,
+				79E3C28F06346EA58420A93D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E714A1AEAAE517C348B5BD27 /* Build configuration list for PBXNativeTarget "ShadowsOfWar" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A2D5B73DD30D562B6F366526 /* Debug */,
+				5B14EC4ADC81FBF1F8CF20E9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 8DBF1E2B5C613DA41701F6D9 /* Project object */;
+}
